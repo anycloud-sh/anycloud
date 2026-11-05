@@ -107,6 +107,15 @@ example `curl -fsSL <api>/role-setup/gcp.sh | ANYCLOUD_ROLE_PROVIDER=anycloud-ap
 and save the printed identifiers with
 `anycloud credentials new <name> --provider gcp --role --overwrite`.
 
+The cloud checks each token against the signing keys the API serves at its
+hostname. A new key works at once on all three clouds. While the hostname
+doesn't answer, AWS refuses new sessions within about a minute and Azure at
+once; GCP keeps using the keys it read earlier, and keeps accepting a removed
+key for about an hour or longer. To cut off a GCP role connection promptly,
+remove its service account's impersonation binding; new exchanges stop within
+about 2 minutes. Credentials already issued last until they expire: up to 1 hour on
+GCP and about 24 hours on Azure.
+
 ## Select credentials for compute
 
 Select a named credential when account choice is part of the workload:
