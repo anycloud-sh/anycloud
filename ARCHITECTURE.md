@@ -988,9 +988,9 @@ token lasts about 24 hours, and Bucket SAS tokens, signed with the storage
 account key, last 36 hours whatever happens to the trust.
 
 A hosted API admits only the opaque API tokens it issues (`acapi_` plus 32
-random bytes), one per admitted GitHub account, never a GitHub token. `anycloud login <api>` (or the CLI's first
-command to it) exchanges a GitHub sign-in at `POST /v1/api-token`. The exchange
-skips GitHub unless the token starts with `gho_`, requires GitHub to list
+random bytes), one per admitted GitHub account, never a GitHub token.
+`anycloud login <api>` (or the CLI's first command to it) exchanges a GitHub
+sign-in at `POST /v1/api-token`. The exchange skips GitHub unless the token starts with `gho_`, requires GitHub to list
 exactly `read:org` and `read:packages` for it, and checks the access policy. It
 then stores the sign-in encrypted, for private GHCR pulls, Service hostnames
 and clusters, and returns the account's existing token or mints the first. The
