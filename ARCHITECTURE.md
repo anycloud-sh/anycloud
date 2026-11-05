@@ -990,17 +990,17 @@ account key, last 36 hours whatever happens to the trust.
 A hosted API admits only the opaque API tokens it issues (`acapi_` plus 32
 random bytes), one per admitted GitHub account, never a GitHub token.
 `anycloud login <api>` (or the CLI's first command to it) exchanges a GitHub
-sign-in at `POST /v1/api-token`. The exchange skips GitHub unless the token starts with `gho_`, requires GitHub to list
-exactly `read:org` and `read:packages` for it, and checks the access policy. It
-then stores the sign-in encrypted, for private GHCR pulls, Service hostnames
-and clusters, and returns the account's existing token or mints the first. The
-exchange and `POST /v1/api-token/rotate` are the only routes that return a
-token; both are logged without it. Rotation replaces the hash and ciphertext in
-one statement, `api access remove` deletes the member's row, and a stale token
-is refused with the command that fetches the current one. Each request looks
-the token up by its SHA-256, checks the access policy again, records use at
-most hourly, and never calls GitHub. A hosted API refuses to start with
-`IS_TEST`, which stubs GitHub identities.
+sign-in at `POST /v1/api-token`. The exchange skips GitHub unless the token starts with
+`gho_`, requires GitHub to list exactly `read:org` and `read:packages` for it,
+and checks the access policy. It then stores the sign-in encrypted, for private
+GHCR pulls, Service hostnames and clusters, and returns the account's existing
+token or mints the first. The exchange and `POST /v1/api-token/rotate` are the
+only routes that return a token; both are logged without it. Rotation replaces
+the hash and ciphertext in one statement, `api access remove` deletes the
+member's row, and a stale token is refused with the command that fetches the
+current one. Each request looks the token up by its SHA-256, checks the access
+policy again, records use at most hourly, and never calls GitHub. A hosted API
+refuses to start with `IS_TEST`, which stubs GitHub identities.
 
 The CLI keeps API tokens per API URL in `$ANYCLOUD_DIR/api-tokens.json` (mode
 `0600`). A hosted target's bearer is `ANYCLOUD_API_TOKEN` when `API_URL` names
