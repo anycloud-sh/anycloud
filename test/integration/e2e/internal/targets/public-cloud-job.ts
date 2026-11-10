@@ -54,6 +54,7 @@ export class PublicCloudJobAdapter {
         'spot-eviction',
         'gpu-spot-eviction',
         'gpu-probe-rerun',
+        'gpu-health-fault',
         'runtime-secrets',
         'restricted-credential',
         'disk-tier',
@@ -160,6 +161,12 @@ if not resumed:
         '-c',
         'sleep 30; echo "No CUDA GPUs are available"; exit 1',
       );
+    }
+    // #2332: a long-running GPU Job the family reads status on, injects an
+    // external Xid fault into, then terminates; nothing it runs matters.
+    if (kind === 'gpu-health-fault') {
+      gpus = 'all';
+      passthrough.push('sleep', '3600');
     }
     if (kind === 'disk-tier') {
       if (!fixture.diskTierCase)
@@ -397,6 +404,11 @@ if not resumed:
     ...args: Parameters<CloudJobTransport['deleteHost']>
   ): ReturnType<CloudJobTransport['deleteHost']> {
     return this.#transport.deleteHost(...args);
+  }
+  injectGpuXid(
+    ...args: Parameters<CloudJobTransport['injectGpuXid']>
+  ): ReturnType<CloudJobTransport['injectGpuXid']> {
+    return this.#transport.injectGpuXid(...args);
   }
   writeHostCheckpoint(
     ...args: Parameters<CloudJobTransport['writeHostCheckpoint']>

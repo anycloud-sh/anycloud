@@ -229,6 +229,20 @@ on its VM twice" message, and keep every attempt on one VM. Each cloud runs
 its own host image, which is what the probe reads. The probe-fail path needs
 a faulty GPU, so it isn't covered.
 
+The `gpu-health-fault` Job members (`<target>-gpu-health-fault` for AWS
+`g4dn.xlarge`, Azure `Standard_NC4as_T4_v3`, GCP `g2-standard-4` and Lambda
+`gpu_1x_a10`, dispatch-only in `e2e-job.yml`) check GPU health's unhealthy path: a
+long-sleep `--gpus` Job on `python:3.12-slim`, read `healthy` by status, then
+one externally injected `NVRM: Xid (PCI:<addr>): 79, ... GPU has fallen off the
+bus.` line, in the driver's own words, written to the host's `/dev/kmsg` over
+the product's own SSH route (as root or `sudo -n`, the same branch
+`GPU_HEALTH_COMMAND` reads the journal with) and confirmed independently in
+that boot's kernel journal before the harness waits on the product's own
+read. It must turn status `unhealthy` with Xid 79 `resetNeeded` and the human
+"GPU 0 needs a reset (Xid 79 ...)" line, then for two minutes keep reporting
+only — the same live VM, no Retrying event — before its ordinary termination.
+This is the faulty-GPU path `gpu-probe-rerun` leaves uncovered.
+
 The `storage-tokens` family (`<target>-storage-tokens` for AWS, GCP and Azure,
 dispatch-only in `e2e-job.yml`, run per release from `RELEASE.md`) checks
 the storage-tokens minting endpoint against the harness's API with the CI key credential,

@@ -75,6 +75,12 @@ interface ObjectStorageJobProfile {
     readonly region?: string;
     readonly regions?: readonly string[];
   };
+  /** #2332's injected-Xid unhealthy path: the same type/region as the probe rerun. */
+  readonly gpuHealthFault?: {
+    readonly vmType: string;
+    readonly region?: string;
+    readonly regions?: readonly string[];
+  };
   readonly runtimeSecrets?: { readonly vmTypes: readonly string[] };
   readonly restrictedCredential?: JobRestrictedCredentialProfile;
   readonly ghcrProbe?: { readonly vmType: string; readonly region: string };
@@ -181,6 +187,7 @@ export const JOB_TARGET_PROFILES: Readonly<
     },
     maceFullPull: { vmType: 'g6e.xlarge', diskSizeGb: 100, diskTier: 'high' },
     gpuProbeRerun: { vmType: 'g4dn.xlarge' },
+    gpuHealthFault: { vmType: 'g4dn.xlarge' },
     invalidAdmission: {
       unknownVmRegion: 'us-east-1',
       reservedBucket: { prefix: 'sthree-reserved-test-', vmType: 't3.small' },
@@ -217,6 +224,7 @@ export const JOB_TARGET_PROFILES: Readonly<
     // The customer's VM type, which came back from an in-place restart without a usable GPU.
     gpuSpotEviction: { vmTypes: ['Standard_NC4as_T4_v3'] },
     gpuProbeRerun: { vmType: 'Standard_NC4as_T4_v3', region: 'westus2' },
+    gpuHealthFault: { vmType: 'Standard_NC4as_T4_v3', region: 'westus2' },
     // A principal holding only the published Anycloud role, a subset of
     // Contributor: no bucket (S4), and a same-account output bucket that
     // syncs with a minted container SAS (S11). Both are unpinned, so
@@ -299,6 +307,10 @@ export const JOB_TARGET_PROFILES: Readonly<
       vmType: 'g2-standard-4',
       regions: ['us-east4', 'us-central1'],
     },
+    gpuHealthFault: {
+      vmType: 'g2-standard-4',
+      regions: ['us-east4', 'us-central1'],
+    },
     hostDocker: {
       vmType: 'n2-standard-4',
       region: 'us-central1',
@@ -346,6 +358,7 @@ export const JOB_TARGET_PROFILES: Readonly<
     maceFullPull: { vmType: 'gpu_1x_a10' },
     gpuProbeRerun: { vmType: 'gpu_1x_a10' },
     runtimeSecrets: { vmTypes: ['cpu_4x_general', 'gpu_1x_a10'] },
+    gpuHealthFault: { vmType: 'gpu_1x_a10' },
   },
   'local-smolvm': { kind: 'local-storage', provider: CloudType.Local },
 } satisfies Readonly<

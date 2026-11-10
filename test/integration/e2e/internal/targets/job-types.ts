@@ -39,6 +39,10 @@ export type JobMember =
       readonly target: 'aws' | 'azure' | 'gcp' | 'lambda';
     }
   | {
+      readonly kind: 'gpu-health-fault';
+      readonly target: 'aws' | 'azure' | 'gcp' | 'lambda';
+    }
+  | {
       readonly kind: 'runtime-secrets';
       readonly target: 'aws' | 'azure' | 'gcp' | 'lambda';
     }
@@ -68,6 +72,7 @@ export type JobExtension =
   | 'spot-eviction'
   | 'gpu-spot-eviction'
   | 'gpu-probe-rerun'
+  | 'gpu-health-fault'
   | 'runtime-secrets'
   | 'restricted-credential'
   | 'disk-tier'
@@ -499,6 +504,16 @@ export interface CloudJobTransport {
     attempt: JobNativeAttempt,
     identity: JobRecoveryIdentity,
   ): Promise<void>;
+  /**
+   * #2332: writes one driver-formed Xid line to the host's `/dev/kmsg` over
+   * the product's own SSH route, then confirms it independently in the
+   * kernel journal, ahead of the product's own (slower) status read.
+   */
+  injectGpuXid(
+    fixture: CloudJobFixture,
+    pci: string,
+    code: number,
+  ): Promise<JobGpuXidInjection>;
   deleteHost(
     fixture: CloudJobFixture,
     attempt: JobNativeAttempt,
@@ -521,6 +536,12 @@ export interface CloudJobTransport {
 export interface JobEvictionOutput {
   readonly marker: string | undefined;
   readonly payloadBytes: number | null | undefined;
+}
+
+/** #2332: the injected Xid line and whether the host's own journal read confirmed it. */
+export interface JobGpuXidInjection {
+  readonly line: string;
+  readonly journalConfirmed: boolean;
 }
 
 export interface JobRuntimeSecretFacts {

@@ -35,6 +35,10 @@ import {
 } from '../wait.js';
 import type { VmLedgerProbe } from '../vm-ledger.js';
 import {
+  GPU_HEALTH_FAULT_XID,
+  gpuHealthFaultHumanLine,
+} from '../probes/gpu-health-fault.js';
+import {
   FAKE_VM_TYPE,
   jobMemberProfile,
   jobStageBudget,
@@ -147,6 +151,8 @@ export class DedicatedJobContract {
       return this.#gpuEvictionMember(profile, budget, forced === '1');
     if (profile.member.kind === 'gpu-probe-rerun')
       return this.#gpuProbeRerunMember(profile, budget, forced === '1');
+    if (profile.member.kind === 'gpu-health-fault')
+      return this.#gpuHealthFaultMember(profile, budget, forced === '1');
     if (profile.member.kind === 'runtime-secrets')
       return this.#runtimeSecretsMember(profile, budget, forced === '1');
     if (profile.member.kind === 'restricted-credential')
@@ -2478,6 +2484,179 @@ export class DedicatedJobContract {
           terminalStatus,
         },
       ],
+      budget.cleanupMs,
+    );
+  }
+
+  /**
+   * #2332: GPU health's unhealthy path. A long-sleep GPU Job's status reads
+   * its host healthy, then an externally injected `NVRM: Xid 79` line ("GPU
+   * has fallen off the bus") in the kernel journal turns it unhealthy with a
+   * reset needed, named in the human status line. Report only: for the next
+   * two minutes status only reports it, with no Retrying event and no change
+   * of VM, before the Job's ordinary termination.
+   */
+  async #gpuHealthFaultMember(
+    profile: JobMemberProfile,
+    budget: JobStageBudget,
+    forced: boolean,
+  ): Promise<JobContractResult> {
+    const { names, kernel, wait, artifacts, vmLedger } = this.#dependencies;
+    const target = this.#cloud();
+    const id = names.workload('j-gpu-fault');
+    const [fixture] = await target.prepare([id], profile, budget);
+    jobInvariant(
+      fixture.ref.id === id && fixture.profile === profile,
+      'GPU health fault preparation changed its original member',
+    );
+    const run = this.#records.begin(fixture.ref, profile, 1);
+    await target.submit(fixture);
+    const { progress } = await this.#cloudProgress(
+      fixture,
+      run,
+      budget.runningMs,
+    );
+
+    const gpuRead = async (): Promise<{
+      readonly status: StatusResponse;
+      readonly vm: ReturnType<VmLedgerProbe['liveEntries']>[number] | undefined;
+    }> => {
+      const status = await kernel.status(fixture.ref, true);
+      const live = vmLedger.liveEntries(vmLedger.snapshot(fixture.ref, status));
+      return { status, vm: live.find((entry) => entry.gpu) };
+    };
+    const terminalReject = (status: StatusResponse): string | undefined =>
+      JOB_TERMINAL_STATES.includes(status.workload.state)
+        ? `the Job ended ${status.workload.state} before the fault sequence completed`
+        : undefined;
+
+    const healthy = await wait.for(
+      'GPU health fault Job healthy GPU read',
+      gpuRead,
+      {
+        timeoutMs: budget.runningMs,
+        intervalMs: 5_000,
+        probeError: 'fail',
+        reject: ({ status }) => terminalReject(status),
+        unmet: ({ vm }) =>
+          vm?.gpu?.state === 'healthy' ? undefined : 'no healthy GPU read yet',
+      },
+    );
+    const gpu = healthy.vm?.gpu;
+    const originalCloudId = healthy.vm?.cloudId;
+    jobInvariant(
+      gpu?.state === 'healthy' &&
+        gpu.gpus.length === 1 &&
+        gpu.gpus[0].pci.length > 0 &&
+        typeof originalCloudId === 'string' &&
+        originalCloudId.length > 0,
+      'GPU health fault requires one healthy listed GPU on its original VM before the fault',
+    );
+    const pci = gpu.gpus[0].pci;
+    const faultEventId = Math.max(
+      0,
+      ...healthy.status.events.map((event) => event.id),
+    );
+
+    const injection = await target.injectGpuXid(
+      fixture,
+      pci,
+      GPU_HEALTH_FAULT_XID,
+    );
+    jobInvariant(
+      injection.journalConfirmed,
+      `the injected Xid line did not land in the host's kernel journal: ${injection.line}`,
+    );
+
+    const unhealthy = await wait.for(
+      'GPU health fault Job unhealthy GPU read',
+      gpuRead,
+      {
+        timeoutMs: 180_000,
+        intervalMs: 5_000,
+        probeError: 'fail',
+        reject: ({ status }) => terminalReject(status),
+        unmet: ({ vm }) =>
+          vm?.gpu?.state === 'unhealthy'
+            ? undefined
+            : 'no unhealthy GPU read yet',
+      },
+    );
+    const faultedGpu = unhealthy.vm?.gpu;
+    jobInvariant(
+      faultedGpu?.state === 'unhealthy' &&
+        unhealthy.vm?.cloudId === originalCloudId,
+      'the unhealthy GPU read did not come from the original VM',
+    );
+    const xid = faultedGpu.gpus
+      .flatMap((entry) => entry.xids)
+      .find((entry) => entry.code === GPU_HEALTH_FAULT_XID);
+    jobInvariant(
+      xid?.resetNeeded === true,
+      `the injected Xid did not read back as needing a reset: ${JSON.stringify(faultedGpu)}`,
+    );
+    const human = gpuHealthFaultHumanLine(faultedGpu);
+    jobInvariant(
+      human?.includes(`Xid ${GPU_HEALTH_FAULT_XID}`) === true,
+      `the human status line did not name the fault: ${JSON.stringify(human)}`,
+    );
+
+    // Report only: for two minutes, status must keep reporting the fault on
+    // the same live VM with no Retrying event; a timeout here is success.
+    try {
+      await wait.for('GPU health fault report-only window', gpuRead, {
+        timeoutMs: 120_000,
+        intervalMs: 10_000,
+        probeError: 'fail',
+        reject: ({ status, vm }) => {
+          if (
+            status.events.some(
+              (event) =>
+                event.id > faultEventId &&
+                event.state === WorkloadState.Retrying,
+            )
+          )
+            return 'a Retrying event arrived during the report-only window';
+          if (status.workload.state !== WorkloadState.Running)
+            return `the Job left Running: ${status.workload.state}`;
+          if (vm?.cloudId !== originalCloudId)
+            return 'the Job changed VM during the report-only window';
+          return undefined;
+        },
+        unmet: () => 'report-only window still running',
+      });
+      throw new Error('report-only window ended without timing out');
+    } catch (error) {
+      if (!(error instanceof WaitTimeoutError)) throw error;
+    }
+
+    await artifacts.json(`job-${id}-gpu-health-fault`, {
+      workloadId: id,
+      generation: run.generation,
+      pci,
+      injection,
+      healthyGpu: gpu,
+      unhealthyGpu: faultedGpu,
+      humanLine: human,
+      cloudId: originalCloudId,
+    });
+    if (forced)
+      throw new Error(
+        `E2E_JOB_FORCED_CLEANUP: ${profile.member.target} gpu-health-fault after its report-only window, before termination/finalization`,
+      );
+    const extension = this.#records.extension(
+      run,
+      progress,
+      'gpu-health-fault',
+    );
+    await kernel.requestTermination(fixture.ref, budget.cleanupMs);
+    const terminalStatus = await kernel.waitForState(
+      fixture.ref,
+      profile.expectedTerminalState,
+      budget.completionMs,
+    );
+    return this.#finalize(
+      [{ fixture, run, progress, extensions: [extension], terminalStatus }],
       budget.cleanupMs,
     );
   }

@@ -1079,6 +1079,7 @@ mark_e2e_cleanup_workload_done() {
         vitest:aws-host-docker|vitest:azure-host-docker|vitest:gcp-host-docker|\
         vitest:aws-spot-eviction|vitest:azure-spot-eviction|vitest:gcp-spot-eviction|vitest:azure-gpu-spot-eviction|\
         vitest:aws-gpu-probe-rerun|vitest:azure-gpu-probe-rerun|vitest:gcp-gpu-probe-rerun|vitest:lambda-gpu-probe-rerun|\
+        vitest:aws-gpu-health-fault|vitest:azure-gpu-health-fault|vitest:gcp-gpu-health-fault|vitest:lambda-gpu-health-fault|\
         vitest:aws-mace-full-pull|vitest:azure-mace-full-pull|vitest:gcp-mace-full-pull|vitest:lambda-mace-full-pull|\
         vitest:gcp-disk-tier|vitest:azure-ghcr-probe)
             print_info "Retaining native verification tracking for candidate $workload_id"
