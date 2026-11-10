@@ -240,8 +240,10 @@ the product's own SSH route (as root or `sudo -n`, the same branch
 that boot's kernel journal before the harness waits on the product's own
 read. It must turn status `unhealthy` with Xid 79 `resetNeeded` and the human
 "GPU 0 needs a reset (Xid 79 ...)" line, then for two minutes keep reporting
-only — the same live VM, no Retrying event — before its ordinary termination.
-This is the faulty-GPU path `gpu-probe-rerun` leaves uncovered.
+only — the same live VM, still reading `unhealthy`, no Retrying event —
+before its ordinary termination. The whole run, not only that window, must
+show no Retrying event after the Job's first Running event. This is the
+faulty-GPU path `gpu-probe-rerun` leaves uncovered.
 
 The `storage-tokens` family (`<target>-storage-tokens` for AWS, GCP and Azure,
 dispatch-only in `e2e-job.yml`, run per release from `RELEASE.md`) checks

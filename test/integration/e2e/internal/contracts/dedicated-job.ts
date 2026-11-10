@@ -2621,6 +2621,8 @@ export class DedicatedJobContract {
             return `the Job left Running: ${status.workload.state}`;
           if (vm?.cloudId !== originalCloudId)
             return 'the Job changed VM during the report-only window';
+          if (vm?.gpu?.state !== 'unhealthy')
+            return 'the GPU read stopped reporting unhealthy during the report-only window';
           return undefined;
         },
         unmet: () => 'report-only window still running',
@@ -2654,6 +2656,18 @@ export class DedicatedJobContract {
       fixture.ref,
       profile.expectedTerminalState,
       budget.completionMs,
+    );
+    const firstRunning = terminalStatus.events.find(
+      (event) => event.state === WorkloadState.Running,
+    );
+    jobInvariant(
+      !!firstRunning &&
+        !terminalStatus.events.some(
+          (event) =>
+            event.id > firstRunning.id &&
+            event.state === WorkloadState.Retrying,
+        ),
+      `a Retrying event followed the Job's first Running event: ${JSON.stringify(terminalStatus.events)}`,
     );
     return this.#finalize(
       [{ fixture, run, progress, extensions: [extension], terminalStatus }],

@@ -46,13 +46,13 @@
     },
     {
       "id": "report-only-window",
-      "requirement": "For two minutes after the unhealthy read, the Job keeps running on the same native VM with no Retrying event: GPU health is report-only and never triggers a restart.",
+      "requirement": "For two minutes after the unhealthy read, the Job keeps running on the same native VM, still reading `unhealthy`, with no Retrying event: GPU health is report-only and never triggers a restart.",
       "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember report-only wait; test/integration/e2e/internal/wait.ts: WaitTimeoutError."
     },
     {
       "id": "ordinary-termination",
-      "requirement": "After the report-only window the Job terminates ordinarily (not through the recovery/retry path) and the family finalizer records its Terminated completion and native absence.",
-      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember, #finalize; test/unit/e2e-cloud-job-contract.spec.ts."
+      "requirement": "After the report-only window the Job terminates ordinarily (not through the recovery/retry path), with no Retrying event anywhere in the run after the Job's first Running event, and the family finalizer records its Terminated completion and native absence.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember, #finalize."
     }
   ]
 }
