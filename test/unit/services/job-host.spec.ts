@@ -591,6 +591,7 @@ describe('the Job host preparation', () => {
     expect(read('docker')).toBe('0');
     expect(calls).toContain('systemctl enable --now docker');
     expect(read('image')).toBeNull();
+    expect(read('stores')).toBe('1');
     expect(calls).not.toMatch(/^(ctr |docker pull)/m);
   });
 
@@ -782,6 +783,21 @@ describe('waitForJobHostDocker', () => {
     const { evidence } = warn.mock.calls[0]![1] as { evidence: string };
     expect(evidence).toContain('install_docker=22 install_iptables=0');
     expect(evidence).toContain('returned error: 503');
+  });
+
+  it("logs a failed resource-disk store move's evidence", async () => {
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const host = onHost({
+      docker: '0\n',
+      stores: '1\n',
+      'stores.log': 'Job for anycloud-image-store.service failed.\n',
+    });
+    await waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1');
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![1]).toMatchObject({
+      stores: '1',
+      evidence: expect.stringContaining('anycloud-image-store.service failed'),
+    });
   });
 
   it('is best-effort', async () => {

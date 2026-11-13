@@ -356,6 +356,7 @@ wait "$docker"; d=$?
 wait "$iptables"; i=$?
 wait "$unpigz"
 wait "$stores"; b=$?
+echo $b > "$dir/stores"
 [ "$d" = 0 ] && [ "$i" = 0 ] && start_docker 2>>"$dir/docker-install.log"
 s=$?
 # A failure's evidence, for waitForJobHostDocker to log before the VM goes.
@@ -444,14 +445,29 @@ export async function waitForJobHostDocker(
         // initializeVM then installs or starts Docker over SSH, which needs
         // iptables when the user data didn't get it.
         `[ "$status" = 0 ] || { ${installIptables(null).replace(/\n/g, '\n  ')}\n  install_iptables >/dev/null 2>&1; }`,
-        'echo "$status"',
+        `stores=$(cat ${dir}/stores 2>/dev/null || echo 0)`,
+        'echo "$status $stores"',
         // A failed prepare's evidence follows the status line.
         `case "$status" in 0) ;; *) tail -c 4000 ${dir}/failure.log ${dir}/docker-install.log ${dir}/iptables.log 2>/dev/null || true ;; esac`,
+        `[ "$stores" = 0 ] || tail -c 4000 ${dir}/stores.log 2>/dev/null || true`,
       ].join('\n'),
       (JOB_HOST_DOCKER_WAIT_SECONDS + 30) * 1000,
     );
-    const [status = '', ...evidence] = stdout.trim().split('\n');
+    const [line = '', ...evidence] = stdout.trim().split('\n');
+    const [status = '', stores = '0'] = line.split(' ');
     if (status === 'none') return;
+    if (stores !== '0') {
+      // RESOURCE_DISK_STORES failed, so the user data pulled nothing.
+      log.warn(
+        'Job host image stores not moved by user data; pulling over SSH',
+        {
+          id: workloadId,
+          ip: vmIp,
+          stores,
+          evidence: evidence.join('\n'),
+        },
+      );
+    }
     if (status === '0') {
       log.info('Job host Docker prepared by user data', {
         id: workloadId,
