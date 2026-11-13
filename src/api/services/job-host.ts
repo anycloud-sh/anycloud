@@ -312,7 +312,7 @@ const RESOURCE_DISK_STORES = `resource_disk_stores() {
     [ -n "$found" ] || return 0
     sleep 0.5
   done
-  [ -n "$probe" ] || return 1
+  [ -n "$probe" ] || { echo "resource disk not mounted after ${RESOURCE_DISK_MOUNT_WAIT_SECONDS} s"; return 1; }
   STORE_MOUNT=$(echo "$probe" | ${RESOURCE_DISK_STORE_MOUNT_FILTER})
   [ -n "$STORE_MOUNT" ] || return 0
   (
@@ -458,15 +458,12 @@ export async function waitForJobHostDocker(
     if (status === 'none') return;
     if (stores !== '0') {
       // RESOURCE_DISK_STORES failed, so the user data pulled nothing.
-      log.warn(
-        'Job host image stores not moved by user data; pulling over SSH',
-        {
-          id: workloadId,
-          ip: vmIp,
-          stores,
-          evidence: evidence.join('\n'),
-        },
-      );
+      log.warn('Job host image stores not moved by user data', {
+        id: workloadId,
+        ip: vmIp,
+        stores,
+        evidence: evidence.join('\n'),
+      });
     }
     if (status === '0') {
       log.info('Job host Docker prepared by user data', {
