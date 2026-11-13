@@ -96,10 +96,7 @@ export interface Monitor {
   readonly intervalMs: number;
   start(): void;
   stop(): void;
-  /**
-   * Run a tick now rather than at the next interval, or, while one runs,
-   * another as soon as it finishes. Kicks before that tick starts share it.
-   */
+  /** Run a tick now, or once more as soon as the one in flight finishes. */
   kick(): void;
   /**
    * Epoch ms of the last finished tick, or of `start()` before the first one.
@@ -122,13 +119,11 @@ export function createMonitor(
   let active = false;
   let generation = 0;
   let completedAt: number | null = null;
-  let running = false;
   let kicked = false;
 
   const run = async (scheduledGeneration: number) => {
     timerId = null;
     if (!active || scheduledGeneration !== generation) return;
-    running = true;
     kicked = false;
     try {
       await task();
@@ -137,17 +132,13 @@ export function createMonitor(
         id: 'system',
         error: error,
       });
-    } finally {
-      running = false;
     }
     // Below the guard: a tick that resolves after stop() must not resurrect
     // liveness for a monitor that is no longer running.
     if (!active || scheduledGeneration !== generation) return;
     completedAt = Date.now();
-    timerId = setTimeout(
-      () => run(scheduledGeneration),
-      kicked ? 0 : intervalMs,
-    ).unref();
+    const waitMs = kicked ? 0 : intervalMs;
+    timerId = setTimeout(() => run(scheduledGeneration), waitMs).unref();
   };
 
   return {
@@ -176,11 +167,12 @@ export function createMonitor(
     },
     kick: () => {
       if (!active) return;
-      if (running) {
+      // A running tick has no timer; the next re-arms at once.
+      if (timerId === null) {
         kicked = true;
         return;
       }
-      if (timerId) clearTimeout(timerId);
+      clearTimeout(timerId);
       void run(generation);
     },
     lastCompletedAt: () => completedAt,
