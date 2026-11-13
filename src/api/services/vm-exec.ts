@@ -53,6 +53,8 @@ export interface DetachedRunOptions {
    * Work whose valid duration is data-dependent uses this in place of a total
    * budget, and must emit periodic progress or heartbeat output. */
   inactivityTimeoutMs?: number;
+  /** The longest one poll waits on the VM for the run to finish; it returns
+   * within half a second of the result. */
   pollIntervalMs: number;
   /** Per short control exec (launch / poll / tail). */
   controlTimeoutMs: number;
@@ -177,6 +179,13 @@ export async function runDetachedOnVm(
     `if [ -f ${donePath} ]; then printf 'DONE %s\\n' "$(cat ${donePath})"; else printf '%s\\n' "$probe_state"; fi; ` +
     `wc -c 2>/dev/null < ${logPath} || echo 0; ` +
     `cat ${identityPath} 2>/dev/null || echo`;
+  // The poll waits on the VM, checking every half second, so a result is seen
+  // at once rather than at the next of a backed-off series of polls.
+  const waitCmd =
+    `for _ in $(seq ${Math.max(1, Math.round(pollIntervalMs / 500))}); do ` +
+    `[ -f ${donePath} ] && break; ` +
+    `case "$(${livenessCmd})" in active|activating|reloading) sleep 0.5 ;; *) break ;; esac; ` +
+    `done; `;
   const parseProbe = (stdout: string) => {
     const [state = '', activity = '', identity = ''] = stdout
       .split('\n')
@@ -195,11 +204,8 @@ export async function runDetachedOnVm(
   let logTail = '';
   let lastActivityBytes: string | undefined;
   let lastActivityAt = Date.now();
-  // Ramp the poll wait: poll quickly at first so a fast/cached op finishes in ~1s,
-  // backing off to the steady `pollIntervalMs` cadence (short enough to survive the
-  // ~5-min teardown). Without this a sub-second op still waits a full interval.
-  const pollStartMs = Math.min(500, pollIntervalMs);
-  let pollWaitMs = pollStartMs;
+  // Between polls, so a poll that fails at once (an SSH drop) doesn't spin.
+  const pollGapMs = Math.min(500, pollIntervalMs);
 
   const readLogTail = async (): Promise<string> => {
     try {
@@ -214,7 +220,6 @@ export async function runDetachedOnVm(
   };
   const launch = async () => {
     launches++;
-    pollWaitMs = pollStartMs; // restart the ramp for the fresh attempt
     lastActivityBytes = undefined;
     lastActivityAt = Date.now();
     await exec(launchCmd, controlTimeoutMs);
@@ -289,12 +294,13 @@ export async function runDetachedOnVm(
           logTail.slice(-2000),
         );
       }
-      await sleep(pollWaitMs);
-      pollWaitMs = Math.min(pollWaitMs * 2, pollIntervalMs);
+      await sleep(pollGapMs);
 
       let probe: { state: string; activity: string; identity: string };
       try {
-        probe = parseProbe((await exec(probeCmd, controlTimeoutMs)).stdout);
+        probe = parseProbe(
+          (await exec(waitCmd + probeCmd, controlTimeoutMs)).stdout,
+        );
       } catch (err) {
         await handleProbeFailure(err);
         continue;

@@ -40,6 +40,7 @@ import { inspectImage } from '../../../src/shared/image-registry';
 import { getDefaultServeRuntime } from '../../../src/api/services/serve/default-runtime';
 import { PROVIDER_DATA } from '../../../src/shared/providers';
 import { recordEvent } from '../../../src/api/services/telemetry';
+import { kickProvisioningScheduler } from '../../../src/api/services/monitor';
 import { getDB } from '../../../src/api/services/repositories/db';
 import {
   upsertApiAccessOwner,
@@ -123,6 +124,12 @@ vi.mock('../../../src/api/services/workload-admission-checks', () => ({
     .mockImplementation((id) => id || `test-workload-${Date.now()}`),
   validateCredentials: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../../../src/api/services/monitor', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../src/api/services/monitor')
+  >()),
+  kickProvisioningScheduler: vi.fn(),
+}));
 vi.mock('../../../src/api/services/workload-workflows/vm-host-startup', () => ({
   deploy: vi.fn().mockResolvedValue(undefined),
 }));
@@ -198,6 +205,7 @@ describe('/v1/workloads endpoint', () => {
       async (config) => createComputeProvider(config),
     );
     vi.mocked(recordEvent).mockClear();
+    vi.mocked(kickProvisioningScheduler).mockClear();
   });
 
   it.each([
@@ -287,6 +295,26 @@ describe('/v1/workloads endpoint', () => {
     const data = await response.json();
     expect(data).toHaveProperty('id');
     expect(data.id).toBe(testId);
+  });
+
+  it('kicks the provisioning scheduler once the Job is queued', async () => {
+    const id = getUniqueTestId();
+    let queued: unknown;
+    vi.mocked(kickProvisioningScheduler).mockImplementationOnce(() => {
+      queued = queries().getWorkload(id);
+    });
+
+    const response = await callApi('https://example.com/v1/workloads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...mockNewWorkloadPayload, id }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(kickProvisioningScheduler).toHaveBeenCalledOnce();
+    await expect(queued).resolves.toMatchObject({
+      state: WorkloadState.Queued,
+    });
   });
 
   it('rejects admission when SQLite silently skips the workload insert', async () => {

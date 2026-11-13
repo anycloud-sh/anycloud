@@ -16,11 +16,14 @@ const VM_HOST_STORES = {
   containerd: '/var/lib/containerd',
 };
 
-/** Prints `<mountpoint> <KiB> <root KiB>` when the resource disk is mounted.
- * Azure's udev rules name the disk under /dev/disk/cloud (cloud-init) or
+/** Azure's udev rules name the disk under /dev/disk/cloud (cloud-init) or
  * /dev/disk/azure (WALinuxAgent, azure-vm-utils); no other cloud has them. */
+export const RESOURCE_DISK_LINKS =
+  '/dev/disk/cloud/azure_resource-part1 /dev/disk/azure/resource-part1';
+
+/** Prints `<mountpoint> <KiB> <root KiB>` when the resource disk is mounted. */
 export const RESOURCE_DISK_PROBE = [
-  'for link in /dev/disk/cloud/azure_resource-part1 /dev/disk/azure/resource-part1; do',
+  `for link in ${RESOURCE_DISK_LINKS}; do`,
   '  [ -e "$link" ] || continue',
   '  target=$(findmnt -n -o TARGET --source "$(readlink -f "$link")" | head -n 1)',
   '  [ -n "$target" ] || exit 0',
@@ -28,6 +31,9 @@ export const RESOURCE_DISK_PROBE = [
   '  exit 0',
   'done',
 ].join('\n');
+
+/** Prints the probe's mount point when resourceDiskStoreMount would return it. */
+export const RESOURCE_DISK_STORE_MOUNT_FILTER = `awk 'index($1, "/") == 1 && $1 != "/" && $2 + 0 >= $3 + 0 { print $1 }'`;
 
 /** The resource disk's mount point, or null when the stores stay on the OS
  * disk: no resource disk, an unmounted one, or one smaller than the root
@@ -72,14 +78,19 @@ export function resourceDiskStoreUnit(mount: string): string {
 /** Wants, not Requires: a failed store unit must not stop the daemons. */
 const DAEMON_DROP_IN = `[Unit]\nWants=${STORE_UNIT}\nAfter=${STORE_UNIT}`;
 
+/**
+ * Installs and starts the store unit, restarting a daemon that ran. The
+ * heredocs are unquoted, so `mount` may be a shell variable such as
+ * `$STORE_MOUNT` (generateJobHostUserData); the units hold no other expansion.
+ */
 export function resourceDiskStoreInstallCommand(mount: string): string {
   return [
     'set -eu',
     `systemctl is-active --quiet ${STORE_UNIT} && exit 0`,
-    `cat > /etc/systemd/system/${STORE_UNIT} << 'UNIT_EOF'\n${resourceDiskStoreUnit(mount)}\nUNIT_EOF`,
+    `cat > /etc/systemd/system/${STORE_UNIT} << UNIT_EOF\n${resourceDiskStoreUnit(mount)}\nUNIT_EOF`,
     ...Object.keys(VM_HOST_STORES).flatMap((store) => [
       `mkdir -p /etc/systemd/system/${store}.service.d`,
-      `cat > /etc/systemd/system/${store}.service.d/anycloud-image-store.conf << 'UNIT_EOF'\n${DAEMON_DROP_IN}\nUNIT_EOF`,
+      `cat > /etc/systemd/system/${store}.service.d/anycloud-image-store.conf << UNIT_EOF\n${DAEMON_DROP_IN}\nUNIT_EOF`,
     ]),
     'systemctl daemon-reload',
     `systemctl enable ${STORE_UNIT}`,

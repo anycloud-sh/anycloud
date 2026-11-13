@@ -334,6 +334,7 @@ const TOOLS = [
   'mkdir',
   'mktemp',
   'mv',
+  'readlink',
   'rm',
   'sed',
   'seq',
@@ -462,6 +463,9 @@ function prepare(
     ctr = 0,
     pull = 0,
     transferTimesOut = false,
+    resourceDisk = undefined as
+      | { mounted: boolean; kib: number; rootKib: number }
+      | undefined,
   } = {},
 ) {
   const realTimeout = execFileSync('bash', ['-c', 'command -v timeout'], {
@@ -472,7 +476,9 @@ function prepare(
 exec ${realTimeout} "$@"`,
     dockerd: '',
     iptables: '',
-    systemctl: '',
+    systemctl: '[ "$1" = is-active ] && exit 3; exit 0',
+    findmnt: resourceDisk?.mounted ? 'echo /mnt' : '',
+    df: `echo Filesystem; case "$2" in /) echo "root ${resourceDisk?.rootKib}" ;; *) echo "disk ${resourceDisk?.kib}" ;; esac`,
     journalctl: '',
     sync: '',
     sleep: '',
@@ -485,13 +491,29 @@ exec ${realTimeout} "$@"`,
 esac`,
   });
   const dir = join(vm.root, 'prepare');
+  const at = (path: string) => join(vm.root, path);
+  mkdirSync(at('etc/systemd/system'), { recursive: true });
+  if (resourceDisk) {
+    mkdirSync(at('dev/disk/cloud'), { recursive: true });
+    writeFileSync(at('dev/disk/cloud/azure_resource-part1'), '');
+  }
   const { script } = parse(generateJobHostUserData(keys, host(image)));
-  vm.run(script.replaceAll('/run/anycloud/prepare', dir));
+  vm.run(
+    script
+      .replaceAll('/run/anycloud/prepare', dir)
+      .replaceAll('/dev/disk/', `${at('dev/disk')}/`)
+      .replaceAll('/etc/systemd/', `${at('etc/systemd')}/`),
+  );
   const read = (name: string) =>
     existsSync(join(dir, name))
       ? readFileSync(join(dir, name), 'utf8').trim()
       : null;
-  return { read, calls: vm.calls() };
+  const storeUnit = at('etc/systemd/system/anycloud-image-store.service');
+  return {
+    read,
+    calls: vm.calls(),
+    storeUnit: existsSync(storeUnit) ? readFileSync(storeUnit, 'utf8') : null,
+  };
 }
 
 describe('the Job host preparation', () => {
@@ -533,6 +555,42 @@ describe('the Job host preparation', () => {
     expect(read('docker')).not.toBe('0');
     expect(calls).toContain('systemctl disable --now docker');
     expect(read('pull')).toBeNull();
+    expect(calls).not.toMatch(/^(ctr |docker pull)/m);
+  });
+
+  it("moves the image stores to Azure's resource disk before Docker starts, and pre-pulls there", () => {
+    const { read, calls, storeUnit } = prepare(IMAGE, {
+      resourceDisk: { mounted: true, kib: 157_286_400, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toContain('RequiresMountsFor=/mnt\n');
+    expect(storeUnit).toContain(
+      'mount --bind /mnt/anycloud/docker /var/lib/docker',
+    );
+    expect(calls).toContain(
+      'systemctl start anycloud-image-store.service\nsystemctl daemon-reload\nsystemctl enable --now docker',
+    );
+    expect(read('docker')).toBe('0');
+    expect(read('pull')).toBe('0');
+  });
+
+  it('pre-pulls on the OS disk beside a resource disk smaller than it', () => {
+    const { read, calls, storeUnit } = prepare(IMAGE, {
+      resourceDisk: { mounted: true, kib: 8_388_608, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toBeNull();
+    expect(calls).not.toContain('anycloud-image-store');
+    expect(read('pull')).toBe('0');
+  });
+
+  it('starts Docker but pulls nothing when the resource disk is never mounted', () => {
+    // initializeVM's own store move would hide the pull.
+    const { read, calls, storeUnit } = prepare(IMAGE, {
+      resourceDisk: { mounted: false, kib: 0, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toBeNull();
+    expect(read('docker')).toBe('0');
+    expect(calls).toContain('systemctl enable --now docker');
+    expect(read('image')).toBeNull();
     expect(calls).not.toMatch(/^(ctr |docker pull)/m);
   });
 

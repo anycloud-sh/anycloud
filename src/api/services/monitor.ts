@@ -97,6 +97,11 @@ export interface Monitor {
   start(): void;
   stop(): void;
   /**
+   * Run a tick now rather than at the next interval, or, while one runs,
+   * another as soon as it finishes. Kicks before that tick starts share it.
+   */
+  kick(): void;
+  /**
    * Epoch ms of the last finished tick, or of `start()` before the first one.
    * Null while stopped. A tick that threw still counts as finished — the
    * failure is logged separately, and this only answers whether the schedule is
@@ -117,10 +122,14 @@ export function createMonitor(
   let active = false;
   let generation = 0;
   let completedAt: number | null = null;
+  let running = false;
+  let kicked = false;
 
   const run = async (scheduledGeneration: number) => {
     timerId = null;
     if (!active || scheduledGeneration !== generation) return;
+    running = true;
+    kicked = false;
     try {
       await task();
     } catch (error) {
@@ -128,12 +137,17 @@ export function createMonitor(
         id: 'system',
         error: error,
       });
+    } finally {
+      running = false;
     }
     // Below the guard: a tick that resolves after stop() must not resurrect
     // liveness for a monitor that is no longer running.
     if (!active || scheduledGeneration !== generation) return;
     completedAt = Date.now();
-    timerId = setTimeout(() => run(scheduledGeneration), intervalMs).unref();
+    timerId = setTimeout(
+      () => run(scheduledGeneration),
+      kicked ? 0 : intervalMs,
+    ).unref();
   };
 
   return {
@@ -159,6 +173,15 @@ export function createMonitor(
         timerId = null;
       }
       log.info(`Stopped ${name}`, { id: 'system' });
+    },
+    kick: () => {
+      if (!active) return;
+      if (running) {
+        kicked = true;
+        return;
+      }
+      if (timerId) clearTimeout(timerId);
+      void run(generation);
     },
     lastCompletedAt: () => completedAt,
   };
@@ -401,6 +424,11 @@ export async function runWorkloadReconcileOnce(options?: {
     });
     return emptyWorkloadReconcileStatus(startedAt, { failed: true });
   }
+}
+
+/** Admit a just-queued Workload now rather than at the next interval. */
+export function kickProvisioningScheduler(): void {
+  monitors.find((monitor) => monitor.name === 'provisioning-scheduler')?.kick();
 }
 
 /** One provisioning-scheduler tick with composed dependencies. */

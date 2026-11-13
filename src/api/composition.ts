@@ -110,6 +110,7 @@ import {
   KubeConfig,
 } from '@kubernetes/client-node';
 import {
+  kickProvisioningScheduler,
   requestWorkloadCleanup,
   requestWorkloadPoll,
 } from './services/monitor.js';
@@ -445,7 +446,11 @@ function admissionDependencies(): WorkloadAdmissionDomainDependencies {
   return {
     resolve: resolveWorkloadAdmission,
     prepare: prepareWorkloadCreation,
-    persist: persistWorkloadCreation,
+    persist: async (plan) => {
+      const response = await persistWorkloadCreation(plan);
+      kickProvisioningScheduler();
+      return response;
+    },
     recordEvent,
     now: Date.now,
   };
