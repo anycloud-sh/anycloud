@@ -513,6 +513,7 @@ esac`,
     read,
     calls: vm.calls(),
     storeUnit: existsSync(storeUnit) ? readFileSync(storeUnit, 'utf8') : null,
+    exists: (path: string) => existsSync(at(path)),
   };
 }
 
@@ -559,13 +560,21 @@ describe('the Job host preparation', () => {
   });
 
   it("moves the image stores to Azure's resource disk before Docker starts, and pre-pulls there", () => {
-    const { read, calls, storeUnit } = prepare(IMAGE, {
+    const { read, calls, storeUnit, exists } = prepare(IMAGE, {
       resourceDisk: { mounted: true, kib: 157_286_400, rootKib: 30_408_704 },
     });
     expect(storeUnit).toContain('RequiresMountsFor=/mnt\n');
-    expect(storeUnit).toContain(
-      'mount --bind /mnt/anycloud/docker /var/lib/docker',
-    );
+    // Docker 29's images live in containerd's store, which the pull fills.
+    for (const store of ['docker', 'containerd']) {
+      expect(storeUnit).toContain(
+        `mount --bind /mnt/anycloud/${store} /var/lib/${store}`,
+      );
+      expect(
+        exists(
+          `etc/systemd/system/${store}.service.d/anycloud-image-store.conf`,
+        ),
+      ).toBe(true);
+    }
     expect(calls).toContain(
       'systemctl start anycloud-image-store.service\nsystemctl daemon-reload\nsystemctl enable --now docker',
     );
