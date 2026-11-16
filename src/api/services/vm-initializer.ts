@@ -99,9 +99,11 @@ export async function initializeVM(
     workloadId,
     vmIp,
   );
-  // A prepared Job host skips the settle: its later stages wait on snapd's
-  // seeding, 2-45 s, and change nothing initializeVM uses. Its SSH steps run
-  // no dpkg, so they can't contend for a package lock.
+  // A prepared Job host skips the settle, whose final stage waits on snapd's
+  // seeding, 2-45 s. sshd, root's key, the network and Azure's resource disk
+  // are ready before SSH is (cloud-init's network stage); the later stages
+  // configure nothing for a Job host, and its SSH steps run no dpkg. The store
+  // move still follows ephemeral-disk-warning (resourceDiskStoreUnit).
   if (!prepared) await settleFirstBootUpgrade(ssh, workloadId, vmIp);
 
   if (gpuRuntime === GpuRuntime.Cuda) {
