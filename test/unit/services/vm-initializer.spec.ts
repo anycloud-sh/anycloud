@@ -30,7 +30,7 @@ import {
   installUnpigzCommand,
 } from '../../../src/api/runtime-artifacts';
 import { makeVmTransport } from '../helpers/vm-transport';
-import { JOB_HOST_DOCKER } from '../../../src/api/services/job-host';
+import { JOB_HOST_SSH_DOCKER } from '../../../src/api/services/job-host';
 
 vi.mock('../../../src/api/services/logger', () => ({
   log: {
@@ -257,9 +257,7 @@ describe('initializeVM', () => {
 
     await initializeVM(ssh, { workloadId: 'job-1', vmIp: 'ip', jobHost: true });
 
-    expect(commands).toContain(
-      `${JOB_HOST_DOCKER}\ninstall_docker && start_docker`,
-    );
+    expect(commands).toContain(JOB_HOST_SSH_DOCKER);
     // Never Docker 27, and never a Docker started outside start_docker.
     expect(
       commands.some((c) => c.includes(dockerArchiveUrl(DOCKER_ARCH_REF))),
@@ -267,6 +265,47 @@ describe('initializeVM', () => {
     expect(commands.some((c) => c.includes('systemctl start docker'))).toBe(
       false,
     );
+  });
+
+  // The wait's status line is the prepare's `docker` status, 0 when it ran.
+  function jobHostSsh(prepareStatus: string) {
+    const commands: string[] = [];
+    const ssh = makeVmTransport({
+      exec: vi.fn(async (command: string) => {
+        commands.push(command);
+        if (command.includes('/run/anycloud/prepare/docker')) {
+          return { code: 0, stdout: `${prepareStatus}\n`, stderr: '' };
+        }
+        if (command === 'ps -p 1 -o comm= 2>/dev/null') {
+          return { code: 0, stdout: 'systemd\n', stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      }),
+      ping: vi.fn(async () => true),
+    });
+    return { ssh, commands };
+  }
+  const isSettle = (c: string) => c.includes('cloud-init status --wait');
+
+  it("starts a prepared Job host's steps without waiting for cloud-init", async () => {
+    const { ssh, commands } = jobHostSsh('0');
+    await initializeVM(ssh, { workloadId: 'job-1', vmIp: 'ip', jobHost: true });
+    expect(commands.some(isSettle)).toBe(false);
+  });
+
+  it('settles cloud-init before installing a failed prepare over SSH', async () => {
+    for (const status of ['1', 'pending', 'none']) {
+      const { ssh, commands } = jobHostSsh(status);
+      await initializeVM(ssh, {
+        workloadId: 'job-1',
+        vmIp: 'ip',
+        jobHost: true,
+      });
+      // The SSH install's dpkg runs once cloud-init's package modules are done.
+      const settle = commands.findIndex(isSettle);
+      expect(settle).toBeGreaterThanOrEqual(0);
+      expect(commands.indexOf(JOB_HOST_SSH_DOCKER)).toBeGreaterThan(settle);
+    }
   });
 
   it('skips rclone install when rclone is already present', async () => {

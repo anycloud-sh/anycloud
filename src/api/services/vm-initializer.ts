@@ -19,7 +19,7 @@ import {
   UNPIGZ_PATH,
 } from '../runtime-artifacts.js';
 import { configureContainerdTransferStore } from './containerd-transfer.js';
-import { JOB_HOST_DOCKER, waitForJobHostDocker } from './job-host.js';
+import { JOB_HOST_SSH_DOCKER, waitForJobHostDocker } from './job-host.js';
 import { moveImageStoresToResourceDisk } from './resource-disk-store.js';
 import { GpuRuntime } from '../../shared/cloud.js';
 import { sleep } from '../../shared/utils.js';
@@ -92,14 +92,17 @@ export async function initializeVM(
     ip: vmIp,
   });
 
-  await settleFirstBootUpgrade(ssh, workloadId, vmIp);
   // Before the store move, which restarts a running Docker, and before the
   // install, which would race the user data's own.
-  await waitForJobHostDocker(
+  const prepared = await waitForJobHostDocker(
     (cmd, ms) => ssh.exec(cmd, 1, false, ms),
     workloadId,
     vmIp,
   );
+  // A prepared Job host skips the settle: its later stages wait on snapd's
+  // seeding, 2-45 s, and change nothing initializeVM uses. Its SSH steps run
+  // no dpkg, so they can't contend for a package lock.
+  if (!prepared) await settleFirstBootUpgrade(ssh, workloadId, vmIp);
 
   if (gpuRuntime === GpuRuntime.Cuda) {
     await waitForNvidiaGpuFabricReady(ssh, workloadId, vmIp);
@@ -333,16 +336,13 @@ async function installBinaries(
   ]);
 }
 
-/**
- * A CPU VM Job host's Docker, as its user data installs it; this finishes
- * what a failed user data left undone.
- */
+/** A CPU VM Job host's Docker, as its user data installs it. */
 async function installJobHostDocker(
   ssh: VmTransport,
   workloadId: string,
   vmIp: string,
 ): Promise<void> {
-  await ssh.exec(`${JOB_HOST_DOCKER}\ninstall_docker && start_docker`, 5, true);
+  await ssh.exec(JOB_HOST_SSH_DOCKER, 5, true);
   log.info('Docker installed and started', {
     id: workloadId,
     ip: vmIp,

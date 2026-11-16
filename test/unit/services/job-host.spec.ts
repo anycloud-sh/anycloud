@@ -698,9 +698,14 @@ describe('waitForJobHostDocker', () => {
   });
 
   it('returns at once with no preparation, and when Docker is ready', async () => {
-    for (const files of [{}, { docker: '0\n' }] as Record<string, string>[]) {
+    for (const [files, prepared] of [
+      [{}, false],
+      [{ docker: '0\n' }, true],
+    ] as [Record<string, string>, boolean][]) {
       const host = onHost(files);
-      await waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1');
+      await expect(
+        waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1'),
+      ).resolves.toBe(prepared);
       expect(host.exec).toHaveBeenCalledTimes(1);
     }
   });
@@ -714,9 +719,9 @@ describe('waitForJobHostDocker', () => {
       'docker-install.log':
         'curl: (22) The requested URL returned error: 503\n',
     });
-    // A stand-in iptables, so the probe's iptables fallback stays offline.
-    writeFileSync(join(host.bin, 'iptables'), '#!/bin/sh\n', { mode: 0o755 });
-    await waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1');
+    await expect(
+      waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1'),
+    ).resolves.toBe(false);
     expect(warn).toHaveBeenCalledWith(
       'Job host Docker prepare failed; installing over SSH',
       expect.objectContaining({ status: '1' }),
@@ -730,8 +735,8 @@ describe('waitForJobHostDocker', () => {
     const exec = vi.fn(async () => {
       throw new Error('ssh down');
     });
-    await expect(
-      waitForJobHostDocker(exec, 'job-a', '10.0.0.1'),
-    ).resolves.toBeUndefined();
+    await expect(waitForJobHostDocker(exec, 'job-a', '10.0.0.1')).resolves.toBe(
+      false,
+    );
   });
 });
