@@ -1,12 +1,10 @@
 # Runner disk tier: gp3 IOPS and throughput against start time
 
 - Status: Complete. Every resource is deleted; see Cleanup.
-- Decision record: owner decision, 2026-11-18 (chat-only; no tracking issue).
-  backmesh's AWS runner disks stay at 4,000 IOPS / 500 MiB/s until their cost
-  is measured against gp3's free baseline of 3,000 / 125. On a 100 GB disk,
-  4,000 / 500 costs about $0.027/h more than the baseline. The only earlier
-  measurement compared 4,000 / 500 with 8,000 / 1,000 (about 0.6 s, from the
-  image-pull spike).
+- Decision: after this run (owner, 2026-11-18), backmesh's AWS runner disks
+  stay at 4,000 IOPS / 500 MiB/s. Against gp3's free baseline of 3,000 / 125
+  they start a runner about 25 s sooner and run this job's disk steps about
+  11 s faster, for about $0.027/h more on a 100 GB disk.
 - Run: `experiments/runner-disk-tier/run.ts` through the
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments`
   `["run"]` and `cleanup_arguments` `["cleanup"]`. `render` prints a VM's
@@ -57,9 +55,9 @@ The API's SSH round trips aren't included. They're the same in every arm.
 
 ## Runs
 
-| Run                                                                             | Source      | Outcome                                                                                                                                                           |
-| ------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [44359549478](https://github.com/anycloud-sh/anycloud/actions/runs/44359549478) | `dc46dfbae` | 15 of 15 VMs finished every step. 14 spot launches were refused for capacity in us-east-2a and 2b, and each VM failed over to another zone. Cleanup left nothing. |
+| Run                                                                             | Source      | Outcome                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [44359549478](https://github.com/anycloud-sh/anycloud/actions/runs/44359549478) | `dc46dfbae` | 15 of 15 VMs finished every step. 7 VMs had 2 spot launches each refused for capacity in us-east-2a and 2b, and all 7 moved to us-east-2c. The arms' zone mix differs slightly: baseline 2a×2 and 2c×3, the others 2a×3 and 2c×2. Cleanup left nothing. |
 
 Each VM's instance ID is in the run's `summary.json`:
 
@@ -82,9 +80,9 @@ per arm. Every user data pull used the containerd transfer.
 | `high`      | 30.0 (21.6–30.2)     | 34.1 (29.0–35.8)     | 6.0 (5.7–6.5)     | 6.5 (6.3–6.9)     | 3.9 (3.8–4.0)     |
 
 - **The baseline is about 25 s slower to start a runner.** Nearly all of it
-  is the runner image's pull: 33.7 s against 8.0 s. The pull writes about
-  3 GB, the unpacked layers and containerd's compressed blobs, so 125 MiB/s
-  bounds it. The ranges don't overlap.
+  is the runner image's pull: 33.7 s against 8.0 s. The pull writes the
+  image's compressed layers (about 690 MiB) and then their unpacked contents,
+  so 125 MiB/s bounds it. The ranges don't overlap.
 - **A job's own disk work is slower too.** `npm ci` for express takes 12.2 s
   against 3.9 s, and the `node:22` pull 9.2 s against 6.3 s. That adds about
   11 s to this job.
@@ -102,8 +100,8 @@ per arm. Every user data pull used the containerd transfer.
 ## Cost
 
 About $0.05: 15 spot VMs for 1–2 minutes each, at m8i.xlarge's spot price of
-$0.061–0.067/h plus the disks. The Spike workflow's runner ran for about
-10 minutes.
+$0.061–0.067/h plus the disks. The Spike workflow's job ran for about
+5 minutes.
 
 Each arm's disk costs this much more than the baseline's, for 100 GB at
 $0.08/GB-month:
