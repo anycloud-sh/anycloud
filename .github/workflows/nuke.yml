@@ -62,7 +62,7 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: 'Cloud provider (local = smolvm harness, no cloud resources)'
+        description: 'Cloud provider (local = smolvm harness, no cloud resources; skipped on GitHub-hosted runners)'
         type: choice
         options:
           - local
