@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { callApi } from '../helpers/api-test-helper.js';
-import { createHostedApiAuthentication } from '../../../src/api/services/api-authentication.js';
+import { authenticateApiToken as authenticate } from '../../../src/api/services/api-authentication.js';
 import Github from '../../../src/api/services/gateways/github.js';
 import {
   upsertApiAccessOwner,
@@ -11,13 +11,6 @@ import { getDB } from '../../../src/api/services/repositories/db.js';
 import { GITHUB_LOGIN_SCOPES } from '../../../src/shared/hosted-api.js';
 
 const TOKEN_PATTERN = /^acapi_[A-Za-z0-9_-]{43}$/u;
-const authenticate = createHostedApiAuthentication({
-  listServiceAccounts: async () => [],
-  clusters: {
-    resolve: () => Promise.reject(new Error('no cluster expected')),
-  },
-});
-
 function asCaller(id: string, username: string): void {
   vi.mocked(Github.authenticate).mockResolvedValue({
     id,

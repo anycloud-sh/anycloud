@@ -3355,62 +3355,6 @@ export class HostedApiStage implements HostedStage {
   }
 
   /**
-   * A sleeping Deployment registered (RFC 0049 C29) for hosted API
-   * access, once its Pod runs. The registration and the Deployment are
-   * removed at cleanup.
-   */
-  async registeredDeployment(
-    nodePoolId: string,
-    name: string,
-  ): Promise<{
-    id: string;
-    podName: string;
-    podUid: string;
-    remove: () => Promise<void>;
-  }> {
-    this.#defer(`registration ${name}`, async () => {
-      await this.#send(
-        cliArgs(API_ACCESS_REMOVE, { 'service-account': name }),
-        'api-access-remove-signer',
-      );
-    });
-    completedCommand(
-      await this.#send(
-        cliArgs(API_ACCESS_ADD, { 'service-account': name }),
-        'api-access-add-signer',
-      ),
-      'api access add --service-account (hosted)',
-    );
-    this.#cleanups.set(
-      name,
-      this.#defer(`hosted Deployment ${name}`, () =>
-        this.#deleteDeployment(name),
-      ),
-    );
-    completedCommand(
-      await this.#send(
-        cliArgs(
-          DEPLOYMENT_CREATE,
-          { 'node-pool': nodePoolId, cpus: '0.1', json: true },
-          [name, CHECK_IMAGE, 'sleep', 'infinity'],
-        ),
-        'deployment-create-signer',
-      ),
-      'deployment create (signer)',
-    );
-    const ready = await this.#awaitDeploymentPod(name);
-    const pod = observed(ready);
-    if (!pod?.podName || !pod.podUid)
-      throw new Error(`Deployment ${name} runs no named Pod`);
-    return {
-      id: ready.id,
-      podName: pod.podName,
-      podUid: pod.podUid,
-      remove: () => this.#deleteDeployment(name),
-    };
-  }
-
-  /**
    * A live check's pool Job, sized by the product unless the spec
    * sets `cpus`; terminated at cleanup. With `refused`, the hosted API
    * must refuse it with that text, and the result is its output.

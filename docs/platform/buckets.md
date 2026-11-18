@@ -222,16 +222,15 @@ See [`bucket` reference](/reference/cli/bucket) for exact commands.
 
 ## Hand out storage tokens
 
-A program that holds no cloud credential, such as a Deployment registered on a
-[hosted API](/platform/hosted-apis#clients-inside-the-cluster), can ask the API
+A program that holds no cloud credential but holds an API token can ask the API
 for short-lived tokens scoped to prefixes of a saved credential's buckets, and
 use them with the cloud's own SDK. Each grant is `read` (read and list) or
 `readwrite` (also write and overwrite):
 
 ```bash
-curl -sS -X POST "$ANYCLOUD_API_URL/v1/credentials/prod-aws/storage-tokens" \
-  -H "Authorization: Bearer $(cat "$ANYCLOUD_API_TOKEN_FILE")" \
-  -H "AnyCloud-Client-Version: $(curl -sS "$ANYCLOUD_API_URL/v1/version" | jq -r .version)" \
+curl -sS -X POST "$API_URL/v1/credentials/prod-aws/storage-tokens" \
+  -H "Authorization: Bearer $ANYCLOUD_API_TOKEN" \
+  -H "AnyCloud-Client-Version: $(curl -sS "$API_URL/v1/version" | jq -r .version)" \
   -H 'Content-Type: application/json' \
   -d '{"lifetimeSeconds": 900, "grants": [
         {"bucket": "build-cache", "prefix": "cache/main/", "mode": "read"},
@@ -273,10 +272,8 @@ life is the control. In an emergency:
   token and also voids VM and pool Job SAS tokens. For up to 15 minutes the
   API may still sign new tokens with its cached old key, and they are refused.
 
-Minting follows the hosted API's peer model: the owner, every member and every
-registered Deployment (see
-[Hosted APIs](/platform/hosted-apis#clients-inside-the-cluster)) may mint any
-grant on any saved credential, as each can already reach those buckets through
+Minting follows the hosted API's peer model: the owner and every member may
+mint any grant on any saved credential, as each can already reach those buckets through
 the bucket commands or a Job. `noDelete: false` mints a token that deletes on
 AWS and on a whole Azure container. Scope a token by what you request, not by
 who requests it. No one can mint for the API's own backup bucket. Cloudflare

@@ -1521,25 +1521,9 @@ never stored; `api token rotate --service` replaces the hash. An `acapi_`
 bearer that matches no member's API token is looked up there; a match admits
 the service as a peer with no GitHub sign-in.
 
-A hosted API also admits a registered Deployment (RFC 0049 C29). The owner's
-`api access add --service-account <deployment>` stores
-`serviceaccount:<lowercased name>` in `api_access_users`; GitHub IDs are
-integers, so the two never collide. An unmanaged Deployment whose name is
-registered renders a second projected token in its runtime-identity volume,
-for the `anycloud-api` audience (replicas' claim tokens use
-`anycloud-runtime`), and `ANYCLOUD_API_TOKEN_FILE` naming it; the change rolls
-the Deployment through its template hash. A managed name, and one equal to the
-owner's or a member's GitHub login, is refused. A
-JWT-shaped bearer goes to a TokenReview for `anycloud-api` on the cluster of
-each registered name's live Deployment. It must be bound to a Pod and name the
-ServiceAccount the renderer derives from that Deployment's pool and ID; the
-access policy check then runs as for a member. The principal has no GitHub
-sign-in, so its pool Jobs store no pull token, and for a `ghcr.io` image
-`managedKey` adds that bit so they never join a managed Deployment whose
-replicas hold a member's pull Secret. Like any peer, a registered Deployment
-may mint storage tokens (`POST /v1/credentials/{name}/storage-tokens`)
-for any grant; the API mints with the saved credential and returns only the
-scoped token.
+Like any peer, a member or a service may mint storage tokens
+(`POST /v1/credentials/{name}/storage-tokens`) for any grant; the API mints
+with the saved credential and returns only the scoped token.
 
 Everyone a hosted API admits is an equal peer within that API surface.
 Workloads, credentials, secrets, spend controls, read-only database inspection,

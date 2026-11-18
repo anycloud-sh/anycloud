@@ -157,54 +157,12 @@ issues, rotates and removes service tokens.
 
 A service is a full peer, like a member, and appears under its name where
 listings name a creator. A service named like a GitHub member with access is
-refused, but adding a member later whose login matches a service isn't, and
-service and registered Deployment names aren't checked against each other. It
+refused, but adding a member later whose login matches a service isn't. It
 has no GitHub sign-in, so it submits public images only, and Service URLs
 answer `GITHUB_SIGN_IN_REQUIRED`. A restored backup brings back every service
 token it held, including ones rotated or removed since: after a restore the
 owner rotates every service token and removes again any service removed since
 the backup, which `api access list` shows.
-
-## Clients inside the cluster
-
-A program that runs as a Deployment on the hosted API's own cluster, such as an
-autoscaler or a batch dispatcher, can call the API without a stored token. The
-owner registers the Deployment by name, before or after creating it:
-
-```bash
-anycloud api access add --service-account backmesh/listener
-anycloud api access list
-anycloud api access remove --service-account backmesh/listener
-```
-
-The registered Deployment's replicas get a second projected ServiceAccount
-token, for the `anycloud-api` audience, valid for one hour and bound to the
-Pod, at the path in `ANYCLOUD_API_TOKEN_FILE`. Kubernetes rotates the file
-before it expires, so the client reads it for each request and sends it as
-`Authorization: Bearer <token>` to the `ANYCLOUD_API_URL` the replicas
-already have. The CLI and the Python SDK don't read the file yet. A copied
-token stops working within the hour, and at once when the Deployment is
-deleted.
-
-Registering or removing the name of a running Deployment restarts its replicas
-once to add or drop the token. Names compare case-insensitively. A registration
-outlives its Deployment, so a Deployment created later under the same name gets
-access again; remove the registration to end it. Managed Deployments, which run
-pool Jobs, can't be registered, nor can a name equal to the GitHub login of
-anyone with access when you register it. Adding a member whose login matches a
-registered name isn't refused.
-
-The client is a full peer, like a member, and appears as
-`serviceaccount:<name>` where listings name a creator. Like any peer, it can
-mint [storage tokens](/platform/buckets#hand-out-storage-tokens) for prefixes
-of any saved credential's buckets, to hand to code that holds no cloud
-credential. It has no GitHub
-sign-in, so it submits public images only, and Service hostnames and clusters
-answer `GITHUB_SIGN_IN_REQUIRED`. Its pool Jobs never share a replica with
-a member's Jobs, so they carry no member's pull Secret. Run it alone on its own
-node pool created without `--allow-privileged-jobs`: a privileged Job on the
-same Node could mint the client's token. Local APIs don't support registered
-Deployments.
 
 ## Connect as a teammate
 

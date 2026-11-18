@@ -175,13 +175,8 @@ export interface RoleConnectionsPort {
     cloud: RoleCloud,
     connection: string,
   ): Promise<{ bucket: string; remove(): Promise<void> }>;
-  /**
-   * A sleeping Deployment registered for hosted API access, and the call
-   * that deletes it (cleanup does, if the check never gets there).
-   */
-  signer(nodePoolId: string): Promise<{ remove(): Promise<void> }>;
-  /** A mint with the signer's own Pod-bound token; its tokens stay in the port. */
-  mintAsSigner(
+  /** A mint with the run's own API token; its tokens stay in the port. */
+  mint(
     connection: string,
     region: RoleCloud,
     grants: readonly (StorageTokenGrant & { readonly noDelete: boolean })[],
@@ -433,13 +428,12 @@ export class RoleConnectionChecks {
   }
 
   /**
-   * `role-storage-tokens`: a registered Deployment, a peer like any
-   * member, mints `rw/` of a bucket on each cloud's role connection with its
-   * own Pod-bound token. AWS mints through AssumeRoleWithWebIdentity, and a
+   * `role-storage-tokens`: a member mints `rw/` of a bucket on each cloud's
+   * role connection. AWS mints through AssumeRoleWithWebIdentity, and a
    * GCP role's token honors the 10-minute floor. The tokens write and read
    * inside `rw/`, never reach `out/`, and delete only on GCP.
    */
-  async storageTokens(nodePoolId: string): Promise<void> {
+  async storageTokens(): Promise<void> {
     const { port, clock, wait } = this.#d;
     const buckets: Partial<
       Record<RoleCloud, { bucket: string; remove(): Promise<void> }>
@@ -450,7 +444,6 @@ export class RoleConnectionChecks {
       await this.#saveUntil(cloud, connection, 'saved');
       buckets[cloud] = await port.tokenBucket(cloud, connection);
     }
-    const signer = await port.signer(nodePoolId);
     const record: Record<string, unknown> = {};
     for (const cloud of ROLE_CLOUDS) {
       const connection = this.#name(cloud, 'pinned');
@@ -458,7 +451,7 @@ export class RoleConnectionChecks {
       const grant = { bucket, prefix: 'rw/', mode: 'readwrite' } as const;
       const mintedAt = clock.now();
       // Five minutes, so Azure's exact token outlives the checks below.
-      const minted = await port.mintAsSigner(
+      const minted = await port.mint(
         connection,
         cloud,
         [{ ...grant, noDelete: true }],
@@ -466,7 +459,7 @@ export class RoleConnectionChecks {
       );
       invariant(
         'tokens' in minted,
-        `${cloud}: the signer's mint answered ${JSON.stringify(minted)}`,
+        `${cloud}: the mint answered ${JSON.stringify(minted)}`,
       );
       const lifetime =
         Math.max(...minted.tokens.map((t) => t.expiresAt)) - mintedAt;
@@ -480,11 +473,11 @@ export class RoleConnectionChecks {
         lifetime >= least && lifetime <= most,
         `${cloud}: a role connection's token lasts ${lifetime} ms`,
       );
-      const written = await port.tokenWrite(bucket, 'rw/signer.txt');
-      const read = await port.tokenRead(bucket, 'rw/signer.txt');
+      const written = await port.tokenWrite(bucket, 'rw/minted.txt');
+      const read = await port.tokenRead(bucket, 'rw/minted.txt');
       invariant(
         written.allowed && read.allowed && read.digest === written.digest,
-        `${cloud}: the signer's token could not write and read rw/`,
+        `${cloud}: the minted token could not write and read rw/`,
       );
       for (const [label, attempt] of [
         ['read out/', () => port.tokenRead(bucket, 'out/ref.txt')],
@@ -492,7 +485,7 @@ export class RoleConnectionChecks {
       ] as const)
         invariant(
           !(await attempt()).allowed,
-          `${cloud}: the signer's token could ${label}`,
+          `${cloud}: the minted token could ${label}`,
         );
       const removed = await port.tokenRemove(bucket, 'rw/ref.txt');
       invariant(
@@ -503,14 +496,14 @@ export class RoleConnectionChecks {
       invariant(
         clock.now() <
           Math.min(...minted.tokens.map((t) => t.expiresAt)) - 60_000,
-        `${cloud}: the signer's token neared its expiry before the checks finished`,
+        `${cloud}: the minted token neared its expiry before the checks finished`,
       );
       record[cloud] = { lifetime, tokens: minted.tokens.length };
       if (cloud !== 'gcp') continue;
       // GCP's role token, unlike a key's, ends with its impersonation.
       await wait.for(
         'the GCP role token refused once it expires',
-        () => port.tokenRead(bucket, 'rw/signer.txt'),
+        () => port.tokenRead(bucket, 'rw/minted.txt'),
         {
           timeoutMs: 15 * 60_000,
           intervalMs: 30_000,
@@ -525,10 +518,8 @@ export class RoleConnectionChecks {
       );
       record.gcpRefusedAfterMs = clock.now() - mintedAt;
     }
-    // Deleted now: role-key-rotation later revokes the trusts that sign them,
-    // and the journey deletes the signer's node pool.
+    // Deleted now: role-key-rotation later revokes the trusts that sign them.
     for (const cloud of ROLE_CLOUDS) await buckets[cloud]!.remove();
-    await signer.remove();
     await port.record('role-storage-tokens', record);
   }
 

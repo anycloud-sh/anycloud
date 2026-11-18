@@ -178,7 +178,6 @@ describe('Deployment exec', () => {
     minReplicas: 1,
     maxReplicas: 3,
     managed: false,
-    apiIdentity: false,
     runnerRelease: null,
     generation: 1,
     deletionRequestedAt: null,
