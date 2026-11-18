@@ -174,6 +174,10 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
           sudo docker system prune -af
 
+      - name: Grant hosted runner KVM access
+        if: ${{ env.PROVIDER == 'local' }}
+        uses: ./.github/actions/hosted-kvm
+
       - name: Setup Local smolvm runtime
         if: ${{ env.PROVIDER == 'local' }}
         run: yarn local-runtime:setup
