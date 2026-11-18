@@ -2,6 +2,7 @@ import type {
   ApiAccessMember,
   ApiAccessUsersResponse,
   GrantApiAccessInput,
+  ServiceTokenIssued,
 } from '../../shared/api-contract/api-access-schemas.js';
 import { GithubSignInRequiredError } from '../../shared/errors.js';
 import {
@@ -12,6 +13,8 @@ import type { GithubSignIn, User } from './entities.js';
 import { log } from './logger.js';
 import {
   isServiceAccountUserId,
+  isServiceUserId,
+  serviceUserId,
   type ApiAccessPolicy,
   type ApiAccessUser as StoredApiAccessUser,
 } from './repositories/api-access-policy.js';
@@ -65,9 +68,27 @@ export class ApiAccessManagedDeploymentError extends Error {
 export class ApiAccessNameTakenError extends Error {
   constructor(name: string) {
     super(
-      `"${name}" is a GitHub login with access to this API; rename the Deployment so listings can't confuse the two.`,
+      `"${name}" is a GitHub login with access to this API; choose another name so listings can't confuse the two.`,
     );
     this.name = 'ApiAccessNameTakenError';
+  }
+}
+
+export class ApiAccessServiceExistsError extends Error {
+  constructor(name: string) {
+    super(
+      `Service "${name}" already has a token; replace it with \`anycloud api token rotate --service ${name}\`.`,
+    );
+    this.name = 'ApiAccessServiceExistsError';
+  }
+}
+
+export class ApiAccessServiceNotFoundError extends Error {
+  constructor(name: string) {
+    super(
+      `No service "${name}" has access; issue its token with \`anycloud api access add --service ${name}\`.`,
+    );
+    this.name = 'ApiAccessServiceNotFoundError';
   }
 }
 
@@ -99,6 +120,17 @@ export interface ApiAccessDomain {
     userId: string,
     signal?: AbortSignal,
   ): Promise<StoredApiAccessUser | null>;
+  /** Issues a service token, printed once: the API keeps only its hash. */
+  issueServiceToken(
+    actor: User,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<ServiceTokenIssued>;
+  rotateServiceToken(
+    actor: User,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<string>;
   exchangeToken(githubToken: string, signal?: AbortSignal): Promise<string>;
   rotateToken(actor: User, signal?: AbortSignal): Promise<string>;
 }
@@ -112,6 +144,8 @@ export interface ApiAccessDomainDependencies {
       deploymentName: string,
     ): Promise<RegisteredUser | { managedDeploymentId: string }>;
     removeUser(userId: string): Promise<RegisteredUser | null>;
+    issueServiceToken(name: string): Promise<string | null>;
+    rotateServiceToken(name: string): Promise<string | null>;
   };
   /** Rolls a live Deployment whose token mount a registration changed. */
   reconcileDeployment(deploymentId: string): void;
@@ -133,9 +167,29 @@ export interface ApiAccessDomainDependencies {
 type RegisteredUser = StoredApiAccessUser & { deploymentId: string | null };
 
 function member(user: RegisteredUser): ApiAccessMember {
-  return isServiceAccountUserId(user.userId)
-    ? { kind: 'serviceaccount', ...user }
-    : { kind: 'github', userId: user.userId, username: user.username };
+  if (isServiceAccountUserId(user.userId)) {
+    return { kind: 'serviceaccount', ...user };
+  }
+  const kind = isServiceUserId(user.userId) ? 'service' : 'github';
+  return { kind, userId: user.userId, username: user.username };
+}
+
+/** Listings name a creator by its name, as they do a GitHub login. */
+async function assertNameFree(
+  dependencies: ApiAccessDomainDependencies,
+  policy: ApiAccessPolicy,
+  name: string,
+): Promise<void> {
+  const logins = (await dependencies.policy.listUsers())
+    .filter((user) => member(user).kind === 'github')
+    .map((user) => user.username);
+  if (
+    [policy.ownerUser, ...logins].some(
+      (login) => login.toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    throw new ApiAccessNameTakenError(name);
+  }
 }
 
 function githubUserId(raw: string): string {
@@ -185,18 +239,7 @@ export function createApiAccessDomain(
       signal?.throwIfAborted();
       const policy = await requireOwner(dependencies, actor);
       if ('serviceAccount' in input) {
-        // Listings name a creator by this name, as they do a GitHub login.
-        const name = input.serviceAccount.toLowerCase();
-        const logins = (await dependencies.policy.listUsers())
-          .filter((user) => !isServiceAccountUserId(user.userId))
-          .map((user) => user.username);
-        if (
-          [policy.ownerUser, ...logins].some(
-            (login) => login.toLowerCase() === name,
-          )
-        ) {
-          throw new ApiAccessNameTakenError(input.serviceAccount);
-        }
+        await assertNameFree(dependencies, policy, input.serviceAccount);
         const registered = await dependencies.policy.registerServiceAccount(
           input.serviceAccount,
         );
@@ -234,9 +277,10 @@ export function createApiAccessDomain(
     async revoke(actor, rawUserId, signal) {
       signal?.throwIfAborted();
       const policy = await requireOwner(dependencies, actor);
-      const userId = isServiceAccountUserId(rawUserId)
-        ? rawUserId
-        : githubUserId(rawUserId);
+      const userId =
+        isServiceAccountUserId(rawUserId) || isServiceUserId(rawUserId)
+          ? rawUserId
+          : githubUserId(rawUserId);
       if (userId === policy.ownerUserId) {
         throw new ApiAccessOwnerCannotBeRemovedError();
       }
@@ -246,6 +290,30 @@ export function createApiAccessDomain(
       }
       signal?.throwIfAborted();
       return removed;
+    },
+
+    async issueServiceToken(actor, name, signal) {
+      signal?.throwIfAborted();
+      const policy = await requireOwner(dependencies, actor);
+      await assertNameFree(dependencies, policy, name);
+      const token = await dependencies.policy.issueServiceToken(name);
+      if (!token) throw new ApiAccessServiceExistsError(name);
+      log.info('Service token issued', { id: 'system', service: name });
+      return {
+        kind: 'service',
+        userId: serviceUserId(name),
+        username: name,
+        token,
+      };
+    },
+
+    async rotateServiceToken(actor, name, signal) {
+      signal?.throwIfAborted();
+      await requireOwner(dependencies, actor);
+      const token = await dependencies.policy.rotateServiceToken(name);
+      if (!token) throw new ApiAccessServiceNotFoundError(name);
+      log.info('Service token rotated', { id: 'system', service: name });
+      return token;
     },
 
     async exchangeToken(githubToken, signal) {

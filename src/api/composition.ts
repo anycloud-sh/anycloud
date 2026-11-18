@@ -203,8 +203,10 @@ import {
   getApiAccessPolicy,
   listApiAccessUsers,
   registerApiServiceAccount,
+  issueServiceToken,
   removeApiAccessUser,
   resolveOwnershipScope,
+  rotateServiceToken,
   upsertApiAccessUser,
 } from './services/repositories/api-access-policy.js';
 import {
@@ -292,6 +294,8 @@ function apiAccessDependencies(): ApiAccessDomainDependencies {
       upsertUser: upsertApiAccessUser,
       registerServiceAccount: registerApiServiceAccount,
       removeUser: removeApiAccessUser,
+      issueServiceToken,
+      rotateServiceToken,
     },
     reconcileDeployment: (id) => getDefaultDeploymentControl().schedule(id),
     resolveGithubUser: Github.resolveUser,

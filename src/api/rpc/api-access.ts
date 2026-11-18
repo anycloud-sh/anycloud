@@ -6,6 +6,8 @@ import {
   ApiAccessNotHostedError,
   ApiAccessOwnerCannotBeRemovedError,
   ApiAccessOwnerRequiredError,
+  ApiAccessServiceExistsError,
+  ApiAccessServiceNotFoundError,
   InvalidGithubUserIdError,
 } from '../services/api-access-domain.js';
 import {
@@ -82,6 +84,52 @@ export const apiAccessRouter = {
         ],
       );
     },
+  ),
+  issueServiceToken: authenticated.apiAccess.issueServiceToken.handler(
+    ({ context, input, signal, errors }) =>
+      mapDeclaredErrors(
+        () =>
+          context.domains.apiAccess.issueServiceToken(
+            context.actor,
+            input.name,
+            signal,
+          ),
+        [
+          notHosted(errors),
+          declaredAs(
+            ApiAccessOwnerRequiredError,
+            errors.API_ACCESS_OWNER_REQUIRED,
+          ),
+          declaredAs(ApiAccessNameTakenError, errors.API_ACCESS_NAME_TAKEN),
+          declaredAs(
+            ApiAccessServiceExistsError,
+            errors.API_ACCESS_SERVICE_EXISTS,
+          ),
+        ],
+      ),
+  ),
+  rotateServiceToken: authenticated.apiAccess.rotateServiceToken.handler(
+    async ({ context, input, signal, errors }) => ({
+      token: await mapDeclaredErrors(
+        () =>
+          context.domains.apiAccess.rotateServiceToken(
+            context.actor,
+            input.params.name,
+            signal,
+          ),
+        [
+          notHosted(errors),
+          declaredAs(
+            ApiAccessOwnerRequiredError,
+            errors.API_ACCESS_OWNER_REQUIRED,
+          ),
+          declaredAs(
+            ApiAccessServiceNotFoundError,
+            errors.API_ACCESS_SERVICE_NOT_FOUND,
+          ),
+        ],
+      ),
+    }),
   ),
   exchangeToken: exchange.apiAccess.exchangeToken.handler(({ context }) => ({
     token: context.apiToken,

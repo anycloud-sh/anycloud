@@ -4,6 +4,7 @@ import type { User } from '../entities.js';
 import { log } from '../logger.js';
 import { getDB, type DB } from './db.js';
 import type { OwnershipScope } from './ownership-filter.js';
+import { hashApiToken, newApiToken } from './api-tokens.js';
 
 const POLICY_ID = 1;
 
@@ -29,6 +30,17 @@ const serviceAccountUserIdSql = (name: string) =>
 
 export function isServiceAccountUserId(userId: string): boolean {
   return userId.startsWith(SERVICE_ACCOUNT_USER_PREFIX);
+}
+
+/** An owner-issued service token's principal ID; its name is lowercase. */
+const SERVICE_USER_PREFIX = 'service:';
+
+export function serviceUserId(name: string): string {
+  return `${SERVICE_USER_PREFIX}${name}`;
+}
+
+export function isServiceUserId(userId: string): boolean {
+  return userId.startsWith(SERVICE_USER_PREFIX);
 }
 
 /** SQL for whether Deployment `alias` is unmanaged and its name registered. */
@@ -195,6 +207,51 @@ export async function registerApiServiceAccount(
   });
 }
 
+/** A new service's token, or null when the name already has one. */
+export async function issueServiceToken(
+  name: string,
+  db: DB = getDB(),
+): Promise<string | null> {
+  const { token, hash } = newApiToken();
+  const rows = await db.query(
+    `INSERT INTO api_access_users (user_id, username, token_hash)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO NOTHING
+     RETURNING user_id`,
+    [serviceUserId(name), name, hash],
+  );
+  return rows.length ? token : null;
+}
+
+/** Replaces a service's token, or returns null when there is no such service. */
+export async function rotateServiceToken(
+  name: string,
+  db: DB = getDB(),
+): Promise<string | null> {
+  const { token, hash } = newApiToken();
+  const rows = await db.query(
+    `UPDATE api_access_users SET token_hash = ?
+      WHERE user_id = ?
+      RETURNING user_id`,
+    [hash, serviceUserId(name)],
+  );
+  return rows.length ? token : null;
+}
+
+/** The service a token belongs to; its row is its admission. */
+export async function findServiceTokenUser(
+  token: string,
+  db: DB = getDB(),
+): Promise<ApiAccessUser | null> {
+  const [row] = await db.read((reader) =>
+    reader.query<ApiAccessUserRow>(
+      `SELECT user_id, username FROM api_access_users WHERE token_hash = ?`,
+      [hashApiToken(token)],
+    ),
+  );
+  return row ? rowToUser(row) : null;
+}
+
 /** A registration whose name a live, unmanaged Deployment holds. */
 export interface ServiceAccountDeployment extends ApiAccessUser {
   deploymentId: string;
@@ -249,7 +306,11 @@ export async function removeApiAccessUser(
       `SELECT ${REGISTERED_USER_COLUMNS}
          FROM api_access_users a ${REGISTERED_DEPLOYMENT_JOIN}
         WHERE a.user_id = ${serviceAccount ? serviceAccountUserIdSql(`trim(substr(?, ${SERVICE_ACCOUNT_USER_PREFIX.length + 1}))`) : '?'}`,
-      [serviceAccount ? userId : normalizeUserId(userId)],
+      [
+        serviceAccount || isServiceUserId(userId)
+          ? userId
+          : normalizeUserId(userId),
+      ],
     );
     if (!row) return null;
     tx.query('DELETE FROM api_tokens WHERE user_id = ?', [row.userId]);

@@ -55,6 +55,11 @@
       "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy peers fixture; teammate lists access, is refused api access add third-user and remove teammate, #terminate owner-workload; #denied for test-token:stranger."
     },
     {
+      "id": "owner-issued-service-tokens",
+      "requirement": "The owner issues a service token through the shipped CLI; the API stores no plaintext, the token authenticates through ANYCLOUD_API_TOKEN as kind service, cannot issue another, is refused on its next request after rotation, survives a restore of the backup that holds it, and is refused after removal.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy #serviceTokens api access add --service ci --json, service-token-at-rest, rotated-service 401 and current-service 200; restored-service-token 200 then removed-service-token 401."
+    },
+    {
       "id": "no-native-resources",
       "requirement": "Every local ownership fixture proves zero VM rows and tears down its shipped server process; external cleanup is Not applicable.",
       "candidateEvidence": "test/integration/e2e/internal/api-auth.ts; test/integration/e2e/internal/local-api-process.ts: ApiAuthScenarios.accessPolicy #noProvision after every fixture; LocalApiProcess.stop reaps the shipped server."

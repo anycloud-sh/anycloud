@@ -17,10 +17,10 @@ anycloud api upgrade|update [--image <reference>] [--force] [--json]
 anycloud api start [options]
 anycloud api stop
 anycloud api logs [-f]
-anycloud api access add <github-user> | --service-account <deployment>
-anycloud api access remove|rm <github-user-or-id> | --service-account <deployment>
+anycloud api access add <github-user> | --service <name> | --service-account <deployment> [--json]
+anycloud api access remove|rm <github-user-or-id> | --service <name> | --service-account <deployment>
 anycloud api access list|ls [--json]
-anycloud api token [rotate]
+anycloud api token [rotate [--service <name>] [--json]]
 ```
 
 | Option              | Description                                            |
@@ -141,9 +141,29 @@ APIs](/platform/hosted-apis) for the complete setup, lifecycle, and trust model.
 GitHub user, so a client running in that Deployment authenticates with its
 replicas' ServiceAccount token and stores no API token; see
 [Clients inside the cluster](/platform/hosted-apis#clients-inside-the-cluster).
-`list` shows each entry's `KIND` (`github` or `serviceaccount`) and, for a
-registered Deployment, its ID or `no deployment`; `--json` adds `kind` and
-`deploymentId`.
+`list` shows each entry's `KIND` (`github`, `service` or `serviceaccount`)
+and, for a registered Deployment, its ID or `no deployment`; `--json` adds
+`kind` and `deploymentId`.
+
+### Service tokens
+
+The owner issues a token for a program that isn't a person, such as a CI
+system or a listener running on a VM:
+
+```bash
+anycloud api access add --service ci
+anycloud api token rotate --service ci
+anycloud api access remove --service ci
+```
+
+`add --service` prints the token once; the API keeps only its SHA-256. With
+`--json` it prints `{"kind":"service","userId":"service:ci","username":"ci","token":"acapi_…"}`.
+`rotate --service` prints a new token and the old one is refused on its next
+request; `remove --service` ends access at once. Only the owner issues,
+rotates or removes service tokens. A name is 1–63 lowercase letters, digits
+and hyphens, and can't be the GitHub login of anyone with access. The program
+sets the token as `ANYCLOUD_API_TOKEN` beside `API_URL`, like a member's token;
+see [Service tokens](/platform/hosted-apis#service-tokens).
 
 ### API tokens
 

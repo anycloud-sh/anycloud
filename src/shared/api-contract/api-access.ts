@@ -7,6 +7,9 @@ import {
   apiAccessUsersResponseSchema,
   apiTokenResponseSchema,
   grantApiAccessInputSchema,
+  issueServiceTokenInputSchema,
+  serviceNameSchema,
+  serviceTokenIssuedSchema,
 } from './api-access-schemas.js';
 
 const authenticated = authenticatedEndpoints({}, 'API Access');
@@ -92,6 +95,47 @@ const revoke = authenticated
     },
   });
 
+const issueServiceToken = authenticated
+  .command({
+    method: 'POST',
+    path: '/api-access/services',
+    operationId: 'issueServiceToken',
+    summary: 'Issue a service token',
+  })
+  .input(issueServiceTokenInputSchema)
+  .output(serviceTokenIssuedSchema)
+  .errors({
+    ...notHostedError,
+    ...ownerRequiredError,
+    API_ACCESS_NAME_TAKEN: {
+      status: 400,
+      message: 'A GitHub login with access has this name',
+    },
+    API_ACCESS_SERVICE_EXISTS: {
+      status: 409,
+      message: 'The service already has a token',
+    },
+  });
+
+const rotateServiceToken = authenticated
+  .command({
+    method: 'POST',
+    path: '/api-access/services/{name}/token',
+    operationId: 'rotateServiceToken',
+    summary: "Replace a service's token",
+    inputStructure: 'detailed',
+  })
+  .input(z.object({ params: z.object({ name: serviceNameSchema }).strict() }))
+  .output(apiTokenResponseSchema)
+  .errors({
+    ...notHostedError,
+    ...ownerRequiredError,
+    API_ACCESS_SERVICE_NOT_FOUND: {
+      status: 404,
+      message: 'No service has this name',
+    },
+  });
+
 /** The bearer is a GitHub sign-in; served within the release window. */
 const exchangeToken = authenticated
   .command(
@@ -123,6 +167,8 @@ export const apiAccessContract = {
   list,
   grant,
   revoke,
+  issueServiceToken,
+  rotateServiceToken,
   exchangeToken,
   rotateToken,
 };

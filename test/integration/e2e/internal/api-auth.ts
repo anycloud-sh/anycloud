@@ -5,7 +5,11 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { ORPCError } from '@orpc/client';
 
-import { apiAccessUsersResponseSchema } from '../../../../src/shared/api-contract/api-access-schemas.js';
+import {
+  apiAccessUsersResponseSchema,
+  apiTokenResponseSchema,
+  serviceTokenIssuedSchema,
+} from '../../../../src/shared/api-contract/api-access-schemas.js';
 import {
   listSecretsResponseSchema,
   secretInUseDataSchema,
@@ -114,6 +118,7 @@ export class ApiAuthScenarios {
 
     const original = await this.#hosted('owner', 'anycloud-test', '1');
     await this.#apiTokens(original);
+    const serviceToken = await this.#serviceTokens(original);
     await this.#staleSignIn(original);
     assert.deepEqual(await this.#policy(original), {
       owner_user: 'anycloud-test',
@@ -129,6 +134,19 @@ export class ApiAuthScenarios {
       await this.#policy(restored),
       { owner_user: 'anycloud-test', owner_user_id: '1' },
       'Authentication must refresh a renamed owner while preserving the durable account ID',
+    );
+    // A restore keeps the backup's service token hash, and removal ends it.
+    assert.equal(
+      (await this.#request(restored, 'restored-service-token', serviceToken))
+        .status,
+      200,
+    );
+    await this.#cli(restored, ['api', 'access', 'remove', '--service', 'ci']);
+    assert.equal(
+      (await this.#request(restored, 'removed-service-token', serviceToken))
+        .status,
+      401,
+      'A removed service token still authenticates',
     );
 
     await restored.stop();
@@ -494,6 +512,83 @@ export class ApiAuthScenarios {
    * the API must get a fresh sign-in from the CLI rather than leave the caller
    * stuck on GITHUB_SIGN_IN_REQUIRED.
    */
+  /**
+   * The owner issues a service token, printed once and stored as its hash; it
+   * is a peer's bearer through ANYCLOUD_API_TOKEN until the owner rotates it.
+   */
+  async #serviceTokens(fixture: LocalApiProcess): Promise<string> {
+    const issued = serviceTokenIssuedSchema.parse(
+      JSON.parse(
+        await this.#cli(fixture, [
+          'api',
+          'access',
+          'add',
+          '--service',
+          'ci',
+          '--json',
+        ]),
+      ),
+    );
+    this.#runtime.redactor.add(issued.token);
+    const asService = (token: string) => ({
+      ...unscopedCliEnvironment,
+      ANYCLOUD_API_TOKEN: token,
+    });
+    const listed = apiAccessUsersResponseSchema.parse(
+      JSON.parse(
+        await this.#cli(
+          fixture,
+          ['api', 'access', 'list', '--json'],
+          null,
+          asService(issued.token),
+        ),
+      ),
+    );
+    assert.deepEqual(
+      listed.users.find((user) => user.kind === 'service'),
+      { kind: 'service', userId: 'service:ci', username: 'ci' },
+    );
+    rejectedCommand(
+      await fixture
+        .client(null)
+        .cli.run(['api', 'access', 'add', '--service', 'other'], {
+          env: asService(issued.token),
+        }),
+      'Only the owner of this hosted API',
+    );
+    const stored = JSON.stringify(
+      await fixture
+        .client()
+        .database.queryComplete(
+          'SELECT * FROM api_access_users',
+          'service-token-at-rest',
+        ),
+    );
+    assert.ok(!stored.includes(issued.token), 'A service token is stored');
+
+    const { token } = apiTokenResponseSchema.parse(
+      JSON.parse(
+        await this.#cli(fixture, [
+          'api',
+          'token',
+          'rotate',
+          '--service',
+          'ci',
+          '--json',
+        ]),
+      ),
+    );
+    this.#runtime.redactor.add(token);
+    const stale = await this.#request(fixture, 'rotated-service', issued.token);
+    assert.equal(stale.status, 401, 'A rotated service token authenticates');
+    assert.match(JSON.stringify(stale.body), /rotated or removed/u);
+    assert.equal(
+      (await this.#request(fixture, 'current-service', token)).status,
+      200,
+    );
+    return token;
+  }
+
   async #staleSignIn(fixture: LocalApiProcess): Promise<void> {
     const { github } = fixture;
     const unattended = {

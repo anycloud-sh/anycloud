@@ -820,6 +820,7 @@ erDiagram
   api_access_users {
     text user_id PK
     text username
+    text token_hash UK "service tokens only"
   }
   api_tokens {
     text user_id PK
@@ -971,8 +972,9 @@ Each table, with its purpose, its writer and the invariants it carries:
 - **`quota_operations`** and **`quota_operation_targets`**: history of quota
   increase submissions. New submissions are retired, so nothing writes them.
 - **`api_access_policy`** and **`api_access_users`**: the hosted API's single
-  owner identity and its explicit GitHub-account allowlist.
-  `api-access-policy.ts` writes them.
+  owner identity and its explicit allowlist of GitHub accounts, registered
+  Deployment names and owner-issued services, each service with the SHA-256
+  of its token. `api-access-policy.ts` writes them.
 - **`api_tokens`**: a hosted API's own bearer, one per admitted GitHub account
   (the owner included), looked up by the token's SHA-256 and kept encrypted
   with the account's GitHub sign-in. `api-tokens.ts` writes it;
@@ -1512,6 +1514,12 @@ A local API has one owner, the holder of its token, recorded as
 `local:<api identity>`. A hosted API admits its bound owner plus explicit `api_access_users`
 entries by immutable GitHub ID. Successful authentication refreshes stored
 usernames as display metadata without changing identity.
+
+The owner's `api access add --service <name>` adds `service:<name>` to
+`api_access_users` with the SHA-256 of a new `acapi_` token, printed once and
+never stored; `api token rotate --service` replaces the hash. An `acapi_`
+bearer that matches no member's API token is looked up there; a match admits
+the service as a peer with no GitHub sign-in.
 
 A hosted API also admits a registered Deployment (RFC 0049 C29). The owner's
 `api access add --service-account <deployment>` stores

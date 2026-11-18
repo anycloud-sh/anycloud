@@ -14,16 +14,18 @@ export interface ApiTokenOwner {
   githubToken: string;
 }
 
-const hashApiToken = (token: string) =>
+export const hashApiToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
-async function mintApiToken() {
+/** A fresh bearer and its SHA-256, the only form a service token is kept in. */
+export function newApiToken(): { token: string; hash: string } {
   const token = `${API_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
-  return {
-    token,
-    hash: hashApiToken(token),
-    ciphertext: await encryptSecret(token),
-  };
+  return { token, hash: hashApiToken(token) };
+}
+
+async function mintApiToken() {
+  const minted = newApiToken();
+  return { ...minted, ciphertext: await encryptSecret(minted.token) };
 }
 
 /**
