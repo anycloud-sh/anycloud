@@ -39,7 +39,7 @@ import {
   clusterApiVersion,
   formatClusterState,
   printClusterSummary,
-} from '../utils/kubernetes-output.js';
+} from '../utils/cluster-output.js';
 import { formatAge } from '../utils/duration.js';
 import {
   DEFAULT_WATCH_INTERVAL_SECONDS,

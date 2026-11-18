@@ -345,21 +345,7 @@ describe('role-connection trusts (RFC 0047 S15 and S17)', () => {
 
 describe('role-connection check configuration', () => {
   test.each([
-    [
-      {
-        E2E_CLUSTER_LIVE_CHECKS: 'role-connections',
-        E2E_CLUSTER_GPU_POOL: 'true',
-      },
-      /run on hosted_stage/u,
-    ],
-    [
-      {
-        E2E_CLUSTER_LIVE_CHECKS: 'role-key-rotation',
-        E2E_CLUSTER_HOSTED_STAGE: 'true',
-        E2E_CLUSTER_POOL_PROVIDER: 'lambda',
-      },
-      /AWS, GCP or Azure pool/u,
-    ],
+    [{ E2E_CLUSTER_LIVE_CHECKS: 'role-connections' }, /run on hosted_stage/u],
   ])('%j is refused before any cloud call', (env, message) => {
     expect(() =>
       clusterCloudConfiguration(
@@ -509,12 +495,7 @@ class FakeClouds implements RoleConnectionsPort {
     this.keys = ['k2'];
     return { refusedEarly: '409: the overlap ends at 2026-11-07T20:00:00Z' };
   }
-  async outputThrough(
-    _pool: string,
-    _cloud: RoleCloud,
-    _connection: string,
-    content: string,
-  ) {
+  async outputThrough(_cloud: RoleCloud, _connection: string, content: string) {
     return `${content}\n`;
   }
   async record(name: string, value: unknown) {
@@ -683,7 +664,7 @@ describe('role-connection checks', () => {
 
   test('S14 and S15: each cloud saves, writes through its connection and refuses every wrong trust', async () => {
     const port = new FakeClouds();
-    await checks(port).roleConnections('pool-1');
+    await checks(port).roleConnections();
     const record = port.records['role-connections'] as Record<
       RoleCloud,
       { refusals: Record<string, string> }
@@ -709,7 +690,7 @@ describe('role-connection checks', () => {
     async (accepted) => {
       const port = new FakeClouds();
       port.pinnedAccepts = accepted;
-      await expect(checks(port).roleConnections('pool-1')).rejects.toThrow(
+      await expect(checks(port).roleConnections()).rejects.toThrow(
         /pinned trust accepted/u,
       );
     },

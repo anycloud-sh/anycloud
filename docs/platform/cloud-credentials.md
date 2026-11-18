@@ -153,9 +153,7 @@ every region that offers its VM type, becomes `invalid` with AWS's message
 naming the denied action. A newly created key can take up to about 23 seconds
 to be accepted; submit waits for it, so a deleted key is also reported invalid
 only after that wait. Local compute does not require a
-cloud credential. Deployments select a Ready [node pool](/reference/cli/node-pools)
-when they are created; targeted Jobs use the Deployment's shared capacity and
-cannot select infrastructure credentials.
+cloud credential.
 
 ## Storage credentials
 

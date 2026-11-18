@@ -116,9 +116,9 @@ describe('submit picker', () => {
     ).not.toContain('--local');
   });
 
-  it('targets a Deployment with --deployment and removes --worker', () => {
+  it('has no Deployment or Worker target', () => {
     const options = createSubmitCommand().options.map((option) => option.long);
-    expect(options).toContain('--deployment');
+    expect(options).not.toContain('--deployment');
     expect(options).not.toContain('--worker');
   });
 
@@ -156,69 +156,6 @@ describe('submit picker', () => {
     expect(options).not.toContain('--no-bake-cache');
     expect(options).not.toContain('--warm-image');
   });
-
-  it('submits to a Deployment without resolving VM compute', async () => {
-    await runSubmit(['--deployment', 'training']);
-
-    expect(resolveCloudConfig).not.toHaveBeenCalled();
-    expect(createWorkload).toHaveBeenCalledWith(
-      expect.objectContaining({
-        deployment: 'training',
-        workloadType: 'job',
-      }),
-    );
-  });
-
-  it.each([
-    ['image', ['nginx:latest']],
-    ['command', ['nginx:latest', '--', 'python', 'train.py']],
-    ['--credentials', ['--credentials', 'prod']],
-    ['--region', ['--region', 'us-east-1']],
-    ['--vm-type', ['--vm-type', 'g6.xlarge']],
-    ['--gpu-type', ['--gpu-type', 'h100']],
-    ['--spot', ['--spot']],
-    ['--disk-size', ['--disk-size', '100']],
-    ['--disk-tier', ['--disk-tier', 'high']],
-    ['--input-bucket', ['--input-bucket', 'input']],
-    ['--output-bucket', ['--output-bucket', 'output']],
-    ['--checkpoint-bucket', ['--checkpoint-bucket', 'checkpoint']],
-    ['--input-storage-credentials', ['--input-storage-credentials', 'storage']],
-    ['--input-storage-region', ['--input-storage-region', 'us-east-2']],
-    [
-      '--output-storage-credentials',
-      ['--output-storage-credentials', 'storage'],
-    ],
-    ['--output-storage-region', ['--output-storage-region', 'us-east-2']],
-    [
-      '--checkpoint-storage-credentials',
-      ['--checkpoint-storage-credentials', 'storage'],
-    ],
-    [
-      '--checkpoint-storage-region',
-      ['--checkpoint-storage-region', 'us-east-2'],
-    ],
-    ['--zone', ['--zone', 'a']],
-    ['--secret', ['--secret', 'training']],
-    ['--env', ['--env', 'KEY=value']],
-    ['--env-file', ['--env-file', '.env']],
-    ['--shm-size', ['--shm-size', '8g']],
-    ['--gpus', ['--gpus', 'all']],
-    ['--ipc', ['--ipc', 'host']],
-    ['--ulimit', ['--ulimit', 'nofile=1024:1024']],
-    ['--memory', ['--memory', '32g']],
-    ['--cpus', ['--cpus', '4']],
-    ['--runtime', ['--runtime', 'nvidia']],
-    ['--bind', ['--bind', '/host:/container']],
-  ])(
-    '0029/S9 rejects targeted Job override %s locally',
-    async (_label, args) => {
-      await expect(
-        runSubmit(['--deployment', 'training', ...args]),
-      ).rejects.toThrow(/process\.exit:1/);
-      expect(resolveCloudConfig).not.toHaveBeenCalled();
-      expect(createWorkload).not.toHaveBeenCalled();
-    },
-  );
 
   it('TTY + no image arg → GHCR picker (repo + tag) → submits with composed image', async () => {
     vi.mocked(shouldAllowPrompts).mockReturnValue(true);

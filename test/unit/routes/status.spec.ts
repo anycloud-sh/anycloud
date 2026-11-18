@@ -1,7 +1,6 @@
 import { callApi } from '../helpers/api-test-helper';
 import {
   getWorkloadQueryStore as queries,
-  getDeploymentExecutionStore,
   getWorkloadOutcomes,
 } from '../../../src/api/services/persistence.js';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -15,10 +14,7 @@ import { type WorkloadStatusResponse as StatusResponse } from '../../../src/shar
 import { CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
 import { getDB } from '../../../src/api/services/repositories/db.js';
-import { getDeploymentStore } from '../../../src/api/services/persistence.js';
 import { resetTestStore } from '../utils';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
-import { getWorkloadAdmissionWriter } from '../../../src/api/services/workload-admission-writer.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
 
 const { fake } = await vi.hoisted(async () => {
@@ -111,7 +107,6 @@ describe('Status endpoint', () => {
     expect(body.workload.githubToken).toBeUndefined();
     expect(body.workload.sshPrivateKey).toBeUndefined();
     expect(body.sshPrivateKey).toBeUndefined();
-    expect(body.jobsAhead).toBeNull();
 
     // Events now come from workload_events table
     expect(body.events).toBeDefined();
@@ -132,92 +127,6 @@ describe('Status endpoint', () => {
     if (runningEvent.metadata) {
       expect(runningEvent.metadata.message).toBe('Workload complete');
     }
-  });
-
-  it('reports the shared Deployment queue until pickup or cancellation', async () => {
-    const store = getDeploymentExecutionStore();
-    await seedReadyNodePool({
-      nodePoolId: 'status-pool',
-      ownerUserId: 'test-owner',
-    });
-    await getDeploymentStore().create(
-      {
-        id: 'status-deployment',
-        ownerUserId: 'test-owner',
-        name: 'status-deployment',
-        nodePoolId: 'status-pool',
-        config: {
-          image: 'deployment-image',
-          imageDigest: null,
-          command: null,
-          env: null,
-          registryUsername: 'test-owner',
-          registryToken: null,
-          dockerOptions: null,
-        },
-        gpuCount: 0,
-        maxConcurrentJobsPerReplica: 1,
-      },
-      { kind: 'api' },
-    );
-    for (const [index, id] of ['peer-job', TEST_ID].entries()) {
-      await getWorkloadAdmissionWriter().createTargetedWorkload({
-        id,
-        userId: id === TEST_ID ? 'test-user' : 'peer-user',
-        deploymentId: 'status-deployment',
-      });
-      await getDB().query(
-        `UPDATE workloads SET submitted_at = ? WHERE id = ?`,
-        [index + 1, id],
-      );
-    }
-
-    const queued = await statusRequest();
-    expect(queued.status).toBe(200);
-    expect(await queued.json()).toMatchObject({
-      workload: { state: 'queued' },
-      jobsAhead: 1,
-      events: [],
-    });
-
-    await getWorkloadOutcomes().requestTermination('peer-job', {
-      kind: 'api',
-    });
-    const firstInQueue = await statusRequest();
-    expect(firstInQueue.status).toBe(200);
-    expect(await firstInQueue.json()).toMatchObject({
-      workload: { state: 'queued' },
-      jobsAhead: 0,
-      events: [],
-    });
-
-    await store.claimTargetedJob({
-      deploymentId: 'status-deployment',
-      jobId: TEST_ID,
-      submissionRevision: 0,
-      previousExecutionId: null,
-      executionId: '11111111-1111-4111-8111-111111111111',
-      generation: 1,
-      podUid: 'status-pod',
-      containerId: 'status-container',
-    });
-    const pickedUp = await statusRequest();
-    expect(pickedUp.status).toBe(200);
-    expect(await pickedUp.json()).toMatchObject({
-      workload: { state: 'running' },
-      jobsAhead: null,
-      events: [
-        expect.objectContaining({ state: 'running', workloadId: TEST_ID }),
-      ],
-    });
-
-    await getWorkloadOutcomes().requestTermination(TEST_ID, { kind: 'api' });
-    const cancelled = await statusRequest();
-    expect(cancelled.status).toBe(200);
-    const body = (await cancelled.json()) as StatusResponse;
-    expect(body.workload.state).toBe('terminated');
-    expect(body.jobsAhead).toBeNull();
-    expect(body.events.at(-1)?.state).toBe('terminated');
   });
 
   it.each([
@@ -279,7 +188,6 @@ describe('Status endpoint', () => {
     expect(body.workload.workloadType).toBe('vm');
     expect(body.workload.env).toBeUndefined();
     expect(body.workload.sshPrivateKey).toBeUndefined();
-    expect(body.jobsAhead).toBeNull();
   });
 
   it("returns the VM's actual zone instead of the workload's requested zone", async () => {

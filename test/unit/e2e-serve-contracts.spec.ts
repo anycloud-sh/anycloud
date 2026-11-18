@@ -55,10 +55,6 @@ function workload(
   return {
     id,
     userId: 'e2e-user',
-    deploymentId: null,
-    submissionRevision: 0,
-    claimDeadlineAt: null,
-    claimed: false,
     workloadType: WorkloadType.Service,
     image: 'python:3.12-alpine',
     cloudProvider: CloudType.AWS,
@@ -99,7 +95,6 @@ function workload(
     session: null,
     agent: null,
     sessionLabel: null,
-    publicEndpoint: null,
   };
 }
 

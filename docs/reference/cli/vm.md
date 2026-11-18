@@ -42,7 +42,7 @@ anycloud vm list -n 400 --json
 List only VMs, using the same filters, limits, automatic agent session scope,
 and JSON/CSV/ID output as [`anycloud list`](/reference/cli/workloads#anycloud-list).
 The command prints directly without a view picker. Put listing options after
-`list` or `ls`. The type is fixed; `--type`, `--deployment`, and `--watch` are not
+`list` or `ls`. The type is fixed; `--type` is not
 accepted.
 
 <span id="options"></span>

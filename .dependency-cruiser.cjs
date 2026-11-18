@@ -58,7 +58,6 @@ const workloadAdmissionOwnership = [
     allowedFiles: [
       workloadAdmissionPlanFile,
       'src/api/services/repositories/workload-creation.ts',
-      'src/api/services/pool-job-storage.ts',
     ],
   },
 ];
@@ -90,9 +89,6 @@ const workloadLifecycleOwnership = [
     file: 'src/api/services/repositories/workload-lifecycle.ts',
     allowedFiles: [
       'src/api/services/persistence.ts',
-      'src/api/services/repositories/deployment-executions.ts',
-      'src/api/services/repositories/targeted-job-creation.ts',
-      'src/api/services/repositories/workload-attempts.ts',
       'src/api/services/repositories/workload-outcomes.ts',
     ],
     typeOnlyFiles: [
@@ -102,16 +98,9 @@ const workloadLifecycleOwnership = [
     ],
   },
   {
-    // The one attempt writer (RFC 0044): only attempt owners call it.
-    file: 'src/api/services/repositories/workload-attempts.ts',
-    allowedFiles: ['src/api/services/repositories/deployment-executions.ts'],
-    typeOnlyFiles: ['src/api/services/deployment-workload-domain.ts'],
-  },
-  {
     file: 'src/api/services/repositories/workload-outcomes.ts',
     allowedFiles: [
       'src/api/services/persistence.ts',
-      'src/api/services/repositories/deployment-executions.ts',
       'src/api/services/repositories/workload-queries.ts',
     ],
   },
@@ -139,7 +128,6 @@ const workloadLifecycleOwnership = [
       'src/api/services/repositories/workload-spend.ts',
     ],
     typeOnlyFiles: [
-      'src/api/services/repositories/deployment-executions.ts',
       'src/api/services/workload-management-domain.ts',
       'src/api/services/workload-reconciler.ts',
     ],
@@ -154,7 +142,6 @@ const workloadLifecycleOwnership = [
   {
     file: 'src/api/services/repositories/workload-spend.ts',
     allowedFiles: [
-      'src/api/services/repositories/claim-spend-gate.ts',
       'src/api/services/notifications-digest-format.ts',
       'src/api/services/notifications-digest.ts',
       'src/api/services/persistence.ts',
@@ -177,31 +164,9 @@ const workloadLifecycleOwnership = [
     typeOnlyFiles: [
       workloadAdmissionPlanFile,
       workloadAdmissionPersistenceFile,
-      'src/api/services/node-pool-service-admission.ts',
     ],
   },
   // Likewise of the free createTargetedWorkload; consumers take only types.
-  {
-    file: 'src/api/services/repositories/deployment-executions.ts',
-    allowedFiles: [
-      'src/api/services/persistence.ts',
-      'src/api/services/workload-admission-writer.ts',
-    ],
-    typeOnlyFiles: [
-      'src/api/services/deployment-controller.ts',
-      'src/api/services/deployment-replicas.ts',
-      'src/api/services/deployment-status.ts',
-      'src/api/services/deployment-workload-domain.ts',
-      'src/api/services/deployments-domain.ts',
-      'src/api/services/targeted-job-admission.ts',
-      workloadAdmissionPersistenceFile,
-    ],
-  },
-  {
-    file: 'src/api/services/repositories/node-pool-services.ts',
-    allowedFiles: ['src/api/services/persistence.ts'],
-    typeOnlyFiles: ['src/api/services/node-pool-service-reconciler.ts'],
-  },
 ];
 
 // Workload workflows and host-runtime effects extracted from monitor.ts,
@@ -283,10 +248,6 @@ const workloadWorkflowOwnership = [
   },
   {
     file: 'src/api/services/workload-workflows/provisioning-scheduler.ts',
-    allowedFiles: ['src/api/services/monitor.ts'],
-  },
-  {
-    file: 'src/api/services/workload-workflows/targeted-job.ts',
     allowedFiles: ['src/api/services/monitor.ts'],
   },
   {
@@ -623,50 +584,9 @@ module.exports = {
         'The surface, Workload records, outcome policy and shared contracts are substrate-neutral: they import nothing under kubernetes/.',
       severity: 'error',
       from: {
-        path: '^src/(cli/commands/|api/rpc/|shared/api-contract/|api/services/(repositories/|(workload-record|job-outcome|spend-controls[^/]*|deployment-(store|errors)|(cluster|node-pool)-errors)\\.ts$))',
+        path: '^src/(cli/commands/|api/rpc/|shared/api-contract/|api/services/(repositories/|(workload-record|spend-controls[^/]*|cluster-errors)\\.ts$))',
       },
       to: { path: '^src/api/services/kubernetes/' },
-    },
-    {
-      // RFC 0044 invariant 1, over the new Pod modules until PR 12 widens it
-      // to all of kubernetes/; the four kubernetes/ modules that still import
-      // product code are not allowed siblings.
-      name: 'pool-substrate-boundary',
-      comment:
-        'The Pod substrate imports no Workload or Deployment record, domain, persistence or product policy; product concepts reach it as parameters.',
-      severity: 'error',
-      from: {
-        path: '^src/api/services/kubernetes/(pod-termination|pool-objects|pod-logs|list-watch)\\.ts$',
-      },
-      to: {
-        path: '^src/',
-        pathNot:
-          '^src/(shared/|api/services/(kubernetes/(?!(deployment-runtime|default-runtime)\\.ts$)|system-release/ingress\\.ts$|(cluster-store|job-outcome|request-budget|api-identity|network|entities|container-image|logger)\\.ts$))',
-      },
-    },
-    {
-      // RFC 0044: the composition root registers the owners.
-      name: 'pool-loop-owner-boundary',
-      comment:
-        'The pool loop imports no owner, record or persistence; owners reach it through PoolOwner.',
-      severity: 'error',
-      from: { path: '^src/api/services/pool-reconciler\\.ts$' },
-      to: {
-        path: '^src/api/services/(deployment|node-pool-service|persistence|repositories/)',
-      },
-    },
-    {
-      name: 'pool-substrate-boundary:types',
-      comment:
-        'The Pod substrate takes only types from cluster-store and job-outcome (the Cause).',
-      severity: 'error',
-      from: {
-        path: '^src/api/services/kubernetes/(pod-termination|pool-objects|pod-logs|list-watch)\\.ts$',
-      },
-      to: {
-        path: '^src/api/services/(cluster-store|job-outcome)\\.ts$',
-        dependencyTypesNot: ['pre-compilation-only', 'type-import'],
-      },
     },
     {
       // RFC 0015 invariant 13.

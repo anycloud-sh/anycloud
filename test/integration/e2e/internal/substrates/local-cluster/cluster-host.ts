@@ -1,8 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, isIP } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 
 import { loadAllYaml, loadYaml } from '@kubernetes/client-node';
 import { z } from 'zod';
@@ -31,31 +28,6 @@ const busyboxImage =
   'mirror.gcr.io/library/busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662';
 const k3sApiPort = 6443;
 const k3sKubeconfigPath = '/etc/rancher/k3s/k3s.yaml';
-const auditPolicyPath = '/anycloud-audit-policy.yaml';
-const auditLogPath = '/var/lib/rancher/k3s/server/logs/audit.log';
-/**
- * Writes to the namespaced objects a Deployment record owns, plus the node
- * pool namespace's egress NetworkPolicy (K5); subresources such as Pod
- * status and ServiceAccount tokens are not matched.
- */
-const auditPolicy = JSON.stringify({
-  apiVersion: 'audit.k8s.io/v1',
-  kind: 'Policy',
-  omitStages: ['RequestReceived'],
-  rules: [
-    {
-      level: 'Metadata',
-      verbs: ['create', 'update', 'patch', 'delete', 'deletecollection'],
-      resources: [
-        { group: '', resources: ['pods', 'secrets', 'serviceaccounts'] },
-        { group: 'apps', resources: ['deployments'] },
-        { group: 'networking.k8s.io', resources: ['networkpolicies'] },
-      ],
-    },
-    { level: 'None' },
-  ],
-});
-
 const kubeconfigSchema = z
   .object({
     clusters: z
@@ -192,16 +164,6 @@ export async function waitForKubeSystemIdentity(
   return uid;
 }
 
-/**
- * A management node of a production default's size (`t3.medium`, 2 vCPU
- * and 4 GiB), whose CPUs the API child shares (S12).
- */
-export interface LocalManagementNode {
-  /** Docker's `--cpuset-cpus`, e.g. `0,1`. */
-  readonly cpus: string;
-  readonly memoryBytes: number;
-}
-
 // Not the chart's own names: the hosted chart stage installs that chart into
 // this cluster, and Helm won't adopt a ClusterRole it didn't create.
 const apiServiceAccount = 'anycloud-e2e-api';
@@ -312,15 +274,13 @@ async function mintChartRbacConnection(
 /**
  * Fixture-owned cluster: one K3s server container on the runner's
  * Docker, exactly like a developer's k3d cluster. The API only ever sees the
- * chart-RBAC connection minted here; node pool agents reach it through the
- * production join credential.
+ * chart-RBAC connection minted here.
  */
 export class LocalClusterHost {
   readonly #docker = new DockerEngine();
   readonly #redactor: Redactor;
   readonly #runId: string;
   readonly #wait: Pick<Waiter, 'for'>;
-  #management: LocalManagementNode | undefined;
   #clients: KubernetesClients | undefined;
   #kubeconfig: string | undefined;
   #connection: ClusterConnectionDocument | undefined;
@@ -336,11 +296,6 @@ export class LocalClusterHost {
     this.#redactor = input.redactor;
     this.#runId = input.runId;
     this.#wait = input.wait;
-  }
-
-  /** Before `start`: the management node's CPUs and memory (S12). */
-  constrain(management: LocalManagementNode): void {
-    this.#management = management;
   }
 
   get containerName(): string {
@@ -393,11 +348,8 @@ export class LocalClusterHost {
         publicIp,
         '--tls-san',
         'host.docker.internal',
-        // Agents learn the supervisor endpoint from the apiserver's advertised
-        // address and re-point their tunnel to it. The server's own address
-        // is on Docker's default bridge, unreachable from the pool networks,
-        // so advertise the host-gateway address and published port the join
-        // already reached — the same requirement a cross-cloud cluster has.
+        // Advertise the host-gateway address and published port the API
+        // child reaches, as a cross-cloud cluster's public endpoint.
         `--advertise-address=${publicIp}`,
         `--advertise-port=${String(hostPort)}`,
         `--node-external-ip=${publicIp}`,
@@ -420,16 +372,11 @@ export class LocalClusterHost {
         '--disable-cloud-controller',
         // The product's management configuration (`system-release/management-host.ts`).
         // metrics-server matters most here: nothing can schedule it (the
-        // management Node is tainted, pool Nodes for their pools), so
-        // its APIService stays unavailable, every discovery-dependent
-        // controller loops on it, and namespace deletion never finishes
-        // (`NamespaceDeletionDiscoveryFailure`) — which is what held the
-        // node pool Service's cleanup open in run 9.
+        // management Node is tainted), so its APIService stays unavailable,
+        // every discovery-dependent controller loops on it, and namespace
+        // deletion never finishes (`NamespaceDeletionDiscoveryFailure`).
         '--disable',
         'traefik,servicelb,metrics-server',
-        // Counts writes for the converged-Deployment check (`writesIn`).
-        `--kube-apiserver-arg=audit-policy-file=${auditPolicyPath}`,
-        `--kube-apiserver-arg=audit-log-path=${auditLogPath}`,
       ],
       Env: ['K3S_KUBECONFIG_MODE=644'],
       ExposedPorts: { [`${String(k3sApiPort)}/tcp`]: {} },
@@ -442,10 +389,6 @@ export class LocalClusterHost {
           ],
         },
         Tmpfs: { '/run': '', '/var/run': '' },
-        ...(this.#management && {
-          CpusetCpus: this.#management.cpus,
-          Memory: this.#management.memoryBytes,
-        }),
       },
       Labels: {
         [clusterLocalDockerLabel]: 'true',
@@ -453,18 +396,6 @@ export class LocalClusterHost {
         'com.anycloud.role': 'management',
       },
     });
-    const policyDirectory = await mkdtemp(path.join(tmpdir(), 'anycloud-'));
-    try {
-      const policy = path.join(policyDirectory, 'audit-policy.yaml');
-      await writeFile(policy, auditPolicy);
-      await executeLocalKubernetesCommand('docker', [
-        'cp',
-        policy,
-        `${this.containerName}:${auditPolicyPath}`,
-      ]);
-    } finally {
-      await rm(policyDirectory, { recursive: true, force: true });
-    }
     await this.#docker.startContainer(this.containerName);
     if ((await this.#publishedPort()) !== hostPort) {
       throw new Error('Docker did not publish the reserved local cluster port');
@@ -529,27 +460,6 @@ export class LocalClusterHost {
   clients(): KubernetesClients {
     if (!this.#clients) throw new Error('Local management host is not ready');
     return this.#clients;
-  }
-
-  /**
-   * Every audited write so far to an object in `namespace`, from any client,
-   * counted per resource (`secrets`, `deployments`, ...).
-   */
-  async writesIn(namespace: string): Promise<Record<string, number>> {
-    const log = await this.#docker.exec(this.containerName, [
-      'cat',
-      auditLogPath,
-    ]);
-    const writes: Record<string, number> = {};
-    // The API server may be mid-line; only a terminated line is complete.
-    for (const line of log.split('\n').slice(0, -1)) {
-      const { objectRef } = JSON.parse(line) as {
-        objectRef?: { namespace?: string; resource?: string };
-      };
-      if (objectRef?.namespace !== namespace || !objectRef.resource) continue;
-      writes[objectRef.resource] = (writes[objectRef.resource] ?? 0) + 1;
-    }
-    return writes;
   }
 
   async exists(): Promise<boolean> {

@@ -1,5 +1,5 @@
 import { systemReleaseStatusSchema } from '../../../src/shared/api-contract/system-release-schemas.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { User } from '../../../src/api/services/entities.js';
 import BetterSqlite3 from 'better-sqlite3';
 import * as semver from 'semver';
@@ -230,7 +230,6 @@ describe('system release domain (hosted, industry pattern)', () => {
       },
       ownChart: chartOf('a'),
       generateOperationId: () => 'rel-1',
-      drainPoolJobs: async () => [],
       selfDelete: null,
       log: { info: () => {}, warn: () => {} },
     };
@@ -360,27 +359,6 @@ describe('system release domain (hosted, industry pattern)', () => {
     await expect(
       getPersistence().systemReleases.get('rel-2'),
     ).resolves.toBeNull();
-  });
-
-  it('decision 30 drains pool Jobs only for a release the API would carry out', async () => {
-    const drain = vi.fn(async () => []);
-    deps.drainPoolJobs = drain;
-    // Already carried: nothing is held or stopped.
-    await expect(
-      domain().drain(peer, { force: true, image: image('0.1.64', 'a') }),
-    ).resolves.toEqual({ jobs: [] });
-    // Refused: the refusal, before any pool Job stops.
-    await expect(
-      domain().drain(peer, { force: true, image: image('0.1.63', 'e') }),
-    ).rejects.toThrow('Release refused');
-    expect(drain).not.toHaveBeenCalled();
-    await domain().drain(peer, { force: true, image: image('0.1.65', 'b') });
-    await domain().drain(peer, { force: false, keep: ['0.1.65'] });
-    expect(drain.mock.calls).toEqual([
-      [true, undefined],
-      [false, ['0.1.65']],
-    ]);
-    expect(applied).toHaveLength(0);
   });
 
   it('records the failure and reports stale when the HelmChart moved underneath the request', async () => {

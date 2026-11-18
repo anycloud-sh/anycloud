@@ -93,9 +93,8 @@ export function isPinnedApiImage(image: string): boolean {
 }
 
 /**
- * The standard control-plane taint keeps node pool work off the management
- * Node (node pool Pods tolerate only their own node pool's taint) while K3s's
- * packaged CoreDNS, local-path provisioner and the helm-controller's bootstrap
+ * The standard control-plane taint keeps the management Node to the system
+ * release while K3s's packaged CoreDNS, local-path provisioner and the helm-controller's bootstrap
  * install Job all tolerate it. A custom key would leave those Pending on a
  * single-node cluster (found by F run 4).
  */

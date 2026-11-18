@@ -1,8 +1,6 @@
 import { ORPCError } from '@orpc/client';
 import { LocalApiUnavailableError } from '../../shared/services/api-client/runtime.js';
 import type { WorkloadStatusResponse } from '../../shared/api-contract/workload-management-schemas.js';
-import type { DeploymentSummary } from '../../shared/api-contract/deployments-schemas.js';
-import type { NodePoolSummary } from '../../shared/api-contract/node-pools-schemas.js';
 import type { ClusterSummary } from '../../shared/api-contract/clusters-schemas.js';
 import {
   WorkloadState,
@@ -28,15 +26,11 @@ const WAIT_READ_CONCURRENCY = 8;
 /** What can be waited on: a Workload by bare ID, or a typed reference. */
 export type WaitTarget =
   | { readonly kind: 'workload'; readonly id: string }
-  | { readonly kind: 'deployment'; readonly id: string }
-  | { readonly kind: 'node-pool'; readonly id: string }
   | { readonly kind: 'cluster'; readonly id: string };
 
 /** One status read of a target. */
 export type WaitObservation =
   | { readonly kind: 'workload'; readonly status: WorkloadStatusResponse }
-  | { readonly kind: 'deployment'; readonly deployment: DeploymentSummary }
-  | { readonly kind: 'node-pool'; readonly nodePool: NodePoolSummary }
   | { readonly kind: 'cluster'; readonly cluster: ClusterSummary };
 
 export interface WaitDependencies {
@@ -54,20 +48,15 @@ export interface WaitOptions {
 type WaitOutcomeName = keyof typeof WAIT_EXIT;
 type Outcome = 'succeeded' | 'failed' | 'pending';
 
-const TYPED_REFERENCE = /^(deployment|node-pool|cluster)\/(.+)$/u;
+const TYPED_REFERENCE = /^cluster\/(.+)$/u;
 
-/** `deployment/<id>`, `node-pool/<id>`, `cluster/<id>`, or a Workload ID. */
+/** `cluster/<id>`, or a Workload ID. */
 export function parseWaitTarget(reference: string): WaitTarget {
   const typed = TYPED_REFERENCE.exec(reference);
-  if (typed) {
-    return {
-      kind: typed[1] as 'deployment' | 'node-pool' | 'cluster',
-      id: typed[2],
-    };
-  }
+  if (typed) return { kind: 'cluster', id: typed[1] };
   if (reference.includes('/')) {
     throw new Error(
-      `Cannot wait on "${reference}": use a Workload ID, deployment/<id>, node-pool/<id> or cluster/<id>`,
+      `Cannot wait on "${reference}": use a Workload ID or cluster/<id>`,
     );
   }
   return { kind: 'workload', id: reference };
@@ -89,10 +78,8 @@ interface Classified {
   /** A Workload's stable end reason, and the final attempt's once retries ran out. */
   readonly endReason?: EndReason;
   readonly lastAttemptEndReason?: EndReason;
-  /** What the target is waiting on, such as a node pool that is not Ready. */
+  /** What the target is waiting on. */
   readonly message?: string;
-  readonly jobsAhead?: number;
-  readonly upgrade?: { readonly number: number; readonly state: string };
 }
 
 function text(value: unknown): string | undefined {
@@ -101,13 +88,12 @@ function text(value: unknown): string | undefined {
 
 /**
  * Success per kind, from the shared state vocabulary: a Job at Completed; a
- * Service, VM, node pool or cluster at Running; a Deployment once the Pod on
- * the awaited revision is ready. Any other final state is a failure.
+ * Service, VM or cluster at Running. Any other final state is a failure.
  */
 function classify(observation: WaitObservation): Classified {
   switch (observation.kind) {
     case 'workload': {
-      const { workload, events, jobsAhead } = observation.status;
+      const { workload, events } = observation.status;
       const job = workload.workloadType === WorkloadType.Job;
       const target = job ? WorkloadState.Completed : WorkloadState.Running;
       const outcome: Outcome =
@@ -132,37 +118,10 @@ function classify(observation: WaitObservation): Classified {
           text(metadata.reason) && { reason: text(metadata.reason) }),
         ...(outcome !== 'succeeded' &&
           text(metadata.message) && { message: text(metadata.message) }),
-        ...(typeof jobsAhead === 'number' && { jobsAhead }),
       };
     }
-    case 'deployment': {
-      // `ready` holds only for the Pod on the latest requested revision, so it
-      // also answers `deployment upgrade --wait` and any later upgrade.
-      const { status } = observation.deployment;
-      if (!status) return { state: 'starting', outcome: 'pending' };
-      const outcome: Outcome =
-        status.state === WorkloadState.Terminated ||
-        status.state === WorkloadState.Failed ||
-        status.upgrade?.state === WorkloadState.Failed
-          ? 'failed'
-          : status.ready
-            ? 'succeeded'
-            : 'pending';
-      return {
-        state: status.state,
-        outcome,
-        ...(outcome === 'succeeded' && { ready: true as const }),
-        ...(status.upgrade && { upgrade: status.upgrade }),
-        ...(outcome !== 'succeeded' &&
-          text(status.reason) && { message: text(status.reason) }),
-      };
-    }
-    case 'node-pool':
     case 'cluster': {
-      const resource =
-        observation.kind === 'node-pool'
-          ? observation.nodePool
-          : observation.cluster;
+      const resource = observation.cluster;
       const outcome: Outcome =
         resource.state === WorkloadState.Running
           ? 'succeeded'
@@ -249,7 +208,7 @@ interface Member {
 }
 
 /**
- * Wait for an explicit set of Workloads, Deployments, node pools and clusters
+ * Wait for an explicit set of Workloads and clusters
  * to reach their targets. The CLI owns success, failure and its own lifetime:
  * one line per change, a heartbeat after 30 minutes without one, and an exit
  * code for the aggregate. Waiting never changes what it waits on.
@@ -295,17 +254,11 @@ export async function waitForTargets(
     // Keep reading the record first resolved, even if a name is reused or
     // stops resolving once the resource is deleted.
     if (observation.kind !== 'workload' && member.target.kind !== 'workload') {
-      const resolved =
-        observation.kind === 'deployment'
-          ? observation.deployment.id
-          : observation.kind === 'node-pool'
-            ? observation.nodePool.id
-            : observation.cluster.id;
-      member.target = { ...member.target, id: resolved };
+      member.target = { ...member.target, id: observation.cluster.id };
     }
     const { outcome, ...classified } = classify(observation);
     member.outcome = outcome;
-    const shown = `${classified.state}|${classified.upgrade?.state ?? ''}|${classified.message ?? ''}`;
+    const shown = `${classified.state}|${classified.message ?? ''}`;
     if (shown === member.shown) return;
     const previousState = member.state ?? null;
     member.shown = shown;

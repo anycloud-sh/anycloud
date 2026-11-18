@@ -33,27 +33,24 @@ const addError = (op: OpenApi, code: string, status: string) => {
   schema.oneOf.unshift({ $ref: ref });
   schema.discriminator.mapping[code] = ref;
 };
-const isWorkload = (op: OpenApi) => 'workloadBearer' in op.security[0];
 
 describe('renderOpenApiDiff', () => {
-  it('reports an error added on both bases once, with exact counts', () => {
+  it('reports an error added on the base once, with exact counts', () => {
     const after = committed();
     for (const { op } of ops(after)) addError(op, 'SERVICE_DRAINING', '503');
     after.components.schemas.SERVICE_DRAININGApiError = { type: 'object' };
     const total = ops(after).length;
-    const replicas = ops(after).filter(({ op }) => isWorkload(op)).length;
 
     const section = renderOpenApiDiff(committed(), after);
 
     expect(section).toContain(
-      `- \`authenticatedContract\`, \`workloadContract\`: + error \`SERVICE_DRAINING\` (503) → ${total} endpoints (${replicas} replica ⚠️)`,
+      `- \`authenticatedContract\`: + error \`SERVICE_DRAINING\` (503) → ${total} endpoints\n`,
     );
-    // The new 503 status on workload endpoints rides on the error line.
+    // The new 503 status rides on the error line.
     expect(section).not.toContain('status 503');
     expect(section).toContain(
       `- + schema \`SERVICE_DRAININGApiError\` → ${total} endpoints`,
     );
-    expect(section).toContain(`Changes ${replicas} replica routes`);
   });
 
   it('attributes a tag-wide error to the tag and a single one to its endpoint', () => {
@@ -71,7 +68,6 @@ describe('renderOpenApiDiff', () => {
     expect(section).toContain(
       `- \`${first.name}\`: + error \`ClusterLockedApiError\` (409)`,
     );
-    expect(section).not.toContain('⚠️ Changes');
   });
 
   it('lists removed endpoints before per-endpoint changes and caps the list', () => {
@@ -106,10 +102,9 @@ describe('renderOpenApiDiff', () => {
 
   it('counts the endpoints of a changed security scheme', () => {
     const after = committed();
-    after.components.securitySchemes.workloadBearer.description = 'Changed';
-    const replicas = ops(after).filter(({ op }) => isWorkload(op)).length;
+    after.components.securitySchemes.userBearer.description = 'Changed';
     expect(renderOpenApiDiff(committed(), after)).toContain(
-      `- securityScheme \`workloadBearer\`: ~ schema → ${replicas} endpoints (${replicas} replica ⚠️)`,
+      `- securityScheme \`userBearer\`: ~ schema → ${ops(after).length} endpoints`,
     );
   });
 

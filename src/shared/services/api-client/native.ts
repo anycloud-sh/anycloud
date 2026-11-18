@@ -56,10 +56,7 @@ export async function executeWorkloadCommand(
       Authorization: `Bearer ${accessToken}`,
       [ANYCLOUD_CLIENT_VERSION_HEADER]: getAnycloudVersion(),
     },
-    body: JSON.stringify({
-      command: request.command,
-      replica: request.replica,
-    }),
+    body: JSON.stringify({ command: request.command }),
   });
 
   if (!response.ok) {

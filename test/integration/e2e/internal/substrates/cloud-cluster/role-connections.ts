@@ -13,7 +13,6 @@ import {
 import type { ArtifactStore } from '../../artifacts.js';
 import type { CleanupStack } from '../../cleanup.js';
 import type { ServiceAccountIssuerRecord } from '../../contracts/cluster-cloud.js';
-import { CHECK_IMAGE } from '../../contracts/pool-checks.js';
 import type {
   MintOutcome,
   StorageTokenGrant,
@@ -31,6 +30,7 @@ import type { CliClient } from '../../cli.js';
 import { cliArgs } from '../../cli-surface.js';
 import type { ProcessRunner } from '../../process.js';
 import type { Waiter } from '../../wait.js';
+import { CHECK_IMAGE } from '../../contracts/job-policy.js';
 import type { HostedApiStage } from './hosted-stage.js';
 import { pendingLanes } from './role-pending-lanes.js';
 import {
@@ -283,7 +283,6 @@ export class CloudRoleConnections implements RoleConnectionsPort {
   }
 
   async outputThrough(
-    nodePoolId: string,
     cloud: RoleCloud,
     connection: string,
     content: string,
@@ -294,10 +293,9 @@ export class CloudRoleConnections implements RoleConnectionsPort {
     const bucket = `e2e-clust-out-${String(Date.now())}-${randomUUID().slice(0, 4)}`;
     // Deleted once read: S16 later revokes the connection that signs it.
     const deleteBucket = hosted.bucketDeletion(bucket, where);
-    const id = await hosted.checkJob(`role-${cloud}`, nodePoolId, {
+    const id = await hosted.checkJob(`role-${cloud}`, {
       image: CHECK_IMAGE,
       command: ['sh', '-c', `echo ${content} > /mnt/output/probe.txt`],
-      cpus: '0.1',
       outputBucket: bucket,
       outputStorage: where,
     });

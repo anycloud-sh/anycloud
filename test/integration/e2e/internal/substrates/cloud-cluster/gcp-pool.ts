@@ -20,32 +20,9 @@ export interface GcpComputeClients {
         string,
         {
           readonly instances?:
-            | readonly (GcpNamed & {
-                readonly zone?: string | null;
-                readonly creationTimestamp?: string | null;
-              })[]
+            | readonly (GcpNamed & { readonly zone?: string | null })[]
             | null;
         },
-      ]
-    >;
-    delete(request: {
-      readonly project: string;
-      readonly zone: string;
-      readonly instance: string;
-    }): Promise<unknown>;
-    get(request: {
-      readonly project: string;
-      readonly zone: string;
-      readonly instance: string;
-    }): Promise<
-      readonly [
-        {
-          readonly scheduling?: {
-            readonly provisioningModel?: string | null;
-            readonly instanceTerminationAction?: string | null;
-          } | null;
-        },
-        ...unknown[],
       ]
     >;
   };
@@ -59,10 +36,10 @@ export interface GcpComputeClients {
 }
 
 /**
- * The GCP side of a cross-cloud run: the cluster stays on AWS; the node pool's
- * VMs are GCP instances labelled `anycloud_resource=<pool id>` and its
- * firewall rules carry the pool id as their target tag (`gateways/gcp.ts`).
- * Compute SDK reads as in `ci/cleanup/gcp.ts`; no kubeconfig, no installer.
+ * A GCP management VM's inventory: its instance is labelled
+ * `anycloud_resource=<scope>` and its firewall rules carry the scope as their
+ * target tag (`gateways/gcp.ts`). Compute SDK reads as in
+ * `ci/cleanup/gcp.ts`; no kubeconfig, no installer.
  */
 export class GcpPoolInventory {
   readonly #project: string;
@@ -86,11 +63,11 @@ export class GcpPoolInventory {
     };
   }
 
-  async #instances(nodePoolId: string) {
+  async #instances(scope: string) {
     const found = [];
     for await (const [, list] of this.#clients.instances.aggregatedListAsync({
       project: this.#project,
-      filter: `labels.anycloud_resource=${sanitizeGCPLabel(nodePoolId)} AND status!=TERMINATED`,
+      filter: `labels.anycloud_resource=${sanitizeGCPLabel(scope)} AND status!=TERMINATED`,
       returnPartialSuccess: true,
     })) {
       found.push(...(list.instances ?? []));
@@ -99,59 +76,24 @@ export class GcpPoolInventory {
   }
 
   /** Live instances of the pool, as `<zone>/<name>`. */
-  async liveInstances(nodePoolId: string): Promise<string[]> {
-    return (await this.#instances(nodePoolId)).flatMap((instance) =>
+  async liveInstances(scope: string): Promise<string[]> {
+    return (await this.#instances(scope)).flatMap((instance) =>
       instance.name
         ? [`${instance.zone?.split('/').pop() ?? '?'}/${instance.name}`]
         : [],
     );
   }
 
-  /** Launch times (epoch ms) of the pool's live instances. */
-  async instanceLaunches(nodePoolId: string): Promise<number[]> {
-    return (await this.#instances(nodePoolId)).flatMap((instance) =>
-      instance.creationTimestamp
-        ? [Date.parse(instance.creationTimestamp)]
-        : [],
-    );
-  }
-
   /** Firewall rules the product created for the pool. */
-  async networkLeftovers(nodePoolId: string): Promise<string[]> {
+  async networkLeftovers(scope: string): Promise<string[]> {
     const found: string[] = [];
     for await (const firewall of this.#clients.firewalls.listAsync({
       project: this.#project,
     })) {
-      if (firewall.name && firewall.targetTags?.includes(nodePoolId)) {
+      if (firewall.name && firewall.targetTags?.includes(scope)) {
         found.push(`firewall/${firewall.name}`);
       }
     }
     return found;
-  }
-
-  /** A `<zone>/<name>` spot instance's preemption action; null when not spot. */
-  async spotEviction(instance: string): Promise<string | null> {
-    const [zone, name] = instance.split('/');
-    const [found] = await this.#clients.instances.get({
-      project: this.#project,
-      zone: String(zone),
-      instance: String(name),
-    });
-    return found.scheduling?.provisioningModel === 'SPOT'
-      ? (found.scheduling.instanceTerminationAction ?? null)
-      : null;
-  }
-
-  /** Terminate one `<zone>/<name>` instance natively; the controller must observe the loss. */
-  async terminateInstance(instance: string): Promise<void> {
-    const [zone, name] = instance.split('/');
-    if (!zone || !name) {
-      throw new Error(`GCP instance ${instance} is not <zone>/<name>`);
-    }
-    await this.#clients.instances.delete({
-      project: this.#project,
-      zone,
-      instance: name,
-    });
   }
 }

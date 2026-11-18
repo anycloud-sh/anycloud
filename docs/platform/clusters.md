@@ -1,27 +1,23 @@
 ---
 title: Clusters
-description: Create the installation's Kubernetes cluster, point the CLI at the API it hosts, add node pools, and run a Service on one.
+description: Create the installation's Kubernetes cluster, point the CLI at the API it hosts, upgrade it, and take it down.
 ---
 
 # Clusters
 
 An Anycloud installation has **one Kubernetes cluster**: a management VM in
 your cloud account running a pinned K3s control plane, with the Anycloud API
-installed on it as a Helm-managed release. The cluster is the hosted API's home
-and the place where **node pools** — cloud VM pools joined to it — run
-[Kubernetes Deployments](/reference/cli/deployments) and
-[node pool Services](/reference/cli/service#services-on-a-node-pool).
+installed on it as a Helm-managed release. The cluster is the hosted API's
+home. The Jobs, Services and VMs you run through the hosted API each get VMs of
+their own in your cloud account, as they do through a local API.
 
 This guide walks the path the live AWS runs prove, in order: create the
-cluster, point the CLI at the API it hosts, add a node pool, run a Service on
-it, update the hosted API, and take everything down. Each command's output
-below is what the CLI prints; ids and addresses are placeholders.
+cluster, point the CLI at the API it hosts, update the hosted API, and take
+everything down. Each command's output below is what the CLI prints; ids and
+addresses are placeholders.
 
-Terminology: the **cluster** is the installation's Kubernetes cluster; a
-**node pool** is a set of cloud VMs joined to it; a **Deployment record** is
-the Anycloud resource that keeps an application running for targeted Jobs, and
-the **native Kubernetes Deployment** is its runtime object. **Workload** is a
-Job, Service or VM.
+Terminology: the **cluster** is the installation's Kubernetes cluster.
+**Workload** is a Job, Service or VM.
 
 ## Before you start
 
@@ -73,103 +69,19 @@ anycloud api use https://<cluster-id>.anycloud.sh
 ```
 
 From here every command runs against the API on the cluster. Unless it was
-restored from a backup, it starts with an empty database: add the credentials node pools will use, and share the API with
-teammates if you want to
+restored from a backup, it starts with an empty database: add the credentials
+your Workloads will use, and share the API with teammates if you want to
 ([Hosted APIs](/platform/hosted-apis#give-someone-access)).
 
 ```bash
-anycloud credentials new pool-aws
+anycloud credentials new aws
 ```
 
-## 3. Add a node pool
+Then run [Jobs](/platform/jobs) (`anycloud job`),
+[Services](/platform/services) (`anycloud service`) and [VMs](/platform/vms)
+(`anycloud vm`) as you would against a local API.
 
-A node pool is a cloud-specific pool of VMs that
-[scales](/reference/cli/node-pools#scaling) between `--min-vms` and
-`--max-vms`, bought with its own credential and joined to the cluster with
-short-lived per-VM tokens. Its VMs carry no SSH key or cloud credential and
-accept no inbound traffic until the pool hosts a Service; then they admit TCP
-80 from Cloudflare only:
-
-```bash
-anycloud node-pool create cpu \
-  --credentials pool-aws \
-  --region us-east-2 \
-  --vm-type t3.large \
-  --min-vms 1 \
-  --max-vms 1
-```
-
-```text
-   ✓ Node pool cpu creation started.
-
-🏗️  provisioning
-
-   ID        <node-pool-id>
-   Name      cpu
-   Cluster   <cluster-id>
-   Cloud     AWS / us-east-2
-   VM types  t3.large
-   VMs       0/1 ready, 0 starting, 0 draining
-```
-
-The pool becomes `running` once `--min-vms` VMs have joined as Nodes (a GPU pool also
-waits for the NVIDIA add-on to advertise the catalog's device count):
-
-```bash
-anycloud node-pool status cpu
-```
-
-```text
-⚡  running
-
-   ID        <node-pool-id>
-   Name      cpu
-   Cluster   <cluster-id>
-   Cloud     AWS / us-east-2
-   VM types  t3.large
-   VMs       1/1 ready, 0 starting, 0 draining
-   Live VMs  t3.large in us-east-2 (zone us-east-2a)
-```
-
-`anycloud node-pool list` shows every pool; a `failed` pool carries the reason
-in `Last error:`. GPU node pools, add-ons and deletion rules are in
-[`anycloud node-pool`](/reference/cli/node-pools).
-
-## 4. Run a Service on the node pool
-
-A Service placed with `--node-pool` runs as one replica on that pool. Its
-Anycloud identity and configuration are the same as a VM-backed Service; the
-native Deployment, Service and Secrets are runtime details. It is reachable at
-`https://<id>.anycloud.sh`, which the CLI prints as `URL:`:
-
-```bash
-anycloud service ghcr.io/example/api:latest --node-pool cpu --id web
-```
-
-```text
-✓ Service workload created!
-
-ID: web
-URL: https://web.anycloud.sh
-```
-
-```bash
-anycloud status web
-```
-
-`status` shows scheduling and startup blocks while the Pod is placed, then
-`running`. Terminate it like any Service:
-
-```bash
-anycloud terminate web
-```
-
-Deployments that accept targeted Jobs work the same way:
-`anycloud deployment create <name> <image> --node-pool cpu`, then
-`anycloud job … --deployment <name>`; see
-[`anycloud deployment`](/reference/cli/deployments).
-
-## 5. Upgrade the hosted API
+## 3. Upgrade the hosted API
 
 When a new CLI release is installed, upgrade the API it talks to. Against the
 cluster-hosted API the command asks the API for this CLI's release, backs the
@@ -212,16 +124,15 @@ until then; without it, `api status` reads once.
 See [Hosted APIs](/platform/hosted-apis#upgrade-a-hosted-api) for backups,
 `--image`, and why an older image is refused.
 
-## 6. Take it down
+## 4. Take it down
 
-Teardown runs top-down against the hosted API, and the cluster's own delete
-goes through it too. `cluster delete` never deletes node pools: the API
-refuses while one, or a running VM Service or Job, remains, naming each.
+Teardown runs against the hosted API, and the cluster's own delete goes
+through it too. The API refuses while a Job, Service or VM still runs, naming
+each, and while an API from an earlier release still has node pools.
 
 ```bash
 anycloud api use https://<cluster-id>.anycloud.sh
-anycloud terminate web
-anycloud node-pool delete cpu
+anycloud terminate <id>
 anycloud cluster delete prod
 ```
 
@@ -242,18 +153,18 @@ what `--delete-vms` and `--delete-buckets` name (see
 
 If the management VM is lost, run the same `anycloud cluster create` with
 `--checkpoint-bucket` set to the cluster's bucket (its id for a managed
-bucket). The restored API keeps the cluster id and URL, replaces the node pool
-VMs, and re-applies Deployments and Services; up to an hour of changes is lost, and the hourly backup needs bucket versioning
+bucket). The restored API keeps the cluster id and URL; up to an hour of
+changes is lost, and the hourly backup needs bucket versioning
 (see [Back up and restore](/platform/hosted-apis#back-up-and-restore)).
 Restore is refused while the cloud still shows the lost management VM. See
 [Recover after losing the management VM](/reference/cli/cluster#recover-after-losing-the-management-vm).
 
 ## What runs where
 
-| Concern                                                 | Where it lives                                                                                                                         |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Cluster record, creation ledger, cluster credential     | The installer API (`anycloud cluster list` there)                                                                                      |
-| Hosted API database and encryption key                  | The `anycloud-api-state` volume on the cluster; hourly backups in the checkpoint bucket, read only by a restore                        |
-| Node pools, Deployments, Services and their credentials | The hosted API                                                                                                                         |
-| Authority over the cluster                              | The hosted API's own ServiceAccount; nothing is stored or exported — see [Cluster authority](/reference/cli/cluster#cluster-authority) |
-| Public entry                                            | `https://<cluster-id>.anycloud.sh` (Cloudflare → management VM → Traefik → API)                                                        |
+| Concern                                             | Where it lives                                                                                                                         |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Cluster record, creation ledger, cluster credential | The installer API (`anycloud cluster list` there)                                                                                      |
+| Hosted API database and encryption key              | The `anycloud-api-state` volume on the cluster; hourly backups in the checkpoint bucket, read only by a restore                        |
+| Workloads and their credentials                     | The hosted API                                                                                                                         |
+| Authority over the cluster                          | The hosted API's own ServiceAccount; nothing is stored or exported — see [Cluster authority](/reference/cli/cluster#cluster-authority) |
+| Public entry                                        | `https://<cluster-id>.anycloud.sh` (Cloudflare → management VM → Traefik → API)                                                        |

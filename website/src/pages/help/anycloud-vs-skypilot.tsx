@@ -46,8 +46,7 @@ export default function Comparison(): React.ReactElement {
         <p>
           Anycloud Jobs run published containers with a command, hardware
           target, and optional buckets. A VM-host Job creates one host; use it
-          when the training process fits on that machine. Anycloud also has
-          Kubernetes Deployments for targeted Jobs on an existing container.
+          when the training process fits on that machine.
         </p>
         <p>
           Compare the number of GPUs per host, cloud quota, checkpoint storage,

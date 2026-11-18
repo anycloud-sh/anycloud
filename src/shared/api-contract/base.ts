@@ -34,10 +34,7 @@ type CommandRoute = Omit<Route, 'method' | 'spec' | 'tags'> & {
 type ApiRoute = QueryRoute | CommandRoute;
 
 export const USER_OPENAPI_SECURITY_SCHEME = 'userBearer';
-export const WORKLOAD_OPENAPI_SECURITY_SCHEME = 'workloadBearer';
 export const CLIENT_VERSION_OPENAPI_PARAMETER = 'AnyCloudClientVersion';
-
-type ApiIdentity = 'user' | 'workload';
 
 interface CommonPolicy {
   timeoutMs?: number | null;
@@ -109,11 +106,7 @@ function omitNoContentSchema(
 }
 
 /** Attach wire-level policy once without changing the TypeScript input type. */
-function openApiRoute(
-  route: ApiRoute,
-  tag: string,
-  identity: ApiIdentity,
-): Route {
+function openApiRoute(route: ApiRoute, tag: string): Route {
   return {
     ...route,
     tags: [tag],
@@ -121,22 +114,13 @@ function openApiRoute(
       const operation = omitNoContentSchema(generated, route.successStatus);
       return {
         ...operation,
-        security: [
+        security: [{ [USER_OPENAPI_SECURITY_SCHEME]: [] }],
+        parameters: [
+          ...(operation.parameters ?? []),
           {
-            [identity === 'user'
-              ? USER_OPENAPI_SECURITY_SCHEME
-              : WORKLOAD_OPENAPI_SECURITY_SCHEME]: [],
+            $ref: `#/components/parameters/${CLIENT_VERSION_OPENAPI_PARAMETER}`,
           },
         ],
-        parameters:
-          identity === 'user'
-            ? [
-                ...(operation.parameters ?? []),
-                {
-                  $ref: `#/components/parameters/${CLIENT_VERSION_OPENAPI_PARAMETER}`,
-                },
-              ]
-            : operation.parameters,
       };
     },
   };
@@ -195,44 +179,12 @@ export function authenticatedEndpoints<const TErrorMap extends ErrorMap>(
   return {
     query(route: QueryRoute, policy: QueryPolicy = {}) {
       return contract
-        .route(openApiRoute(route, tag, 'user'))
+        .route(openApiRoute(route, tag))
         .meta(endpointMeta('query', route, policy));
     },
     command(route: CommandRoute, policy: CommandPolicy = {}) {
       return contract
-        .route(openApiRoute(route, tag, 'user'))
-        .meta(endpointMeta('command', route, policy));
-    },
-  };
-}
-
-const workloadContract = oc.$meta<ApiContractMeta>(initialMeta).errors({
-  WORKLOAD_UNAUTHORIZED: {
-    status: 401,
-    message: 'Workload identity is invalid',
-  },
-  WORKLOAD_FORBIDDEN: {
-    status: 403,
-    message: 'Workload identity does not own this Workload',
-  },
-  ...restarting,
-});
-
-/** Pod-authenticated JSON routes; handlers validate projected identity. */
-export function workloadEndpoints<const TErrorMap extends ErrorMap>(
-  errors: TErrorMap,
-  tag: string,
-) {
-  const contract = workloadContract.errors(errors);
-  return {
-    query(route: QueryRoute, policy: QueryPolicy = {}) {
-      return contract
-        .route(openApiRoute(route, tag, 'workload'))
-        .meta(endpointMeta('query', route, policy));
-    },
-    command(route: CommandRoute, policy: CommandPolicy = {}) {
-      return contract
-        .route(openApiRoute(route, tag, 'workload'))
+        .route(openApiRoute(route, tag))
         .meta(endpointMeta('command', route, policy));
     },
   };

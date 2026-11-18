@@ -39,8 +39,6 @@ function printStatus(
   printWorkloadHeader(response.workload, {
     verbose: options.verbose,
     checkpoint: response.checkpoint,
-    attempt: response.attempt,
-    waiting: response.waiting,
   });
   const view = workloadStatusView(response, options);
   const lines = buildStatusLines(view, {

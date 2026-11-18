@@ -19,17 +19,11 @@ import { classifyStepFailure } from '../provisioning-failure.js';
 export const UNUSABLE_GPU_DIAGNOSIS = 'unusable-gpu';
 
 /** What to check when the image, not the host, couldn't use the GPU. */
-export const UNUSABLE_GPU_HINT =
+const UNUSABLE_GPU_HINT =
   'check CUDA_VISIBLE_DEVICES and that the image has a CUDA build of its framework';
 
 /** The Failed reason once the Job's fresh VMs all showed an unusable GPU. */
 export const UNUSABLE_GPU_EXHAUSTED = `GPU unusable on every fresh VM; ${UNUSABLE_GPU_HINT}`;
-
-/** A pool Job's unusable-GPU retries share the VM path's budget. */
-export const UNUSABLE_GPU_POOL_RETRY_CAP = {
-  max: UNUSABLE_GPU_MAX_RETRIES,
-  failed: 'GPU unusable on every Node it retried on, each found faulty',
-};
 
 // A non-zero container exit whose logs contain CUDA_ERROR_NO_DEVICE can mean
 // the host booted without visible GPUs (driver missing, MIG mis-provisioned,
@@ -88,7 +82,7 @@ export function looksLikeMissingGPU(
  * GPU that computes wrong results still takes a CUDA context, so the GPU probe
  * can't clear it on a VM or a pool Node.
  */
-export function looksLikeGpuNumericFault(logs: string): boolean {
+function looksLikeGpuNumericFault(logs: string): boolean {
   return (
     /Autotuning failed[\s\S]*No valid config found/.test(logs) ||
     /redzone_allocator[\s\S]*Mismatched results with host and device comparison/.test(

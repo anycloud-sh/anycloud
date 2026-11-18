@@ -32,8 +32,8 @@ import {
 /**
  * RFC 0047 § Bucket tokens on role connections, through each cloud's SDK with
  * only the network stubbed: a VM-host Job's sync and a Service's renewal mint
- * through `mintedUploadBuckets`, then renew at `renewAt`. Pool Job grants are
- * in pool-job-storage.spec.ts; the live proof is S14.
+ * through `mintedUploadBuckets`, then renew at `renewAt`. The live proof is
+ * S14.
  */
 
 const tokens = vi.hoisted(() => ({ issued: [] as string[] }));

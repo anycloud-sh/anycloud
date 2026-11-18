@@ -11,7 +11,6 @@ import {
 import { ContainerState } from '../../../src/shared/runtime.js';
 import { DockerManager } from '../../../src/api/services/docker';
 import { resetTestStore } from '../utils';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
 
 describe('GET /v1/workloads/{id}/ssh-access', () => {
@@ -27,13 +26,11 @@ describe('GET /v1/workloads/{id}/ssh-access', () => {
       cloudProvider = CloudType.AWS,
       userId = 'test-user',
       workloadType = 'job',
-      nodePoolId,
     }: {
       vms?: Parameters<typeof provisionTestVm>[1][];
       cloudProvider?: CloudType;
       userId?: string;
       workloadType?: WorkloadTypeValue;
-      nodePoolId?: string;
     } = {},
   ): Promise<void> {
     await getDB().query(
@@ -50,7 +47,6 @@ describe('GET /v1/workloads/{id}/ssh-access', () => {
       vmType: 't3.medium',
       sshPrivateKey: 'test-ssh-key',
       credentialId: 'test-credential-id',
-      nodePoolId,
     });
     for (const vm of vms) await provisionTestVm(id, vm);
     await walkToState(id, WorkloadState.Running);
@@ -91,19 +87,6 @@ describe('GET /v1/workloads/{id}/ssh-access', () => {
       sshPort: 2222,
       sshUsername: 'ubuntu',
       sshPrivateKey: 'test-ssh-key',
-    });
-  });
-
-  it('refuses a node-pool Service instead of reporting no live VM', async () => {
-    const id = 'ssh-access-node-pool-service';
-    const { nodePoolId } = await seedReadyNodePool();
-    await seedWorkload(id, { workloadType: 'service', nodePoolId });
-
-    const response = await sshAccessRequest(id);
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      message: 'anycloud ssh is not supported for Services on a node pool.',
     });
   });
 

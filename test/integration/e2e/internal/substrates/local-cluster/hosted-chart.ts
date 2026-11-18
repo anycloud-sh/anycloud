@@ -27,9 +27,8 @@ import { clusterLocalDockerLabel } from './constants.js';
 
 /** The chart's API selector from a newer chart, which the older chart lacks. */
 const PROTECTED_SELECTOR = `${MANAGEMENT_MEMBER_LABEL}:`;
-/** The v0.1.65 chart's gap: `anycloud logs` on a Deployment needs this rule. */
-const POD_LOG_RULE = `  # \`anycloud logs\` for Deployments and Services on node pools.
-  - apiGroups: ['']
+/** The v0.1.65 chart's gap: the API reads its release Pods' logs through this rule. */
+const POD_LOG_RULE = `  - apiGroups: ['']
     resources: ['pods/log']
     verbs: ['get']
 `;
@@ -179,8 +178,7 @@ export async function proveHostedChartRepair(input: {
 
     // What bootstrap provides on a management host: the namespace, the
     // management Node labels (the protected one from create or reconfigure)
-    // and Traefik's IngressRoute kind. Node pool ingress has already
-    // installed that kind on this cluster.
+    // and Traefik's IngressRoute kind.
     await docker([
       'exec',
       container,

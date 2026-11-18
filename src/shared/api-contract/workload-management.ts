@@ -8,8 +8,6 @@ import {
   workloadListResponseSchema,
   workloadResubmitRequestSchema,
   workloadResubmitResponseSchema,
-  jobSubmissionObservationRequestSchema,
-  jobSubmissionObservationSchema,
   workloadSshAccessRequestSchema,
   workloadSshAccessResponseSchema,
   workloadStatusRequestSchema,
@@ -121,20 +119,6 @@ const resubmit = management
   .input(workloadResubmitRequestSchema)
   .output(workloadResubmitResponseSchema);
 
-const observeSubmission = management
-  .command(
-    {
-      method: 'POST',
-      path: '/workloads/{id}/claim-observation',
-      operationId: 'observeJobSubmission',
-      summary: 'Observe or expire one Deployment Job submission',
-      inputStructure: 'detailed',
-    },
-    { replay: 'safe', timeoutMs: 30_000 },
-  )
-  .input(jobSubmissionObservationRequestSchema)
-  .output(jobSubmissionObservationSchema);
-
 export const workloadManagementContract = {
   cost,
   costReport,
@@ -143,5 +127,4 @@ export const workloadManagementContract = {
   status,
   sshAccess,
   resubmit,
-  observeSubmission,
 };

@@ -122,31 +122,6 @@ describe('local API reconciliation service', () => {
     );
   });
 
-  it('drains the running API before it stops it for a restart, and not when it already matches', async () => {
-    vi.mocked(isLocalApiContainerRunning).mockReturnValue(true);
-    vi.mocked(getLocalApiContainerHostPort).mockReturnValue(9000);
-    vi.mocked(getLocalApiContainerVersion).mockReturnValue('0.0.1');
-    const beforeRestart = vi.fn(async () => {
-      expect(execSync).not.toHaveBeenCalledWith(
-        `'${BIN}' api stop`,
-        expect.anything(),
-      );
-    });
-
-    await reconcileLocalApi(packageJson.version, { beforeRestart });
-
-    expect(beforeRestart).toHaveBeenCalledExactlyOnceWith(
-      'http://localhost:9000',
-    );
-    expect(execSync).toHaveBeenCalledWith(`'${BIN}' api stop`, {
-      stdio: 'inherit',
-    });
-    beforeRestart.mockClear();
-    vi.mocked(getLocalApiContainerVersion).mockReturnValue(packageJson.version);
-    await reconcileLocalApi(packageJson.version, { beforeRestart });
-    expect(beforeRestart).not.toHaveBeenCalled();
-  });
-
   const STILL_STARTING = /^(?!.*api stop).*still starting.*docker logs/s;
   it.each([
     ['a restart', true, 4, STILL_STARTING],

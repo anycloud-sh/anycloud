@@ -113,28 +113,6 @@ describe('Job runtime contract', () => {
     ).toThrow('Job runtime requires a resolved cloud provider');
   });
 
-  it('0029/S14 rejects Deployment-targeted Jobs before dedicated runtime dispatch', () => {
-    const router = createJobRuntimeRouter({ vmHost: runtime() });
-    const workload = makeStoredWorkload({
-      deploymentId: 'model-a',
-      cloudProvider: null,
-    });
-    const request = {
-      workload,
-      placement: {
-        cloudConfig: {
-          cloudProvider: CloudType.AWS,
-          region: 'us-east-1',
-          vmType: 't3.micro',
-        },
-      },
-    };
-
-    expect(() => router.deploy(request)).toThrow(
-      'Targeted Job test-deploy cannot enter the dedicated Job runtime',
-    );
-  });
-
   it('allows VM-host provider failover without changing runtime ownership', async () => {
     const vmHost = runtime();
     const router = createJobRuntimeRouter({ vmHost });

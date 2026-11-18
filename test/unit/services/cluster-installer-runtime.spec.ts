@@ -7,7 +7,6 @@ import type { HostCommandTransport } from '../../../src/api/services/gateways/ho
 import type { V1ContainerState, V1Pod } from '@kubernetes/client-node';
 import {
   createCloudCompute,
-  METADATA_NODE_POOL_BOOT,
   VM_PRESENT,
 } from '../../../src/api/services/gateways/cloud.js';
 import {
@@ -211,7 +210,6 @@ describe('cluster infrastructure adapter', () => {
       observeVMReleaseOnce: observeOnce,
       releaseConfirmWaitMs: 0,
       resourceScoped: {
-        nodePoolBoot: METADATA_NODE_POOL_BOOT,
         prepareResourceNetwork: vi.fn(),
         newResourceVM: vi.fn(),
         terminateResourceNetwork: vi.fn(),

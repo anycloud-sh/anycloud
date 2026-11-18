@@ -31,11 +31,11 @@ const CUDA_CONTEXT_CHECK = [
   'print("CUresult",r);raise SystemExit(r)',
 ].join('\n');
 /** Lists the GPUs, then takes a CUDA context on each; also a pool Node's check. */
-export const GPU_PROBE = `timeout 30 nvidia-smi -L 2>&1 && timeout 30 python3 -c '${CUDA_CONTEXT_CHECK}' 2>&1; echo "exit=$?"`;
+const GPU_PROBE = `timeout 30 nvidia-smi -L 2>&1 && timeout 30 python3 -c '${CUDA_CONTEXT_CHECK}' 2>&1; echo "exit=$?"`;
 const GPU_PROBE_TIMEOUT_MS = 75_000;
 
 /** `GPU_PROBE`'s output when it listed a GPU and every context succeeded. */
-export function gpuProbePassed(output: string): boolean {
+function gpuProbePassed(output: string): boolean {
   return /^GPU \d+:/m.test(output) && output.trim().endsWith('exit=0');
 }
 

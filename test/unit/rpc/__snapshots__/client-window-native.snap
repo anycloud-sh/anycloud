@@ -72,10 +72,6 @@
             "command": {
               "type": "string",
               "minLength": 1
-            },
-            "replica": {
-              "type": "string",
-              "minLength": 1
             }
           },
           "required": [

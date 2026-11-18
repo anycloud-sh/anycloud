@@ -29,8 +29,6 @@ const DOCKER_OPTION_FLAGS = {
   runtime: '--runtime',
   binds: '--bind',
   network: '--network',
-  caches: '--cache',
-  userNamespace: '--user-namespace-jobs',
 } as const satisfies Record<keyof DockerOptions, string>;
 
 const DOCKER_OPTION_KEYS = Object.keys(
@@ -63,7 +61,7 @@ const SUPPORTED_BIND_MODES = new Set([
   'nocopy',
 ]);
 
-export interface ParsedDockerSize {
+interface ParsedDockerSize {
   amount: string;
   unit?: keyof typeof SIZE_MULTIPLIERS;
   bytes: bigint;
@@ -93,7 +91,7 @@ function requireString(
 
 function requireStringArray(
   value: unknown,
-  key: 'ulimits' | 'binds' | 'caches',
+  key: 'ulimits' | 'binds',
 ): asserts value is string[] {
   if (!Array.isArray(value)) {
     invalid(`dockerOptions.${key} must be an array of strings.`);
@@ -125,11 +123,11 @@ function assertDockerOptionsShape(
 
   for (const key of DOCKER_OPTION_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-    if (key === 'privileged' || key === 'userNamespace') {
+    if (key === 'privileged') {
       if (typeof value[key] !== 'boolean') {
         invalid(`dockerOptions.${key} must be a boolean.`);
       }
-    } else if (key === 'ulimits' || key === 'binds' || key === 'caches') {
+    } else if (key === 'ulimits' || key === 'binds') {
       requireStringArray(value[key], key);
     } else {
       requireString(value[key], key);
@@ -138,7 +136,7 @@ function assertDockerOptionsShape(
 }
 
 /** Parse the positive byte/K/M/G/T forms accepted by Docker size flags. */
-export function parseDockerSize(
+function parseDockerSize(
   value: string,
   flag: '--memory' | '--shm-size',
 ): ParsedDockerSize {
@@ -331,120 +329,6 @@ export function validateDockerOptionsRequest(
       );
     }
   }
-}
-
-function validateKubernetesDockerOptionSupport(
-  options: DockerOptions,
-  workload: string,
-): void {
-  const supported = new Set<keyof DockerOptions>([
-    'privileged',
-    'userNamespace',
-    'binds',
-    'caches',
-    'gpus',
-    'runtime',
-    'shmSize',
-    'memory',
-    'cpus',
-  ]);
-  const unsupported = DOCKER_OPTION_KEYS.flatMap((key) => {
-    if (supported.has(key)) return [];
-    const option = options[key];
-    if (Array.isArray(option)) {
-      return option.length > 0 ? [DOCKER_OPTION_FLAGS[key]] : [];
-    }
-    return option === undefined ? [] : [DOCKER_OPTION_FLAGS[key]];
-  });
-  if (unsupported.length > 0) {
-    invalid(`${workload} does not support ${unsupported.join(', ')} yet.`);
-  }
-  // Pods render CPU in millicores, so a finer request would be silently
-  // rounded up; refuse it instead.
-  if ((options.cpus?.split('.')[1]?.replace(/0+$/, '').length ?? 0) > 3) {
-    invalid(`${workload} --cpus must be a whole number of millicores.`);
-  }
-  const targets: string[] = [];
-  const reserved = [
-    '/var/run/secrets',
-    '/run/secrets',
-    '/dev',
-    '/proc',
-    '/sys',
-  ];
-  const mount = (spec: string, target: string, owned: string[] = []) => {
-    if (target.split('/').some((part) => part === '.' || part === '..')) {
-      invalid(`${workload} volume paths cannot contain . or .. segments.`);
-    }
-    const normalized = target.replace(/\/{2,}/g, '/');
-    if (
-      [...reserved, ...owned, ...targets].some((path) =>
-        containerPathsOverlap(path, normalized),
-      )
-    ) {
-      invalid(
-        `${workload} volume ${spec} overlaps a reserved or another volume path.`,
-      );
-    }
-    targets.push(normalized);
-  };
-  for (const bind of options.binds ?? []) {
-    const parsed = validateDockerBind(bind);
-    if (parsed.source !== '' || parsed.mode !== undefined) {
-      invalid(
-        `${workload} only supports anonymous --bind /absolute/path volumes; host paths and named volumes are unsupported.`,
-      );
-    }
-    mount(bind, parsed.target);
-  }
-  const names = new Set<string>();
-  for (const cache of options.caches ?? []) {
-    const parsed = parseNodeCache(cache);
-    if (!parsed) {
-      invalid(
-        `Invalid --cache "${cache}"; expected name:/absolute/container/path, with a name of up to 32 lowercase letters, digits and hyphens.`,
-      );
-    }
-    if (names.has(parsed.name)) {
-      invalid(`${workload} repeats --cache ${parsed.name}.`);
-    }
-    names.add(parsed.name);
-    // The runner empties or owns these between Jobs, so a cache there
-    // wouldn't last.
-    mount(cache, parsed.target, [
-      '/mnt/input',
-      '/mnt/output',
-      '/mnt/checkpoint',
-      '/tmp',
-      '/opt/anycloud-runner',
-      '/opt/anycloud-workdir',
-    ]);
-  }
-}
-
-/** A `--cache name:/path`: a short DNS label and an absolute path. */
-export function parseNodeCache(
-  cache: string,
-): { name: string; target: string } | null {
-  const match = /^([a-z0-9](?:[-a-z0-9]{0,30}[a-z0-9])?):(\/[^:\0\r\n]*)$/.exec(
-    cache,
-  );
-  return match
-    ? {
-        name: match[1]!,
-        target: match[2]!.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1'),
-      }
-    : null;
-}
-
-/** Validate the Docker options translated into Kubernetes Pod fields. */
-export function validateDockerOptionsForKubernetes(
-  value: unknown,
-  workload = 'Kubernetes',
-): asserts value is DockerOptions | null | undefined {
-  validateDockerOptionsRequest(value);
-  if (!value) return;
-  validateKubernetesDockerOptionSupport(value, workload);
 }
 
 /**

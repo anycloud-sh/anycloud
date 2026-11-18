@@ -134,7 +134,7 @@ describe('hosted API state restore', () => {
     // Backups from before the inventory still parse; a bad inventory doesn't.
     expect(parseApiBackupManifest(JSON.stringify(valid))).toEqual(valid);
     expect(() =>
-      parseApiBackupManifest(JSON.stringify({ ...valid, pools: {} })),
+      parseApiBackupManifest(JSON.stringify({ ...valid, credentials: {} })),
     ).toThrow(`${API_BACKUP_MANIFEST_KEY} is malformed`);
   });
 });

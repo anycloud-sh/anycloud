@@ -5,7 +5,6 @@ import {
   type DeclaredErrorCodes,
 } from './errors.js';
 import { clientWindowAuthenticatedImplementation as authenticated } from './base.js';
-import { boundedClientWindowImplementation as bounded } from './base.js';
 
 const MANAGEMENT_CODES = {
   400: 'WORKLOAD_MANAGEMENT_REQUEST_INVALID',
@@ -35,16 +34,6 @@ async function withWorkloadDomain<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export const workloadManagementRouter = {
-  observeSubmission: bounded.workloads.observeSubmission.handler(
-    ({ context, input }) =>
-      withWorkloadDomain(() =>
-        context.domains.workloadManagement.observeSubmission(
-          context.actor,
-          input,
-          context.operation,
-        ),
-      ),
-  ),
   cost: authenticated.workloads.cost.handler(({ context, input, signal }) =>
     withWorkloadDomain(() =>
       context.domains.workloadManagement.costForWorkload(

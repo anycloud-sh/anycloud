@@ -76,23 +76,6 @@ type LogsTargetResolution =
       probes: LogsContainerProbe[];
     };
 
-/**
- * A node-pool Service runs as a native Kubernetes Deployment, so it has no VM
- * host for these commands; refuse it plainly instead of reporting no VMs.
- */
-export function refuseNodePoolService(
-  workload: StoredWorkload,
-  command: 'exec' | 'ssh',
-): Extract<SingleLiveVmResolution, { ok: false }> | undefined {
-  if (workload.nodePoolId === null) return undefined;
-  return {
-    ok: false,
-    status: 400,
-    clientError: `anycloud ${command} is not supported for Services on a node pool.`,
-    telemetryError: `Node-pool Service ${command} unsupported`,
-  };
-}
-
 export function vmSshHost(vm: DbVM): string {
   return vm.sshHost ?? vm.ip;
 }
@@ -235,9 +218,7 @@ function prepareVmExec(
   allVms: DbVM[],
   command: string,
 ): JobExecPreparation {
-  const target =
-    refuseNodePoolService(workload, 'exec') ??
-    resolveSingleLiveVm(allVms, 'exec');
+  const target = resolveSingleLiveVm(allVms, 'exec');
   if (!target.ok) return target;
 
   // The guard has to sit on the same side of the container boundary as the

@@ -17,15 +17,8 @@ import {
   clusterSummarySchema,
   type ClusterSummary,
 } from '../../../../../../src/shared/api-contract/clusters-schemas.js';
-import type { CloudCredential } from '../../../../../../src/shared/api-contract/credentials-schemas.js';
 import { seedInstallation, type SeedInstallation } from './seed.js';
 import { CloudType } from '../../../../../../src/shared/cloud.js';
-import {
-  JOIN_REVISION_NODE_LABEL,
-  NODE_POOL_JOIN_REVISION,
-  NODE_POOL_MEMBER_LABEL,
-  nodePoolNamespace,
-} from '../../../../../../src/api/services/kubernetes/node-pool-scheduling.js';
 import { WorkloadState } from '../../../../../../src/shared/workload.js';
 import type { ArtifactStore } from '../../artifacts.js';
 import type { CleanupStack } from '../../cleanup.js';
@@ -54,53 +47,47 @@ import {
 } from '../../../../../../src/api/services/gateways/cloud.js';
 import { clusterApiUrl } from '../../../../../../src/shared/api-ingress.js';
 import { SERVICE_ACCOUNT_ISSUER_DISCOVERY_PATH } from '../../../../../../src/api/services/kubernetes/service-account-issuer.js';
-import { NVIDIA_DEVICE_PLUGIN_NAME } from '../../../../../../src/api/services/kubernetes/nvidia-device-plugin.js';
 import type {
   DeadApiDeleteRecord,
   KeptBucketRecord,
   ServiceAccountIssuerRecord,
 } from '../../contracts/cluster-cloud.js';
-import type { PoolColdStartTimes } from '../../contracts/gpu-cold-start.js';
 import { AzurePoolInventory } from './azure-pool.js';
-import { poolColdStartTimes } from './cold-start.js';
 import { GcpPoolInventory } from './gcp-pool.js';
-import { LambdaPoolInventory } from './lambda-pool.js';
 import { E2E_CLUSTER_NAME_PREFIX } from './names.js';
-import { credentialsNewArgs, STORAGE_CREDENTIAL } from './hosted-stage.js';
+import { credentialsNewArgs } from './hosted-stage.js';
 import {
   hostedKubeConfig,
   readHelmState,
   readHostedPodLogs,
-  secretsMatching,
   withinDeadline,
 } from './hosted-pod-logs.js';
 
-type PoolProvider = 'aws' | 'gcp' | 'azure' | 'lambda';
+type ClusterProvider = 'aws' | 'gcp' | 'azure';
 
 /**
  * The management VM's resource scope (`clusters-domain.ts` clusterScope): its
- * VM and network carry `anycloud_resource=<scope>` on GCP and Azure, as a
- * pool's carry the pool id, so the pool inventories read them too.
+ * VM and network carry `anycloud_resource=<scope>` on GCP and Azure, which
+ * the GCP and Azure inventories read.
  */
 export function managementScope(clusterId: string): string {
   return `anycloud-cluster-${clusterId}`.slice(0, 63);
 }
 
-function providerOf(cloud: CloudType): PoolProvider {
+function providerOf(cloud: CloudType): ClusterProvider | null {
   return cloud === CloudType.GCP
     ? 'gcp'
     : cloud === CloudType.Azure
       ? 'azure'
-      : cloud === CloudType.Lambda
-        ? 'lambda'
-        : 'aws';
+      : cloud === CloudType.AWS
+        ? 'aws'
+        : null;
 }
 
-type PoolInventory = Pick<
+type ClusterInventory = Pick<
   GcpPoolInventory,
-  'liveInstances' | 'networkLeftovers' | 'terminateInstance'
-> &
-  Partial<Pick<GcpPoolInventory, 'spotEviction' | 'instanceLaunches'>>;
+  'liveInstances' | 'networkLeftovers'
+>;
 
 /**
  * Every `anycloud cluster …` verb the member drives lives here, typed against
@@ -176,7 +163,6 @@ const API_UPGRADE = 'api upgrade' satisfies CliPath;
 
 /** Tags the product puts on the AWS resources this member creates. */
 const CLUSTER_TAG = 'anycloud_cluster';
-const RESOURCE_SCOPE_TAG = 'anycloud_resource';
 const BACKUP_OBJECT_KEY = 'anycloud-api/database.sqlite';
 /**
  * Every installer inventory read owns this budget, independent of the time an
@@ -215,19 +201,10 @@ export interface CloudClusterEnvironmentOptions {
   readonly region: string;
   readonly managementVmType: string;
   /** Test seams for a GCP or Azure management VM: its VM and network, and its checkpoint buckets. */
-  readonly clusterInventory?: PoolInventory;
+  readonly clusterInventory?: ClusterInventory;
   readonly clusterStorage?: CloudBucketLister;
   /** Tests: removes the bucket a delete kept, instead of the storage gateway. */
   readonly clusterBucketDeleter?: { deleteBucket(name: string): Promise<void> };
-  /** Where the node pool's VMs run: AWS, or GCP or Azure for the cross-cloud run. `inventory` is a test seam. */
-  readonly pool: {
-    readonly profile: VmProfile;
-    /** Null for an unpinned pool. */
-    readonly region: string | null;
-    readonly vmTypes: readonly string[];
-    readonly spot?: boolean;
-    readonly inventory?: PoolInventory;
-  };
   readonly runId: string;
   readonly runner: Pick<ProcessRunner, 'run'>;
   readonly wait: Pick<Waiter, 'for'>;
@@ -256,16 +233,14 @@ export interface NativeLeftovers {
 export interface CloudClusterRunRecord {
   readonly runId: string;
   readonly region: string;
-  readonly clusterProvider: Exclude<PoolProvider, 'lambda'>;
-  readonly poolProvider: PoolProvider;
+  readonly clusterProvider: ClusterProvider;
   readonly installationId: string | null;
   /**
    * The hosted API's `anycloud_owner_api` tag value, known once bootstrap
-   * returns: every pool and Job VM that API creates carries it. Absent with an
+   * returns: every VM that API creates carries it. Absent with an
    * installation id, the cluster never reached running.
    */
   readonly hostedApiIdentity: string | null;
-  readonly nodePoolIds: readonly string[];
 }
 
 const versionSchema = z.object({ version: z.string().min(1) }).loose();
@@ -371,11 +346,9 @@ function parseJson(result: CommandResult, operation: string): unknown {
  */
 export class CloudClusterEnvironment {
   readonly #options: CloudClusterEnvironmentOptions;
-  readonly #nodePoolIds = new Set<string>();
   readonly #clusterName: string;
-  readonly #poolInventory: PoolInventory | null;
   /** A GCP or Azure management VM's VM and network; null on AWS, which reads them with the AWS CLI. */
-  readonly #clusterInventory: PoolInventory | null;
+  readonly #clusterInventory: ClusterInventory | null;
   #cluster: ClusterSummary | undefined;
   #destroyed = false;
   /** What this tree's `cluster delete` deleted and kept (RFC 0049 C26 (d), C28). */
@@ -409,31 +382,15 @@ export class CloudClusterEnvironment {
           ? (options.clusterInventory ??
             new AzurePoolInventory(cluster.credential, options.region))
           : null;
-    const pool = options.pool;
-    if (pool.profile.provider === CloudType.GCP) {
-      this.#poolInventory =
-        pool.inventory ?? new GcpPoolInventory(pool.profile.credential);
-    } else if (pool.profile.provider === CloudType.Azure) {
-      this.#poolInventory =
-        pool.inventory ??
-        new AzurePoolInventory(pool.profile.credential, pool.region!);
-    } else if (pool.profile.provider === CloudType.Lambda) {
-      this.#poolInventory =
-        pool.inventory ?? new LambdaPoolInventory(pool.profile.credential);
-    } else {
-      this.#poolInventory = pool.inventory ?? null;
-    }
-  }
-
-  get poolProvider(): PoolProvider {
-    return providerOf(this.#options.pool.profile.provider);
   }
 
   /** The management VM's cloud; everything cluster-side is read there. */
-  get clusterProvider(): Exclude<PoolProvider, 'lambda'> {
+  get clusterProvider(): ClusterProvider {
     const provider = providerOf(this.#options.profile.provider);
-    if (provider === 'lambda') {
-      throw new Error('The live cluster member runs no cluster on Lambda');
+    if (!provider) {
+      throw new Error(
+        `The live cluster member runs no cluster on ${this.#options.profile.provider}`,
+      );
     }
     return provider;
   }
@@ -448,28 +405,22 @@ export class CloudClusterEnvironment {
 
   /**
    * `from_release`: the released installer's `cluster create --credentials`
-   * reads the cluster's credential and its local API the pool's, which its
-   * own CLI saves (it refuses this tree's client version). This tree's create
-   * drives the runner's signed-in cloud CLI instead, and its pools are the
-   * hosted API's.
+   * reads the cluster's credential, which its own CLI saves (it refuses this
+   * tree's client version). This tree's create drives the runner's
+   * signed-in cloud CLI instead.
    */
   async prepare(): Promise<void> {
     if (this.#prepared) return;
     this.#prepared = true;
-    const { profile, pool, fromRelease } = this.#options;
+    const { profile, fromRelease } = this.#options;
     if (!fromRelease) return;
-    const saved = new Map<string, CloudCredential>([
-      [profile.credentialName, profile.credential],
-      [pool.profile.credentialName, pool.profile.credential],
-    ]);
-    for (const [name, material] of saved) {
-      successful(
-        await fromRelease.cli.run(credentialsNewArgs(name, material), {
-          label: 'released-credentials-new',
-        }),
-        'credentials new (released installer)',
-      );
-    }
+    successful(
+      await fromRelease.cli.run(
+        credentialsNewArgs(profile.credentialName, profile.credential),
+        { label: 'released-credentials-new' },
+      ),
+      'credentials new (released installer)',
+    );
   }
 
   /**
@@ -1018,48 +969,6 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * `cluster delete` while the hosted API still manages a node pool: refused
-   * before anything is touched, naming the `node-pool delete` step. Returns
-   * the refusal text; throws when deletion was accepted instead.
-   */
-  async destroyRefused(): Promise<string> {
-    const result = await this.#options.cli.run(
-      cliArgs(CLUSTER_DELETE, {}, [this.#clusterName]),
-      {
-        env: {
-          ...(await this.#sessionEnvironment()),
-          ...this.#clusterApiEnvironment(),
-        },
-        timeoutMs: 120_000,
-        label: 'cluster-delete-refused',
-      },
-    );
-    if (result.exitCode === 0) {
-      throw new Error(
-        `cluster delete was accepted while the hosted API still manages a node pool: ${result.combined}`,
-      );
-    }
-    if (
-      !/anycloud node-pool delete <name>, then anycloud cluster delete [^ ]+ again/u.test(
-        result.combined,
-      )
-    ) {
-      throw new Error(
-        `cluster delete was refused without naming the steps: ${result.combined}`,
-      );
-    }
-    const cluster = (await this.clusters()).find(
-      (entry) => entry.id === this.cluster().id,
-    );
-    if (cluster?.state !== WorkloadState.Running) {
-      throw new Error(
-        `a refused destroy changed the cluster to ${cluster?.state ?? 'absent'}`,
-      );
-    }
-    return result.combined;
-  }
-
-  /**
    * `cluster delete`, through the runner's signed-in cloud CLI as the
    * user's session; it returns once the cluster is gone. It keeps the managed
    * checkpoint bucket after a final backup unless `deleteBuckets` (RFC 0049
@@ -1424,13 +1333,13 @@ export class CloudClusterEnvironment {
 
   /**
    * Native sweep by the product's own tags: nothing tagged for this run's
-   * installation, installer node pools or hosted API may remain. The
+   * installation or hosted API may remain. The
    * checkpoint bucket is named after the installation id; before create
    * returns one there is none of this run's, and every other `e2e-clust-`
    * bucket may be a concurrent run's.
    */
   async sweep(): Promise<NativeLeftovers> {
-    // A GCP or Azure management VM (and so its pool) has no EC2 resources.
+    // A GCP or Azure management VM has no EC2 resources.
     const aws = !this.#clusterInventory;
     const filters = [
       ...(this.#installationId && aws
@@ -1441,11 +1350,6 @@ export class CloudClusterEnvironment {
             `Name=tag:${OWNER_API_TAG},Values=${hostedApiIdentity(this.#cluster.id)}`,
           ]
         : []),
-      ...(this.#poolInventory || !aws
-        ? []
-        : [...this.#nodePoolIds].map(
-            (id) => `Name=tag:${RESOURCE_SCOPE_TAG},Values=${id}`,
-          )),
     ];
     const leftovers = {
       instances: [] as string[],
@@ -1524,22 +1428,6 @@ export class CloudClusterEnvironment {
         ),
       );
     }
-    // A GCP or Azure pool's leftovers come from its own cloud, by the same identities.
-    if (this.#poolInventory) {
-      const cloud = this.poolProvider;
-      for (const nodePoolId of this.#nodePoolIds) {
-        leftovers.instances.push(
-          ...(await this.#poolInventory.liveInstances(nodePoolId)).map(
-            (id) => `${cloud}:${id}`,
-          ),
-        );
-        leftovers.securityGroups.push(
-          ...(await this.#poolInventory.networkLeftovers(nodePoolId)).map(
-            (id) => `${cloud}:${id}`,
-          ),
-        );
-      }
-    }
     // The Worker's delete is idempotent (2xx proves nothing): it purges; DNS
     // answers whether the destroy left the record. Only once the cluster is
     // destroyed: on a failed journey the sweep runs before the cleanup stack,
@@ -1576,94 +1464,10 @@ export class CloudClusterEnvironment {
       runId: this.#options.runId,
       region: this.#options.region,
       clusterProvider: this.clusterProvider,
-      poolProvider: this.poolProvider,
       filters,
-      nodePoolIds: [...this.#nodePoolIds],
       ...swept,
     });
     return swept;
-  }
-
-  /** Pending or running instances tagged for the node pool (host loss). */
-  poolInstances(nodePoolId: string): Promise<string[]> {
-    return this.#poolInventory
-      ? this.#poolInventory.liveInstances(nodePoolId)
-      : this.#liveInstances(
-          `Name=tag:${RESOURCE_SCOPE_TAG},Values=${nodePoolId}`,
-          'pending,running',
-        );
-  }
-
-  /** Host loss, natively: the pool's one instance goes behind the product's back. */
-  async terminatePoolInstance(
-    nodePoolId: string,
-    expectedCount = 1,
-  ): Promise<string> {
-    const running = await this.poolInstances(nodePoolId);
-    if (running.length !== expectedCount) {
-      throw new Error(
-        `Node pool ${nodePoolId} has ${running.length} running instances, expected ${expectedCount}`,
-      );
-    }
-    if (this.#poolInventory) {
-      await this.#poolInventory.terminateInstance(running[0]);
-    } else {
-      await this.#aws(
-        ['ec2', 'terminate-instances', '--instance-ids', running[0]],
-        'terminate pool instance',
-      );
-    }
-    return running[0];
-  }
-
-  /**
-   * A spot pool's VMs must be deleted on eviction, not stopped; a no-op for
-   * an on-demand pool. Reads only, so it runs on every journey's pool.
-   */
-  async proveSpotEviction(nodePoolId: string): Promise<void> {
-    if (!this.#options.pool.spot) return;
-    const instances = await this.poolInstances(nodePoolId);
-    // A ready pool runs at least one: none read proves nothing.
-    if (instances.length === 0) {
-      throw new Error(
-        `Spot pool ${nodePoolId} has no running instance to check`,
-      );
-    }
-    for (const instance of instances) {
-      await this.#deletedOnEviction(instance);
-    }
-  }
-
-  async #deletedOnEviction(instance: string): Promise<void> {
-    const eviction = this.#poolInventory
-      ? await this.#poolInventory.spotEviction?.(instance)
-      : stringList(
-          parseJson(
-            await this.#aws(
-              [
-                'ec2',
-                'describe-spot-instance-requests',
-                '--filters',
-                `Name=instance-id,Values=${instance}`,
-                '--query',
-                'SpotInstanceRequests[0].[Type,InstanceInterruptionBehavior]',
-              ],
-              'spot request lookup',
-            ),
-            'spot request lookup',
-          ),
-        ).join('/');
-    if (!['DELETE', 'Delete', 'one-time/terminate'].includes(eviction ?? '')) {
-      throw new Error(
-        `Spot pool VM ${instance} is not deleted on eviction: ${eviction || 'not spot'}`,
-      );
-    }
-  }
-
-  recordNodePool(nodePoolId: string): void {
-    if (!nodePoolId.trim()) throw new Error('Node pool ID cannot be empty');
-    this.#nodePoolIds.add(nodePoolId);
-    void this.#recordRun();
   }
 
   async #liveInstances(
@@ -1741,61 +1545,6 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * What the hosted API reports about this run's node pools, written before
-   * the cleanup tears them down: each pool as `node-pool status` shows it
-   * (state, last error, capacity), and the cluster. Every read is
-   * independent: one failing read must not hide the others or the failure
-   * that triggered the capture.
-   */
-  async captureNodePoolDiagnostics(): Promise<void> {
-    const attempt = async (read: () => Promise<unknown>): Promise<unknown> => {
-      try {
-        return await read();
-      } catch (error) {
-        return {
-          unavailable: error instanceof Error ? error.message : String(error),
-        };
-      }
-    };
-    const record = {
-      runId: this.#options.runId,
-      capturedAt: new Date().toISOString(),
-      clusters: await attempt(() => this.clusters()),
-      nodePools: await Promise.all(
-        [...this.#nodePoolIds].map(async (nodePoolId) => ({
-          nodePoolId,
-          status: await attempt(async () =>
-            parseJson(
-              successful(
-                await this.#options.cli.run(
-                  cliArgs('node-pool status', { json: true }, [nodePoolId]),
-                  {
-                    timeoutMs: 60_000,
-                    label: 'node-pool-status-diagnostic',
-                    env: this.#clusterApiEnvironment(),
-                  },
-                ),
-                'node pool status',
-              ),
-              'node pool status',
-            ),
-          ),
-        })),
-      ),
-    };
-    process.stderr.write(
-      `--- live management Node pool diagnostics ---\n${JSON.stringify(record, null, 2)}\n`,
-    );
-    await this.#options.artifacts
-      .json('e2e-cluster-cloud-node-pool-diagnostics', record)
-      .catch((error: unknown) => {
-        process.stderr.write(
-          `node pool diagnostics artifact not written: ${error instanceof Error ? error.message : String(error)}\n`,
-        );
-      });
-  }
-
-  /**
    * After a hosted-stage failure, while the cluster still runs, through the
    * installer's own cluster connection: the hosted API's, Traefik's and the
    * `helm-install-*` Pods' logs, current and previous, and the Helm Jobs and
@@ -1832,96 +1581,6 @@ export class CloudClusterEnvironment {
           `hosted Pod logs artifact not written: ${errorMessage(error)}\n`,
         );
       });
-  }
-
-  /** The node pool namespace's Secrets holding a SAS signature or account key. */
-  async poolSecretsWithCredential(
-    nodePoolId: string,
-  ): Promise<readonly string[]> {
-    return secretsMatching(
-      await this.#hostedCore(),
-      nodePoolNamespace(nodePoolId),
-      STORAGE_CREDENTIAL,
-    );
-  }
-
-  async poolNodesOutdated(nodePoolId: string): Promise<boolean> {
-    const { items } = await (
-      await this.#hostedCore()
-    ).listNode({
-      labelSelector: `${NODE_POOL_MEMBER_LABEL}=${nodePoolId}`,
-    });
-    return items.some(
-      (node) =>
-        node.metadata?.labels?.[JOIN_REVISION_NODE_LABEL] !==
-        NODE_POOL_JOIN_REVISION,
-    );
-  }
-
-  async deletePoolPod(nodePoolId: string, podUid: string): Promise<void> {
-    const core = await this.#hostedCore();
-    const namespace = nodePoolNamespace(nodePoolId);
-    const pod = (await core.listNamespacedPod({ namespace })).items.find(
-      (candidate) => candidate.metadata?.uid === podUid,
-    );
-    if (!pod?.metadata?.name)
-      throw new Error(`no Pod ${podUid} in ${namespace}`);
-    await core.deleteNamespacedPod({
-      namespace,
-      name: pod.metadata.name,
-      body: { preconditions: { uid: podUid } },
-    });
-  }
-
-  /** A replica Pod's way from its VM's launch to its container's start. */
-  async poolColdStart(
-    nodePoolId: string,
-    podUid: string,
-  ): Promise<PoolColdStartTimes> {
-    const core = await this.#hostedCore();
-    const namespace = nodePoolNamespace(nodePoolId);
-    const pod = (await core.listNamespacedPod({ namespace })).items.find(
-      (candidate) => candidate.metadata?.uid === podUid,
-    );
-    const nodeName = pod?.spec?.nodeName;
-    if (!pod || !nodeName)
-      throw new Error(`no scheduled Pod ${podUid} in ${namespace}`);
-    const plugins = await core.listNamespacedPod({
-      namespace: 'kube-system',
-      fieldSelector: `spec.nodeName=${nodeName}`,
-    });
-    const launches = this.#poolInventory
-      ? ((await this.#poolInventory.instanceLaunches?.(nodePoolId)) ?? [])
-      : (
-          await this.#awsList(
-            [
-              'ec2',
-              'describe-instances',
-              '--filters',
-              `Name=tag:${RESOURCE_SCOPE_TAG},Values=${nodePoolId}`,
-              '--query',
-              'Reservations[].Instances[].LaunchTime',
-            ],
-            'describe instance launches',
-          )
-        ).map((at) => Date.parse(at));
-    const pulled = await core.listNamespacedEvent({
-      namespace,
-      fieldSelector: `involvedObject.uid=${podUid},reason=Pulled`,
-    });
-    return poolColdStartTimes(
-      pod,
-      await core.readNode({ name: nodeName }),
-      plugins.items.find((p) =>
-        p.metadata?.name?.startsWith(NVIDIA_DEVICE_PLUGIN_NAME),
-      ),
-      launches,
-      pulled.items,
-    );
-  }
-
-  async #hostedCore() {
-    return (await this.hostedKubeConfig()).makeApiClient(CoreV1Api);
   }
 
   /**
@@ -2236,10 +1895,8 @@ export class CloudClusterEnvironment {
       runId: this.#options.runId,
       region: this.#options.region,
       clusterProvider: this.clusterProvider,
-      poolProvider: this.poolProvider,
       installationId: this.#installationId ?? null,
       hostedApiIdentity: this.#hostedApiIdentity(),
-      nodePoolIds: [...this.#nodePoolIds],
     };
     await this.#options.artifacts.json('e2e-cluster-cloud-resources', record);
   }

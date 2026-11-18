@@ -307,10 +307,10 @@ describe('numbered migration transactions', () => {
     });
     const before = snapshot();
 
-    // The historical name now belongs to persistent Deployments. Replaying
-    // shared-record SQL must still fail without changing the current schema.
+    // Its table is gone from the current schema. Replaying it must fail
+    // without changing anything.
     await expect(runMigrations(database, undefined, '3.0.0')).rejects.toThrow(
-      /no such column: d.completed_at/i,
+      /no such table: deployments/i,
     );
 
     expect(snapshot()).toEqual(before);

@@ -95,8 +95,7 @@ async function followOnceRunning(
  * a reconnect can't replay the whole log. If the Job leaves for another
  * attempt (recovering, retrying), reconnect only once it is running again:
  * until a new container replaces it, the API serves the exited one.
- * A Service's or VM's container restarts instead, and a Deployment has no
- * Workload status.
+ * A Service's or VM's container restarts instead.
  */
 async function afterContainerExit(
   client: ApiClient,
@@ -140,10 +139,7 @@ async function afterContainerExit(
 export function createLogsCommand(): Command {
   return new Command('logs')
     .description('📜 View workload container logs')
-    .argument(
-      '[id]',
-      'Workload or Deployment ID, or Deployment name (omit for interactive picker)',
-    )
+    .argument('[id]', 'Workload ID (omit for interactive picker)')
     .option(
       '-f, --follow',
       'Follow log output, waiting through setup, until the stream ends',
@@ -162,9 +158,6 @@ next output after the reader exits, or when a Job whose container has exited
 ends, so the last example ends soon after the first match.
 
 Prints workload stdout/stderr through the API. VM-host workloads use Docker.
-A Service or Deployment on a node pool shows its newest Pod, Ready or not;
-pass a Deployment ID or name. Deployment-targeted Jobs do not expose per-Job
-logs.
 `,
     )
     .action(async (id: string | undefined, options: { follow?: boolean }) => {

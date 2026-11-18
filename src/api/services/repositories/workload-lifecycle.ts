@@ -20,7 +20,6 @@ import {
   type AddVMAttempt,
   type GatewayVM,
 } from '../entities.js';
-import type { JobChanges } from '../job-changes.js';
 import { encodeServiceContainerUpdate } from '../container-spec.js';
 import { type DockerOptions } from '../../../shared/runtime.js';
 import { computedWorkloadCloudProviderSql } from './credential-reference.js';
@@ -30,17 +29,6 @@ import {
   retryCandidatesQuery,
   type RetryCandidate,
 } from './retry-candidates.js';
-
-/**
- * A pool Job with checkpoint storage and no checkpoint bucket owns a managed
- * one (D-managed, `managesPoolCheckpoint`), so its ending leaves `cleaned_at`
- * NULL: cleanup deletes the bucket, then marks it cleaned. Every other pool
- * Job settles at once. Reads only the `workloads` row being updated, so a
- * deleted pool still leaves the bucket to cleanup.
- */
-export const POOL_MANAGED_CHECKPOINT_SQL = `(workloads.deployment_id IS NOT NULL
-  AND workloads.checkpoint_bucket IS NULL
-  AND workloads.checkpoint_storage_credential_id IS NOT NULL)`;
 
 interface WorkloadStateTransitionOptions {
   metadata?: WorkloadEventMetadataInput;
@@ -53,42 +41,6 @@ export function hasError(
   metadata: Record<string, unknown>,
 ): metadata is ErrorMetadata {
   return metadata.error !== undefined;
-}
-
-/** Collect observer wake-ups in the transaction and publish only after commit. */
-export async function commitWorkloadChanges<T>(
-  db: DB,
-  jobChanges: JobChanges,
-  write: (
-    tx: DBTransaction,
-    changed: JobChanges['notify'],
-  ) => T extends PromiseLike<unknown> ? never : T,
-): Promise<T> {
-  const ids = new Set<string>();
-  const deploymentIds = new Set<string>();
-  const result = await db.transaction<T>((tx) => {
-    const result = write(tx, (jobId) => {
-      ids.add(jobId);
-    });
-    const changedIds = [...ids];
-    // Capture Deployment routing with the mutation, before its transaction
-    // closes. Notifications are process-local and run only after commit.
-    for (let offset = 0; offset < changedIds.length; offset += 256) {
-      const batch = changedIds.slice(offset, offset + 256);
-      const targets = tx.query<{ deploymentId: string }>(
-        `SELECT DISTINCT deployment_id AS deploymentId FROM workloads
-         WHERE id IN (${batch.map(() => '?').join(', ')}) AND deployment_id IS NOT NULL`,
-        batch,
-      );
-      for (const target of targets) deploymentIds.add(target.deploymentId);
-    }
-    return result;
-  });
-  for (const jobId of ids) jobChanges.notify(jobId);
-  // One waiter per change; each that finds a Job wakes more.
-  for (const deploymentId of deploymentIds)
-    jobChanges.notifyDeployment(deploymentId, { waiters: 1 });
-  return result;
 }
 
 /** State CAS, optional related mutation, and event are one durable operation. */
@@ -154,23 +106,20 @@ function transitionWorkloadStateInTransaction(
 
 function transitionWorkloadState(
   db: DB,
-  jobChanges: JobChanges,
   workloadId: string,
   state: WorkloadState,
   allowedFrom: WorkloadState[],
   options?: WorkloadStateTransitionOptions,
 ): Promise<number | null> {
-  return commitWorkloadChanges(db, jobChanges, (tx, changed) => {
-    const eventId = transitionWorkloadStateInTransaction(
+  return db.transaction((tx) =>
+    transitionWorkloadStateInTransaction(
       tx,
       workloadId,
       state,
       allowedFrom,
       options,
-    );
-    if (eventId !== null) changed(workloadId);
-    return eventId;
-  });
+    ),
+  );
 }
 
 export type RetryVMEligibility =
@@ -183,7 +132,6 @@ export type RetryAdmissionResult = 'queued' | 'release-pending' | 'stale';
 
 interface RetryWorkloadFacts {
   state: WorkloadState;
-  deploymentId: string | null;
   cloudProvider: CloudType | null;
   revision: number | null;
   diagnosis: string | null;
@@ -209,7 +157,6 @@ function retryVMEligibility(
   if (
     attempts.length === 1 &&
     workload.state === WorkloadState.Retrying &&
-    workload.deploymentId === null &&
     workload.cloudProvider !== null &&
     reusableFailure &&
     attempts.every(
@@ -236,10 +183,7 @@ export interface BeginServiceUpgradeInput {
 }
 
 export class WorkloadLifecycleStore {
-  constructor(
-    private readonly db: DB,
-    private readonly jobChanges: JobChanges,
-  ) {}
+  constructor(private readonly db: DB) {}
 
   /**
    * Claim only the state the caller observed. Unlike the generic FSM source
@@ -263,7 +207,6 @@ export class WorkloadLifecycleStore {
     }
     const eventId = await transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       WorkloadState.Recovering,
       [expectedState],
@@ -319,7 +262,6 @@ export class WorkloadLifecycleStore {
         : WorkloadState.Running;
     const eventId = await transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       state,
       [WorkloadState.Recovering],
@@ -385,7 +327,6 @@ export class WorkloadLifecycleStore {
   ): Promise<boolean> {
     const eventId = await transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       state,
       [state],
@@ -438,7 +379,6 @@ export class WorkloadLifecycleStore {
     // plus self-transitions (idempotent re-entry into current state).
     const eventId = await transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       state,
       [...VALID_TRANSITIONS[state], state],
@@ -454,7 +394,6 @@ export class WorkloadLifecycleStore {
   ): RetryVMEligibility {
     const [workload] = tx.query<RetryWorkloadFacts>(
       `SELECT d.state,
-              d.deployment_id AS deploymentId,
               ${computedWorkloadCloudProviderSql('d')} AS cloudProvider,
               (SELECT id FROM workload_events
                WHERE workload_id = d.id
@@ -504,7 +443,7 @@ export class WorkloadLifecycleStore {
     workloadId: string,
     expectedRevision: number,
   ): Promise<RetryAdmissionResult> {
-    return commitWorkloadChanges(this.db, this.jobChanges, (tx, changed) => {
+    return this.db.transaction((tx) => {
       const eligibility = this.readRetryVMEligibility(
         tx,
         workloadId,
@@ -527,20 +466,8 @@ export class WorkloadLifecycleStore {
                    LIMIT 1) = ?`,
             params: [expectedRevision],
           },
-          // A targeted Job's `--timeout` bounds each wait for a replica:
-          // a retry waits as long as its last queueing allowed.
-          mutate: (tx, now) =>
-            tx.query(
-              `UPDATE workloads SET first_claimed_at = NULL,
-                 claim_deadline_at = ? + claim_deadline_at - COALESCE((SELECT MAX(created_at)
-                   FROM workload_events WHERE workload_id = workloads.id AND state = ?
-                     AND created_at >= workloads.started_at), started_at)
-               WHERE id = ? AND deployment_id IS NOT NULL AND claim_deadline_at IS NOT NULL`,
-              [now, WorkloadState.Queued, workloadId],
-            ),
         },
       );
-      if (eventId !== null) changed(workloadId);
       return eventId !== null ? 'queued' : 'stale';
     });
   }
@@ -556,7 +483,6 @@ export class WorkloadLifecycleStore {
   ): Promise<boolean> {
     const eventId = await transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       WorkloadState.Queued,
       [WorkloadState.Provisioning],
@@ -589,7 +515,6 @@ export class WorkloadLifecycleStore {
     }
     return transitionWorkloadState(
       this.db,
-      this.jobChanges,
       workloadId,
       state,
       [...VALID_TRANSITIONS[state], state],

@@ -27,7 +27,6 @@ export async function deliverLiveSecretFiles(
   const { id, secretNames } = workload;
   if (
     !secretNames?.length ||
-    workload.deploymentId !== null ||
     workload.state !== WorkloadState.Running ||
     hasWorkloadWork(id)
   )

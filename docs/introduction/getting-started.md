@@ -82,8 +82,7 @@ API.
 
 A hosted API runs in your cloud account and gives it a stable URL for use from
 multiple machines or by a trusted team. Create the installation's Kubernetes
-cluster, which hosts the API and later runs node pools, Deployments and
-Services, through your cloud's own CLI (`aws`, `gcloud` or `az`) signed in on
+cluster, which hosts the API, through your cloud's own CLI (`aws`, `gcloud` or `az`) signed in on
 this machine:
 
 ```bash

@@ -2,20 +2,16 @@
 // between the committed OpenAPI document at the merge base and the branch's,
 // reported where it was declared. `yarn pr:sections` prints it.
 
-import {
-  USER_OPENAPI_SECURITY_SCHEME,
-  WORKLOAD_OPENAPI_SECURITY_SCHEME,
-} from '../src/shared/api-contract/base.js';
+import { USER_OPENAPI_SECURITY_SCHEME } from '../src/shared/api-contract/base.js';
 import { canonicalJson } from './generate-openapi.js';
 
 /** OpenAPI documents are untyped JSON here. */
 type Item = Record<string, any>;
 export type OpenApi = Item;
 
-/** Each security scheme is attached by exactly one base in `base.ts`. */
+/** The security scheme `base.ts` attaches to every endpoint. */
 const BASES: Record<string, string> = {
   [USER_OPENAPI_SECURITY_SCHEME]: 'authenticatedContract',
-  [WORKLOAD_OPENAPI_SECURITY_SCHEME]: 'workloadContract',
 };
 const MAX_LINES = 25;
 const code = (text: string) => `\`${text}\``;
@@ -139,8 +135,6 @@ const components = (doc: OpenApi) =>
   );
 const baseOf = (op: Item) =>
   BASES[Object.keys(op.security?.[0] ?? {})[0]] ?? 'no security';
-const isReplica = (op: Item) =>
-  op.security?.some((s: Item) => WORKLOAD_OPENAPI_SECURITY_SCHEME in s);
 
 /** Operation → every component it reaches through `$ref`s. */
 function reach(doc: OpenApi): Map<string, Set<string>> {
@@ -173,10 +167,10 @@ function reach(doc: OpenApi): Map<string, Set<string>> {
 /**
  * Renders the API contract section from the base and head documents.
  *
- * The contract builds every endpoint on one base (`authenticatedContract` or
- * `workloadContract`, told apart by the security scheme each attaches) and, for
- * user endpoints, one `authenticatedEndpoints(errors, tag)` group per tag. A
- * change that hits every endpoint of one or more bases, or else of one or more
+ * The contract builds every endpoint on one base (`authenticatedContract`,
+ * recognized by the security scheme it attaches) and one
+ * `authenticatedEndpoints(errors, tag)` group per tag. A
+ * change that hits every endpoint of the base, or else of one or more
  * multi-endpoint tags, can only have been declared there or copied to each
  * endpoint, which is the same wire change, so it is reported once at that
  * origin. The base ref's source is never run: both sides are committed
@@ -193,17 +187,10 @@ export function renderOpenApiDiff(before: OpenApi, after: OpenApi): string {
         ops: [...(byChange.get(key)?.ops ?? []), op],
       });
 
-  const replicaOps = new Set<string>();
-  /** `→ N endpoints (K replica ⚠️)`, remembering the replica routes. */
-  const reaching = (ops: string[]) => {
-    const replicas = ops.filter((op) =>
-      isReplica(newOps.get(op) ?? oldOps.get(op)!),
-    );
-    for (const op of replicas) replicaOps.add(op);
-    return ` → ${ops.length} endpoint${ops.length === 1 ? '' : 's'}${replicas.length ? ` (${replicas.length} replica ⚠️)` : ''}`;
-  };
-  const endpoint = (op: string) =>
-    `${code(op)}${reaching([op]).includes('⚠️') ? ' ⚠️' : ''}`;
+  /** `→ N endpoints`. */
+  const reaching = (ops: string[]) =>
+    ` → ${ops.length} endpoint${ops.length === 1 ? '' : 's'}`;
+  const endpoint = code;
   /** The groups `ops` covers exactly, if any; a one-endpoint group is no origin. */
   const origins = (key: (op: string) => string) => {
     const groups = new Map<string, string[]>();
@@ -272,18 +259,12 @@ export function renderOpenApiDiff(before: OpenApi, after: OpenApi): string {
   return [
     '### API contract',
     '',
-    '`+` added · `−` removed · `~` changed · ⚠️ replica route',
+    '`+` added · `−` removed · `~` changed',
     '',
     ...shown,
     ...(shown.length < out.length
       ? [
           `- +${out.length - shown.length} more; see the diff of the committed spec.`,
-        ]
-      : []),
-    ...(replicaOps.size
-      ? [
-          '',
-          `⚠️ Changes ${replicaOps.size} replica route${replicaOps.size === 1 ? '' : 's'}, which replicas of the previous release parse strictly, so it needs the owner's sign-off.`,
         ]
       : []),
   ].join('\n');

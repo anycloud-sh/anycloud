@@ -46,10 +46,8 @@ describe('job neutral Job spec flags', () => {
     );
   });
 
-  it.each([
-    ['image', ['ghcr.io/acme/train:v1']],
-    ['Deployment', ['--deployment', 'model-a']],
-  ])('send every field to admission for a Job on %s', async (_target, base) => {
+  it('send every field to admission', async () => {
+    const base = ['ghcr.io/acme/train:v1'];
     const flags = [
       '--nodes 2 --gpus-per-node 4 --launch distributed --resumable',
       '--mount /lustre/data:/data:ro --mount state:/state --time-limit 24h',

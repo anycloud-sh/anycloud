@@ -401,7 +401,7 @@ export async function resolveProvisioningTarget(
         availabilityZone: workload.availabilityZone,
       },
     ).filter(
-      // As a node pool's: a nested VM Job launches only where the catalog
+      // A nested VM Job launches only where the catalog
       // reports support; unknown counts as none.
       (candidate) =>
         (!allowedRegions || allowedRegions.has(candidate.region)) &&

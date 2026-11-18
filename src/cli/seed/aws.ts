@@ -468,7 +468,7 @@ export function createAwsSeed(cli: CloudCli): CloudSeed {
           location: region,
         });
       }
-      // Node pools' own groups, free once their VMs are gone.
+      // Security groups an older release's node pools left, free once their VMs are gone.
       const groups = await json<string[]>(
         'ec2 describe-security-groups --query SecurityGroups[].GroupId --filters',
         tagFilter(clusterId),

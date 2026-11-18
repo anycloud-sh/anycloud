@@ -209,7 +209,6 @@ function productContainer(
     workloadType: 'job',
     env: { SPIKE_LABEL: label },
     registryUsername: 'spike',
-    deploymentId: null,
     userId: 'spike',
     dockerOptions: { gpus, binds: [`${DIR}:/spike`] },
     command: ['python3', '/spike/probe.py', 'monitor'],

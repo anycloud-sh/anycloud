@@ -154,7 +154,7 @@ const E2E_FILE =
 /** Members exercising each substrate column; layer reach requires only the free ones. */
 const SUBSTRATE_MEMBERS: Record<string, RegExp> = {
   shared: /./,
-  pool: /^e2e-(cluster|pool-scaling)-/,
+  pool: /^e2e-cluster-/,
   vm: /^(local|aws|gcp|azure|lambda)-/,
   slurm: /^slurm-/,
 };
@@ -189,12 +189,8 @@ const ROOTS = new Set([
 ]);
 /** Harness modules the composition root injects → members, matched against `<family>/<member>`. */
 const HARNESS_MEMBERS = table(String.raw`
-  /e2e-cluster-local$                          test/integration/e2e/internal/contracts/cluster-local
-  /e2e-(cluster|claim-burst|pool-scaling)-local$ test/integration/e2e/internal/substrates/local-cluster/
-  /e2e-claim-burst-local$                      test/integration/e2e/internal/contracts/claim-burst
-  /e2e-pool-scaling-local$                     test/integration/e2e/internal/contracts/pool-scaling-local
+  /e2e-cluster-local$                          test/integration/e2e/internal/(contracts/cluster-local|substrates/local-cluster/)
   /e2e-cluster-cloud$                          test/integration/e2e/internal/(contracts/cluster-cloud|substrates/cloud-cluster/)
-  /e2e-(cluster-|claim-burst|pool-scaling)     test/integration/e2e/internal/(targets/cluster-node-pool|transports/node-pool-service|node-pool|deployment)
   /hosted-api-access-policy$                   test/integration/e2e/internal/api-auth\.ts$
   -bucket-access-denied$                       test/integration/e2e/internal/bucket-access-denied\.ts$
   ^storage-tokens/                             test/integration/e2e/internal/(contracts|transports)/storage-tokens\.ts$
@@ -209,7 +205,7 @@ const HARNESS_MEMBERS = table(String.raw`
   ^dedicated-job/                              test/integration/e2e/internal/contracts/dedicated-job\.ts$
   ^(serve|gpu-serve|serve-upgrade|serve-local-recovery)/ test/integration/e2e/internal/service-cleanup\.ts$
   -mace-full-pull$                             test/docker/(Dockerfile\.mace|requirements\.mace)
-  /e2e-cluster-                                 test/integration/e2e/internal/(fixtures/deployment\.py|kubernetes-constants\.ts)$
+  /e2e-cluster-cloud$                          test/integration/e2e/internal/kubernetes-constants\.ts$
   .                                            test/integration/e2e/internal/diagnostics\.ts$
   /local-                                      test/integration/e2e/internal/(targets|transports)/local-smolvm-
   ^dedicated-job/(aws|gcp|azure|lambda)-        test/integration/e2e/internal/(targets|transports)/public-cloud-job
@@ -239,8 +235,9 @@ function reachingMembers(tree: Tree, members: Map<string, string>) {
     const imported = [...text.matchAll(/(?:from|import) '(\.[^']+)'/g)].map(
       (m) => normalize(join(dirname(source), m[1])).replace(/\.js$/, '.ts'),
     );
+    // A `.dockerignore` goes with the Dockerfile it is named for.
     const named = files.filter(
-      (f) => f !== source && text.includes(basename(f)),
+      (f) => f !== source && text.includes(basename(f, '.dockerignore')),
     );
     for (const target of [...imported, ...named])
       importers.set(target, [...(importers.get(target) ?? []), source]);
@@ -317,7 +314,9 @@ export function renderE2e({ changes, head, base, workflows }: Input): string {
           )
         : [...(headReach.get(c.path) ?? baseReach.get(c.path) ?? [])];
       if (c.path.startsWith(MAPS)) members.push(basename(c.path, '.json'));
-      else if (!members.length) unmapped.push(label(c));
+      // A deleted file nothing reaches any more runs in no member; whatever
+      // imported it changed too and is classified itself.
+      else if (!members.length && c.status !== 'D') unmapped.push(label(c));
       const paidOnly = PAID_HARNESS.find(({ pattern }) => pattern.test(c.path));
       if (paidOnly) {
         const match = paidOnly.pattern.exec(c.path)!;
@@ -432,11 +431,14 @@ async function main() {
     execFileSync('git', args, { cwd: root, maxBuffer: 1 << 28 }).toString();
   const lines = (text: string) => text.split('\n').filter(Boolean);
   const tree = (ref?: string): Tree => ({
-    files: lines(
-      ref
-        ? git('ls-tree', '-r', '--name-only', ref)
-        : git('ls-files', '--cached', '--others', '--exclude-standard'),
-    ),
+    files: ref
+      ? lines(git('ls-tree', '-r', '--name-only', ref))
+      : // The index still lists a file deleted but not yet staged.
+        lines(
+          git('ls-files', '--cached', '--others', '--exclude-standard'),
+        ).filter((path) =>
+          statSync(join(root, path), { throwIfNoEntry: false }),
+        ),
     read: (path) =>
       ref
         ? git('show', `${ref}:${path}`)
@@ -471,14 +473,17 @@ async function main() {
       changes.push({ status: 'A', path, added, deleted: 0 });
     }
   const head = tree(values.head);
-  const workflows = Object.fromEntries(
-    head.files
-      .filter((f) => E2E_FILE.test(f) && f.startsWith('.github/'))
-      .map((f) => [basename(f), head.read(f)]),
-  );
+  const base = tree(mergeBase);
+  const workflowsOf = (at: Tree) =>
+    Object.fromEntries(
+      at.files
+        .filter((f) => E2E_FILE.test(f) && f.startsWith('.github/'))
+        .map((f) => [basename(f), at.read(f)]),
+    );
+  // A deleted workflow still names the members it ran.
+  const workflows = { ...workflowsOf(base), ...workflowsOf(head) };
   console.log(renderLayers(changes));
   console.log();
-  const base = tree(mergeBase);
   console.log(renderE2e({ changes, head, base, workflows }));
   console.log();
   // The base is the committed document; the working tree's is regenerated.

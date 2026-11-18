@@ -61,7 +61,7 @@ import { bindVmCompute, terminateVmComputes } from './vm-compute.js';
 
 /**
  * Management ingress at bootstrap time: SSH for host configuration, the Kubernetes
- * API for the installer and node pool workers, and the cluster-node API route.
+ * API for the installer, and the cluster-node API route.
  * Source narrowing and TLS on the API route follow the open ingress decision.
  */
 const managementIngress = (port: number, description: string) =>

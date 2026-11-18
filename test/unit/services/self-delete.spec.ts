@@ -178,7 +178,7 @@ describe('the hosted API deleting itself', () => {
     ).rejects.toMatchObject({
       name: 'SelfDeleteRefusedError',
       message:
-        'Node pool gpu still has Deployments or Services. Workload svc-1 still runs. Run anycloud deployment delete <id> / anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.',
+        "Node pool gpu still has Deployments or Services. Workload svc-1 still runs. With the CLI of the hosted API's release, run anycloud deployment delete <id> / anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.",
     });
     expect(order).toEqual([]);
     expect(selfDelete.status().state).toBe('idle');
@@ -254,7 +254,7 @@ describe('the hosted API deleting itself', () => {
     await vi.waitFor(() => expect(selfDelete.status().state).toBe('failed'));
     expect(order).toEqual(['backup']);
     expect(selfDelete.status().error).toBe(
-      'Node pool late still exists. Run anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.',
+      "Node pool late still exists. With the CLI of the hosted API's release, run anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.",
     );
   });
 

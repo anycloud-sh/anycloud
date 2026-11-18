@@ -26,17 +26,14 @@ function release(...answers: (KubernetesStep | null | Error)[]) {
     if (answer instanceof Error) kubernetes.mockRejectedValueOnce(answer);
     else kubernetes.mockResolvedValueOnce({ step: answer });
   }
-  const drain = vi.fn<ApiClient['systemRelease']['drain']>(async () => ({
-    jobs: [],
-  }));
-  return { kubernetes, drain };
+  return { kubernetes };
 }
 
 describe("api upgrade's K3s step (RFC 0049 C26 (b))", () => {
   const report = vi.fn();
   beforeEach(() => vi.clearAllMocks());
 
-  it('polls one step through a K3s restart, renewing the drain hold on every poll', async () => {
+  it('polls one step through a K3s restart', async () => {
     const api = release(
       step('running'),
       // The API answers through K3s, which is restarting.
@@ -57,9 +54,6 @@ describe("api upgrade's K3s step (RFC 0049 C26 (b))", () => {
       id: expect.stringMatching(/^[a-z0-9]{16}$/u),
       image: IMAGE,
     });
-    expect(api.drain.mock.calls).toEqual(
-      Array.from({ length: 4 }, () => [{ force: false }]),
-    );
     expect(report).toHaveBeenCalledExactlyOnceWith(
       'Reconfiguring K3s on the management host...',
     );

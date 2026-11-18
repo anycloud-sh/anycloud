@@ -26,8 +26,6 @@ export interface ReconcileLocalApiOptions {
   startIfStopped?: boolean;
   /** Port to use only when startIfStopped starts a new local API container. */
   startPort?: number;
-  /** Runs once a restart is decided, before the old API stops. */
-  beforeRestart?: (apiUrl: string) => Promise<void>;
 }
 
 function apiUrlForPort(apiPort: number | null): string {
@@ -319,7 +317,6 @@ export async function reconcileLocalApi(
     `Local API server is on ${apiState.version ?? 'a different version'}; ` +
       `restarting it to match installed anycloud ${targetVersion}.`,
   );
-  await options.beforeRestart?.(apiUrlForPort(apiState.port));
   await restartLocalApiServer({
     apiPort: apiState.port,
     targetVersion,

@@ -22,14 +22,12 @@ import {
   createCloudCompute,
   createVMReleaseConfirmer,
   pAllSettledLimit,
-  refuseClusterScope,
   VM_PRESENT,
   VM_RELEASE_CANDIDATE,
   VMReleaseState,
   vmReleaseUnknown,
   type VMReleaseObservation,
   type VMReleaseObservationOptions,
-  METADATA_NODE_POOL_BOOT,
 } from './cloud.js';
 import {
   CloudType,
@@ -445,9 +443,6 @@ export function resetLambdaCandidatePreflightCache(): void {
   lambdaInstanceTypesCache.clear();
 }
 
-/** The shared command runs, but no metadata service answers on Lambda. */
-export const LAMBDA_NODE_POOL_BOOT = METADATA_NODE_POOL_BOOT;
-
 export class Lambda {
   readonly type = CloudType.Lambda;
   readonly region: string;
@@ -469,8 +464,6 @@ export class Lambda {
   }
 
   compute(): CloudCompute {
-    const userId = (scope: CloudResourceScope) =>
-      scope.tags.anycloud_user ?? 'unknown';
     this.computeProvider ??= createCloudCompute({
       type: this.type,
       region: this.region,
@@ -502,46 +495,6 @@ export class Lambda {
       candidateRegionFilter: this.createCandidateRegionFilter(),
       terminalAuthErrorClassifier: {
         isTerminalAuthError: (error) => this.isTerminalAuthError(error),
-      },
-      // Node pool capacity. TCP 22 stays open through the account's global
-      // rule; regions without rulesets are refused (RFC 0033).
-      resourceScoped: {
-        nodePoolBoot: LAMBDA_NODE_POOL_BOOT,
-        prepareResourceNetwork: (spec, scope) =>
-          this.prepareResourceNetwork(spec, scope),
-        adoptResourceProvisioningAttempt: ({ scope, ...attempt }) =>
-          this.adoptProvisioningAttempt({
-            ...attempt,
-            workloadId: scope.id,
-            userId: userId(scope),
-            resourceScope: scope,
-          }),
-        newResourceVM: async ({ scope, ...params }) => {
-          refuseClusterScope(CloudType.Lambda, scope);
-          // The pool agent runs only on x86_64; Lambda's arm64 types are its
-          // Grace hosts (GH200 in the 2026-10 catalog).
-          if (/(?:^|_)g[bh]\d{3}(?:_|$)/.test(this.vmType)) {
-            throw new Error(
-              `Lambda instance type ${this.vmType} is arm64; node pool VMs must be x86_64`,
-            );
-          }
-          return this.newVM({
-            ...params,
-            workloadId: scope.id,
-            userId: userId(scope),
-            resourceScope: scope,
-          });
-        },
-        listResourceVMs: async (scope) =>
-          (await this.listInstances())
-            .filter(
-              (inst) =>
-                !isGoneInstanceStatus(inst.status) &&
-                hasLambdaTag(inst, LAMBDA_TAG_RESOURCE, scope.id),
-            )
-            // Lambda instances can't be stopped.
-            .map((inst) => ({ id: inst.id, stopped: false })),
-        terminateResourceNetwork: (scope) => this.terminateNetworking(scope.id),
       },
     });
     return this.computeProvider;
@@ -1327,23 +1280,6 @@ export class Lambda {
     return { firewallRulesetIds: [ruleset.id] };
   }
 
-  /** Inbound traffic is the union of the account's global rules (TCP 22 and
-   *  ICMP by default) and the instance's rulesets; with an empty ruleset the
-   *  kubelet port stays closed (Spike run 36331594383). Rulesets attach only
-   *  at launch but are editable live, so every pool VM gets one, and a pool
-   *  that later hosts a Service opens its port without relaunching. */
-  private async prepareResourceNetwork(
-    spec: IngressSpec,
-    scope: CloudResourceScope,
-  ): Promise<{ firewallRulesetIds: string[] }> {
-    refuseClusterScope(CloudType.Lambda, scope);
-    const ruleset = await this.upsertFirewallRuleset(
-      firewallRulesetName(scope.id),
-      toLambdaFirewallRules(spec),
-    );
-    return { firewallRulesetIds: [ruleset.id] };
-  }
-
   private async listFirewallRulesets(): Promise<LambdaFirewallRuleset[]> {
     return this.api<LambdaFirewallRuleset[]>('GET', '/firewall-rulesets', {
       retrySafety: 'idempotent',
@@ -1682,10 +1618,7 @@ export class Lambda {
     // Structural target mismatch — no path to success in the chosen region.
     if (/Instance type\b.*\bdoes not exist/i.test(msg))
       return CloudFailureDiagnosis.InvalidTarget;
-    if (
-      /\bis arm64; node pool VMs must be x86_64/i.test(msg) ||
-      /can't host a cluster's management VM/i.test(msg)
-    )
+    if (/can't host a cluster's management VM/i.test(msg))
       return CloudFailureDiagnosis.InvalidTarget;
     if (/Unknown region\b/i.test(msg))
       return CloudFailureDiagnosis.InvalidTarget;
@@ -1701,8 +1634,7 @@ export class Lambda {
     )
       return CloudFailureDiagnosis.InvalidTarget;
     // Some regions (us-south-1, run 37831607151) don't support firewall
-    // rulesets, which serve workloads and node pool VMs require. A pool VM
-    // therefore fails closed there. Region-structural, not a bad request — rotate to another
+    // rulesets, which Workload VMs require. Region-structural, not a bad request — rotate to another
     // region (or terminate cleanly if the region was pinned). Carries
     // [global/invalid-parameters], so this must precede the generic check below.
     if (/Firewall rulesets are not supported in the .+ region/i.test(msg))

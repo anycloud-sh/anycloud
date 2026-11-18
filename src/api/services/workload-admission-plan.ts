@@ -449,7 +449,6 @@ export async function prepareWorkloadCreation(args: {
       workloadType: requestedWorkloadType,
       image: input.image,
       registryUsername: GHCR_TOKEN_USERNAME,
-      deploymentId: null,
       userId: actor.username,
       env: effectiveEnv ?? null,
       dockerOptions: input.dockerOptions ?? null,

@@ -13,7 +13,7 @@ Manage the active API target:
 anycloud api list|ls [--json]
 anycloud api use [target]
 anycloud api status|describe [--watch [--interval <seconds>]] [--json]
-anycloud api upgrade|update [--image <reference>] [--force] [--sign-in-apps <id,...>] [--json]
+anycloud api upgrade|update [--image <reference>] [--sign-in-apps <id,...>] [--json]
 anycloud api start [options]
 anycloud api stop
 anycloud api logs [-f]
@@ -76,7 +76,7 @@ First update the CLI, then upgrade the active API:
 
 ```bash
 anycloud update
-anycloud api upgrade [--image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>] [--force]
+anycloud api upgrade [--image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>]
 ```
 
 `api upgrade` (alias `update`) upgrades the active API. A local API is
@@ -91,19 +91,9 @@ and new versions, or the refusal's error code; see
 [Results for scripts](/reference/cli/cluster#results-for-scripts). See
 [Hosted APIs](/platform/hosted-apis#upgrade-a-hosted-api).
 
-Before it replaces an API, `api upgrade` holds its
-[Jobs on a node pool](/platform/jobs#jobs-on-a-node-pool): no new one starts
-until the new API is up. Jobs running on this release's or the previous
-release's runner keep running through the upgrade, and are listed. It waits
-for older ones, and for every Job when `--image` names another release,
-listing them as they change. `--force` stops those instead; each retries after
-the upgrade.
-
-After an upgrade that changes how node pool VMs join, such as adding the
-instance-metadata block, the API replaces each node pool VM that joined before
-it. It does this one VM per pool at a time, each once its pool Jobs finish. A
-pool with one VM is unavailable while its replacement boots, and a pool whose
-replacement can't launch stays one VM short until it can.
+`api upgrade` refuses while a hosted API still has node pools, Deployments
+or node pool Services, naming each; see
+[`cluster`](/reference/cli/cluster#back-up-and-upgrade-the-hosted-api).
 
 The active API selection is not changed. When a stopped active local API has a saved loopback URL with a custom port,
 `api upgrade` starts it again on that port.

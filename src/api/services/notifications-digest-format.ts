@@ -44,21 +44,6 @@ export interface DigestUserSummary {
   jobs: DigestTypeSummary;
   services: DigestTypeSummary;
   vms: DigestTypeSummary;
-  deployments: DigestDeploymentInventory;
-  deploymentJobs: DigestDeploymentJobSummary[];
-}
-
-export interface DigestDeploymentInventory {
-  presentAtEnd: number;
-  created: number;
-  deleted: number;
-  hasActivity: boolean;
-}
-
-export interface DigestDeploymentJobSummary extends DigestTypeSummary {
-  deploymentId: string;
-  name: string;
-  nodePoolName: string | null;
 }
 
 // Provisioned-VM activity and spend during the digest window, from a
@@ -91,7 +76,6 @@ interface DigestSectionView {
   heading: string;
   items: string[];
   details: string[];
-  breakdown?: { heading: string; items: string[] };
 }
 
 interface DigestUserView {
@@ -164,9 +148,9 @@ function buildDigestView(
     const userSpend = spendByUser.get(userKey) ?? emptyDigestUserSpend();
     const sections: DigestSectionView[] = [];
     if (typeHasActivity(userSummary.jobs, userSpend.jobs)) {
-      const jobs = buildDigestSection('jobs', userSummary.jobs, userSpend.jobs);
-      jobs.breakdown = buildDeploymentJobBreakdown(userSummary.deploymentJobs);
-      sections.push(jobs);
+      sections.push(
+        buildDigestSection('jobs', userSummary.jobs, userSpend.jobs),
+      );
     }
     if (typeHasActivity(userSummary.services, userSpend.services)) {
       sections.push(
@@ -179,26 +163,6 @@ function buildDigestView(
     }
     if (typeHasActivity(userSummary.vms, userSpend.vms)) {
       sections.push(buildDigestSection('vms', userSummary.vms, userSpend.vms));
-    }
-    if (userSummary.deployments.hasActivity) {
-      const inventory = userSummary.deployments;
-      const items: string[] = [];
-      if (inventory.presentAtEnd > 0) {
-        items.push(
-          `${formatNotificationNumber(inventory.presentAtEnd)} present at day end`,
-        );
-      }
-      if (inventory.created > 0) {
-        items.push(`${formatNotificationNumber(inventory.created)} created`);
-      }
-      if (inventory.deleted > 0) {
-        items.push(`${formatNotificationNumber(inventory.deleted)} deleted`);
-      }
-      sections.push({
-        heading: '☸️ Kubernetes Deployments',
-        items: [items.join(' · ')],
-        details: [],
-      });
     }
     if (sections.length > 0) {
       const account =
@@ -219,90 +183,6 @@ function buildDigestView(
     spendLine: formatDigestSpendLine(spend),
     users: users.sort((a, b) => (a.userId ?? '').localeCompare(b.userId ?? '')),
   };
-}
-
-const DIGEST_DEPLOYMENT_DETAIL_LIMIT = 5;
-
-function buildDeploymentJobBreakdown(
-  targets: DigestDeploymentJobSummary[],
-): DigestSectionView['breakdown'] {
-  if (targets.length === 0) return undefined;
-  const activity = (target: DigestDeploymentJobSummary) =>
-    target.initialSubmissions + target.resubmissions + target.total;
-  const sorted = [...targets].sort(
-    (a, b) =>
-      activity(b) - activity(a) ||
-      a.name.localeCompare(b.name) ||
-      a.deploymentId.localeCompare(b.deploymentId),
-  );
-  const targetLabel = (target: DigestDeploymentJobSummary) =>
-    target.nodePoolName === null
-      ? target.name
-      : `${target.name} / ${target.nodePoolName}`;
-  const labelCounts = new Map<string, number>();
-  for (const target of targets) {
-    const label = targetLabel(target);
-    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
-  }
-  const items = sorted
-    .slice(0, DIGEST_DEPLOYMENT_DETAIL_LIMIT)
-    .map((target) => {
-      const base = targetLabel(target);
-      const label =
-        (labelCounts.get(base) ?? 0) > 1
-          ? `${base} (${target.deploymentId})`
-          : base;
-      return `${label}: ${formatDeploymentJobActivity(target)}`;
-    });
-  const others = sorted.slice(DIGEST_DEPLOYMENT_DETAIL_LIMIT);
-  if (others.length > 0) {
-    const total = emptyDigestTypeSummary();
-    for (const target of others) {
-      for (const field of [
-        'initialSubmissions',
-        'resubmissions',
-        'total',
-        'completed',
-        'failed',
-        'errored',
-        'terminated',
-        'invalid',
-      ] as const) {
-        total[field] += target[field];
-      }
-    }
-    const noun = others.length === 1 ? 'Deployment' : 'Deployments';
-    items.push(
-      `${formatNotificationNumber(others.length)} other ${noun}: ${formatDeploymentJobActivity(total)}`,
-    );
-  }
-  return { heading: 'By Kubernetes Deployment — included above', items };
-}
-
-function formatDeploymentJobActivity(summary: DigestTypeSummary): string {
-  const items: string[] = [];
-  if (summary.initialSubmissions > 0) {
-    items.push(
-      `${formatNotificationNumber(summary.initialSubmissions)} submitted`,
-    );
-  }
-  if (summary.resubmissions > 0) {
-    items.push(
-      `${formatNotificationNumber(summary.resubmissions)} resubmitted`,
-    );
-  }
-  for (const state of [
-    'completed',
-    'failed',
-    'errored',
-    'terminated',
-    'invalid',
-  ] as const) {
-    if (summary[state] > 0) {
-      items.push(`${formatNotificationNumber(summary[state])} ${state}`);
-    }
-  }
-  return items.join(' · ');
 }
 
 function formatDigestSpendLine(spend: DigestSpend): string | null {
@@ -346,10 +226,6 @@ function formatDigestText(view: DigestView): string {
       lines.push(section.heading);
       lines.push(...section.items.map((item) => `   ${item}`));
       lines.push(...section.details.map((detail) => `      ${detail}`));
-      if (section.breakdown) {
-        lines.push(`   ${section.breakdown.heading}`);
-        lines.push(...section.breakdown.items.map((item) => `      ${item}`));
-      }
     }
   }
   return lines.join('\n');
@@ -375,10 +251,6 @@ function formatDigestSlackBlocks(view: DigestView): SlackRichTextBlock[] {
       }
       if (section.details.length > 0) {
         elements.push(richTextList(section.details, 1));
-      }
-      if (section.breakdown) {
-        elements.push(richTextList([section.breakdown.heading], 0));
-        elements.push(richTextList(section.breakdown.items, 1));
       }
     }
   }
@@ -435,13 +307,6 @@ function emptyDigestUserSummary(): DigestUserSummary {
     jobs: emptyDigestTypeSummary(),
     services: emptyDigestTypeSummary(),
     vms: emptyDigestTypeSummary(),
-    deployments: {
-      presentAtEnd: 0,
-      created: 0,
-      deleted: 0,
-      hasActivity: false,
-    },
-    deploymentJobs: [],
   };
 }
 

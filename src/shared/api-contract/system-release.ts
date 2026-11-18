@@ -2,8 +2,6 @@ import { z } from 'zod';
 import { authenticatedEndpoints } from './base.js';
 import { noInputSchema } from './common-schemas.js';
 import {
-  drainPoolJobsInputSchema,
-  drainPoolJobsResponseSchema,
   kubernetesStepInputSchema,
   kubernetesStepResponseSchema,
   requestSystemReleaseInputSchema,
@@ -68,38 +66,10 @@ const status = authenticated
   .errors(unavailable);
 
 /**
- * Decision 30: `api upgrade` holds claims on managed Deployments for ten
- * minutes and reads the pool Jobs in flight, polling until none remain; with
- * `force` it stops them so each retries. Any API serves it, local or hosted.
- */
-const drain = authenticated
-  .command(
-    {
-      method: 'POST',
-      path: '/system-release/drain',
-      operationId: 'drainPoolJobs',
-      summary: 'Hold pool Job claims and list the pool Jobs in flight',
-    },
-    // A repeat renews the hold and reads again; `force` stops what it lists.
-    { replay: 'safe', timeoutMs: 120_000 },
-  )
-  .input(drainPoolJobsInputSchema)
-  .output(drainPoolJobsResponseSchema)
-  .errors({
-    SYSTEM_RELEASE_REFUSED: {
-      status: 400,
-      message: 'Release request does not satisfy the update contract',
-    },
-    ...unavailable,
-  });
-
-/**
- * RFC 0049 C26 (b): after the drain, `api upgrade` has the API label the
- * management Node and bring K3s's server configuration to the release it
- * moves to, from a host-step Job on the management Node. The first call
- * starts the step; later calls with the same id report it. The caller runs
- * it after the drain and keeps renewing the drain's hold while it polls; the
- * API doesn't check that a hold is active.
+ * RFC 0049 C26 (b): `api upgrade` has the API label the management Node and
+ * bring K3s's server configuration to the release it moves to, from a
+ * host-step Job on the management Node. The first call starts the step; later
+ * calls with the same id report it.
  */
 const kubernetes = authenticated
   .command(
@@ -144,7 +114,7 @@ const backup = authenticated
   .errors(unavailable);
 
 /**
- * `cluster delete` with the hosted API reachable: refused while node pools or
+ * `cluster delete` with the hosted API reachable: refused while
  * live VM workloads remain; otherwise the API takes C28's final backup,
  * answers, sweeps its VM Jobs and per-Job buckets, and deletes its own
  * stack, group or instance last.
@@ -166,7 +136,7 @@ const selfDelete = authenticated
   .errors({
     SELF_DELETE_REFUSED: {
       status: 409,
-      message: 'The installation still has node pools or running workloads',
+      message: 'The installation still has running workloads',
     },
     ...unavailable,
   });
@@ -187,7 +157,6 @@ export const systemReleaseContract = {
   selfDeleteStatus,
   request,
   status,
-  drain,
   kubernetes,
   backup,
 };

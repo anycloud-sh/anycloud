@@ -348,7 +348,7 @@ export function createDeleteCommand(): Command {
   return new Command('delete')
     .aliases(['terminate', 'rm'])
     .description(
-      'Delete the installation through its hosted API, which deletes itself last; refused while node pools or running workloads remain',
+      'Delete the installation through its hosted API, which deletes itself last; refused while running workloads remain',
     )
     .argument(
       '<id-or-name>',

@@ -13,12 +13,7 @@
 
 import { memoizeAsync } from '../../shared/utils.js';
 import { formatNotificationUsd } from '../../shared/notifications/format.js';
-import { SCALE_OUT_CAP_BLOCK_PREFIX } from './cluster-store.js';
-import {
-  getPersistence,
-  getSpendControlsStore,
-  getWorkloadEventStore,
-} from './persistence.js';
+import { getSpendControlsStore } from './persistence.js';
 import {
   type BlockAlertIdentity,
   type Budget,
@@ -195,74 +190,8 @@ export class BurnRateCache {
 }
 
 /**
- * Build one pass's admission check. Its shared caches pre-charge each
- * candidate that clears, so later candidates in the pass see it. Account-owned
- * capacity has no session, so agent-session controls skip it.
- */
-export async function createSpendAdmission(): Promise<
-  (candidate: Parameters<typeof findBlockingCap>[0]) => Promise<CapBlock | null>
-> {
-  const store = getSpendControlsStore();
-  const [throttles, budgets] = await Promise.all([
-    store.listThrottles(),
-    store.listBudgets(),
-  ]);
-  const caches = { burn: new BurnRateCache(), spend: new SpendCache() };
-  return async (candidate) =>
-    findBlockingCap(candidate, throttles, budgets, caches);
-}
-
-/**
- * The claim's spend check for a managed Deployment's Job (SLOT). Its replica's
- * Node already counts at account scope (decision 22). A blocked Job stays
- * queued with the reason.
- */
-export async function claimSpendBlock(
-  jobId: string,
-  gate: { session: string | null; hourlyUsd?: number },
-): Promise<CapBlock | null> {
-  const admit = await createSpendAdmission();
-  const block = await admit({ ...gate, onExistingNode: true });
-  if (block) {
-    await getWorkloadEventStore().recordQueuedBlockReason(
-      jobId,
-      formatBlockReason(block),
-    );
-  }
-  return block;
-}
-
-/**
- * The account cap holding a pool's Pending replicas: the cap that blocked the
- * pool's last purchase, else an account budget, since a replica's Node already
- * counts at account scope. RA gates replica +1 on it.
- */
-export async function findReplicaCapBlock(
-  nodePoolId: string,
-): Promise<string | null> {
-  const pool = await getPersistence().nodePools.getForScope(nodePoolId, {
-    kind: 'api',
-  });
-  if (pool?.lastError?.startsWith(SCALE_OUT_CAP_BLOCK_PREFIX)) {
-    return pool.lastError;
-  }
-  const block = await findBlockingBudget(
-    { session: null },
-    await getSpendControlsStore().listBudgets(),
-    new SpendCache(),
-  );
-  return block && formatBlockReason(block);
-}
-
-/**
  * Check every cap against the candidate workload. Returns the first cap
  * that blocks dispatch, or null if all clear.
- *
- * The candidate's charge is per scope: `hourlyUsd` at session scope, and at
- * account scope too unless it runs `onExistingNode`, whose VM account burn
- * already counts. Such a candidate skips account throttles, since it doesn't
- * change the account's rate, but not account budgets, since keeping a Node
- * busy prolongs its spend.
  *
  * Throttle compares the live burn rate ($/hr across in-flight VMs) plus the
  * candidate's hourlyUsd against its cap. On clear, the candidate's charge
@@ -278,7 +207,6 @@ export async function findBlockingCap(
   candidate: {
     session: string | null;
     hourlyUsd?: number;
-    onExistingNode?: boolean;
   },
   throttles: Throttle[],
   budgets: Budget[],
@@ -293,7 +221,6 @@ export async function findBlockingCap(
     const candidateCharge = candidate.hourlyUsd ?? 0;
     const throttleSessionFiltersToCommit: Array<string | null> = [];
     for (const t of throttles) {
-      if (t.scope === 'account' && candidate.onExistingNode) continue;
       const sessionFilter = scopeToSessionFilter(t.scope, candidate.session);
       if (sessionFilter === SKIP) continue;
       const rate = await caches.burn.get(sessionFilter);

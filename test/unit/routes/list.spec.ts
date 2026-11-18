@@ -7,13 +7,10 @@ import { CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
 import { walkToState, provisionTestVm } from '../../helpers/workload-store.js';
 import { getDB } from '../../../src/api/services/repositories/db.js';
-import { getDeploymentStore } from '../../../src/api/services/persistence.js';
 import {
   upsertApiAccessOwner,
   upsertApiAccessUser,
 } from '../../../src/api/services/repositories/api-access-policy.js';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
-import { getWorkloadAdmissionWriter } from '../../../src/api/services/workload-admission-writer.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
 
 function listRequest(
@@ -455,67 +452,6 @@ describe('GET /v1/workloads server-side filtering', () => {
     const ids = await idsOf(res);
     expect(ids).toContain(run);
     expect(ids).not.toContain(done);
-  });
-
-  it('deploymentId filters to one exact Deployment target', async () => {
-    const stamp = Date.now();
-    const nodePoolId = `list-pool-${stamp}`;
-    const firstDeploymentId = `list-deployment-${stamp}`;
-    const secondDeploymentId = `${firstDeploymentId}-other`;
-    await seedReadyNodePool({ nodePoolId, ownerUserId: TEST_USER_ID });
-    for (const deploymentId of [firstDeploymentId, secondDeploymentId]) {
-      await getDeploymentStore().create(
-        {
-          id: deploymentId,
-          ownerUserId: TEST_USER_ID,
-          name: deploymentId,
-          nodePoolId,
-          config: {
-            image: 'example/deployment:latest',
-            imageDigest: null,
-            command: null,
-            env: null,
-            registryUsername: u,
-            registryToken: null,
-            dockerOptions: null,
-          },
-          gpuCount: 0,
-          maxConcurrentJobsPerReplica: 1,
-        },
-        { kind: 'api' },
-      );
-    }
-    const firstJob = `list-job-${stamp}`;
-    const secondJob = `${firstJob}-other`;
-    expect(
-      await getWorkloadAdmissionWriter().createTargetedWorkload({
-        id: firstJob,
-        userId: u,
-        ownerUserId: TEST_USER_ID,
-        deploymentId: firstDeploymentId,
-      }),
-    ).toBe(true);
-    expect(
-      await getWorkloadAdmissionWriter().createTargetedWorkload({
-        id: secondJob,
-        userId: u,
-        ownerUserId: TEST_USER_ID,
-        deploymentId: secondDeploymentId,
-      }),
-    ).toBe(true);
-
-    const response = await get({ deploymentId: firstDeploymentId });
-
-    expect(response.status).toBe(200);
-    const ids = await idsOf(response);
-    expect(ids).toContain(firstJob);
-    expect(ids).not.toContain(secondJob);
-  });
-
-  it('rejects an empty deploymentId filter', async () => {
-    const response = await get({ deploymentId: ' ' });
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain('deploymentId');
   });
 
   it('rejects an unknown status with 400', async () => {

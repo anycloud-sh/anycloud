@@ -266,10 +266,10 @@ life is the control. In an emergency:
 - AWS: attach to the credential's IAM user, or to a role connection's role, a
   policy that denies everything when `aws:TokenIssueTime` is earlier than now.
   Rotating the key does not end sessions already issued. The deny also ends
-  VM and pool Job storage sessions issued before then.
+  VM storage sessions issued before then.
 - GCP: remove the service account's access to the bucket.
 - Azure: rotate the storage account's first key (`key1`), which signs every
-  token and also voids VM and pool Job SAS tokens. For up to 15 minutes the
+  token and also voids VM SAS tokens. For up to 15 minutes the
   API may still sign new tokens with its cached old key, and they are refused.
 
 Minting follows the hosted API's peer model: the owner and every member may
@@ -358,7 +358,6 @@ while a VM first downloads its input and checkpoint data and while a VM-hosted
 Job or Service runs, and mints a fresh one for the final copy, so termination still preserves
 accumulated output and checkpoint data. If the API is unreachable past a
 token's expiry, sync stops until it renews the token.
-Deployment-targeted Jobs do not support per-Job Buckets.
 
 Minting uses STS `GetFederationToken`, which needs a long-term IAM user access
 key with `sts:GetFederationToken` and S3 access to the Bucket. Anycloud refuses
@@ -376,7 +375,6 @@ AWS, Azure, and GCP Jobs can use the selected compute identity for same-account
 Buckets, including automatic spot checkpoints. Lambda and Local Jobs
 require explicit storage credentials for checkpoint buckets, plus a storage
 region for S3, because they do not provide a compatible native bucket identity.
-Scoped cross-identity storage supports AWS and Cloudflare R2, and Azure and
-GCP for [Jobs on a node pool](/platform/jobs#jobs-on-a-node-pool). Checkpointed Services
+Scoped cross-identity storage supports AWS and Cloudflare R2. Checkpointed Services
 use their selected compute identity unless `--checkpoint-storage-credentials`
 names a separate AWS or Cloudflare credential.

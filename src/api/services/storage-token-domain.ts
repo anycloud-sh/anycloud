@@ -110,9 +110,8 @@ async function mint(
 
 /**
  * Mint short-lived tokens for prefixes of a saved credential's buckets,
- * with the minter VM and pool Job storage use. Every admitted
- * principal, a registered Deployment included, is a peer and mints any
- * grant; the backup bucket is refused before any cloud call, and every
+ * with the minter VM storage uses. Every admitted principal is a peer and
+ * mints any grant; the backup bucket is refused before any cloud call, and every
  * request that passes validation leaves one audit line.
  */
 export async function mintStorageTokens(

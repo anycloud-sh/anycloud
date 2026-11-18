@@ -13,10 +13,7 @@ import {
   type WorkloadCostReport as CostReport,
   type WorkloadCostRow as CostRow,
 } from '../../../shared/api-contract/workload-management-schemas.js';
-import {
-  WorkloadType,
-  type WorkloadTypeValue,
-} from '../../../shared/workload.js';
+import type { WorkloadTypeValue } from '../../../shared/workload.js';
 import { workloadTypeBucket } from '../../../shared/workload-behavior.js';
 import {
   ownershipBranches,
@@ -92,34 +89,8 @@ export function windowedVmSpendSql(window: {
   };
 }
 
-/**
- * Targeted Jobs' slot time (SLOT) as `vms`-shaped rows: each Pod attempt priced
- * at its replica's `hourly_usd` ÷ `max_concurrent_jobs_per_replica`. Only
- * session reads add them; the node pool VM counts toward account caps. The Pod
- * UID fills `ip` only to pass the window reads' `ip IS NOT NULL` filter.
- */
-export function slotTimeSql(jobs: string, managedOnly: boolean): string {
-  return `SELECT a.workload_id, p.pod_uid AS ip, a.opened_at AS created_at,
-      a.ended_at, o.hourly_usd / t.max_concurrent_jobs_per_replica
-        AS price_per_hour, NULL AS cost
-    FROM ${jobs} j
-    JOIN workload_attempts a ON a.workload_id = j.id
-    JOIN pod_attempts p ON p.attempt_id = a.id
-    JOIN pool_occupancy o
-      ON o.deployment_id = j.deployment_id AND o.pod_uid = p.pod_uid
-    JOIN deployments t ON t.id = j.deployment_id${
-      managedOnly ? ' AND t.managed = 1' : ''
-    }`;
-}
-
-/**
- * A session's live burn ($/hr): its priced in-flight VMs plus its managed
- * Deployments' open slots (SLOT). Binds the session twice.
- */
-export const SESSION_BURN_SQL = `SELECT COALESCE(SUM(v.price_per_hour), 0)
-    + (SELECT COALESCE(SUM(s.price_per_hour), 0)
-       FROM (${slotTimeSql('(SELECT id, deployment_id FROM workloads WHERE session = ?)', true)}) s
-       WHERE s.ended_at IS NULL) AS rate
+/** A session's live burn ($/hr): its priced in-flight VMs. */
+export const SESSION_BURN_SQL = `SELECT COALESCE(SUM(v.price_per_hour), 0) AS rate
   FROM vms v INDEXED BY idx_vms_active JOIN workloads d ON d.id = v.workload_id
   WHERE v.ended_at IS NULL AND v.ip IS NOT NULL
     AND v.price_per_hour IS NOT NULL AND d.session = ?`;
@@ -157,7 +128,6 @@ type CostWorkloadRow = Pick<
   WorkloadRow,
   | 'id'
   | 'workload_type'
-  | 'deployment_id'
   | 'computed_cloud_provider'
   | 'requested_compute_provider'
   | 'region'
@@ -184,10 +154,7 @@ interface CostReportRow {
 }
 
 function toCostRow(row: CostWorkloadRow): CostRow {
-  if (
-    row.deployment_id === null &&
-    (row.container_spec_owner_id === null || row.image === null)
-  ) {
+  if (row.container_spec_owner_id === null || row.image === null) {
     throw new Error(
       `Workload ${row.id}: container spec ownership is incomplete`,
     );
@@ -261,7 +228,6 @@ function toCostReport(rows: CostReportRow[], periodMs: number): CostReport {
 function costWorkloadColumnsSql(nowMs: number): string {
   return `d.id,
     d.workload_type,
-    d.deployment_id,
     s.workload_id AS container_spec_owner_id,
     s.image,
     ${computedWorkloadCloudProviderSql('d')} AS computed_cloud_provider,
@@ -288,7 +254,6 @@ export interface UserWorkloadStarts {
   jobs: WorkloadTypeStarts;
   services: WorkloadTypeStarts;
   vms: WorkloadTypeStarts;
-  deploymentJobs: Array<WorkloadTypeStarts & { deploymentId: string }>;
 }
 
 /**
@@ -359,8 +324,7 @@ export class WorkloadSpendStore {
       filter?.session && filter.sessionExact
         ? ' INDEXED BY idx_workloads_session'
         : '';
-    // `owned_workloads` has already filtered a session's report, which also
-    // prices its targeted Jobs' slot time.
+    // `owned_workloads` has already filtered a session's report.
     const ownership = workloadDriven
       ? ''
       : ` AND ${owner.sql}${attributionWhere}`;
@@ -384,8 +348,6 @@ export class WorkloadSpendStore {
          ),
          overlapping_vms AS NOT MATERIALIZED (
            ${overlappingVms('owned_workloads d JOIN vms AS v ON v.workload_id = d.id')}
-           UNION ALL
-           ${overlappingVms(`(${slotTimeSql('owned_workloads', false)}) AS v`)}
          ),`
           : `overlapping_vms AS NOT MATERIALIZED (
            ${overlappingVms()}
@@ -509,17 +471,16 @@ export class WorkloadSpendStore {
       user_id: string;
       owner_user_id: string | null;
       workload_type: WorkloadTypeValue;
-      deployment_id: string | null;
       initial_submissions: number;
       resubmissions: number;
     }>(
       `WITH activity AS (
-         SELECT user_id, owner_user_id, workload_type, deployment_id,
+         SELECT user_id, owner_user_id, workload_type,
                 1 AS initial_submissions, 0 AS resubmissions
          FROM workloads
          WHERE submitted_at >= ? AND submitted_at < ?
          UNION ALL
-         SELECT d.user_id, d.owner_user_id, d.workload_type, d.deployment_id,
+         SELECT d.user_id, d.owner_user_id, d.workload_type,
                 0 AS initial_submissions, 1 AS resubmissions
          FROM workload_events e
          JOIN workloads d ON d.id = e.workload_id
@@ -527,14 +488,14 @@ export class WorkloadSpendStore {
            AND json_extract(e.metadata, '$.reason') = 'resubmitted'
            AND e.created_at >= ? AND e.created_at < ?
        )
-       SELECT MIN(user_id) AS user_id, owner_user_id, workload_type, deployment_id,
+       SELECT MIN(user_id) AS user_id, owner_user_id, workload_type,
               SUM(initial_submissions) AS initial_submissions,
               SUM(resubmissions) AS resubmissions
        FROM activity
        GROUP BY owner_user_id,
                 CASE WHEN owner_user_id IS NULL THEN LOWER(user_id) END,
-                workload_type, deployment_id
-       ORDER BY user_id, owner_user_id, deployment_id`,
+                workload_type
+       ORDER BY user_id, owner_user_id`,
       [startMs, endMs, startMs, endMs],
     );
     const emptyStarts = (): WorkloadTypeStarts => ({
@@ -559,7 +520,6 @@ export class WorkloadSpendStore {
           jobs: emptyStarts(),
           services: emptyStarts(),
           vms: emptyStarts(),
-          deploymentJobs: [],
         };
         users.set(userKey, user);
       }
@@ -571,16 +531,6 @@ export class WorkloadSpendStore {
       const userBucket = userBuckets[workloadTypeBucket(row.workload_type)];
       userBucket.initialSubmissions += row.initial_submissions;
       userBucket.resubmissions += row.resubmissions;
-      if (
-        row.workload_type === WorkloadType.Job &&
-        row.deployment_id !== null
-      ) {
-        user.deploymentJobs.push({
-          deploymentId: row.deployment_id,
-          initialSubmissions: row.initial_submissions,
-          resubmissions: row.resubmissions,
-        });
-      }
     }
     return {
       jobs,

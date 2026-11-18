@@ -12,9 +12,6 @@ import anycloud
 import anycloud_workflows
 from anycloud import AsyncClient, Client
 from anycloud.models.workload_resubmit_response import WorkloadResubmitResponse
-from anycloud.models.docker_options import DockerOptions
-from anycloud.models.deployment_summary import DeploymentSummary
-from anycloud_workflows import JobFailedError
 
 
 async def call(operation, *args, **kwargs):
@@ -36,43 +33,8 @@ async def workflow(client):
     await call(attached.terminate)
     resubmitted = await call(attached.resubmit)
     assert isinstance(resubmitted, WorkloadResubmitResponse)
-    assert resubmitted.submission_revision is None
     assert attached.last_status is None
-
-    deployment = await call(
-        client.create_deployment, "parity deployments", "deployment:v1", node_pool="node-pool-1",
-        command=("python", "deployment.py"), env={"MODEL": "v1"},
-        docker_options=DockerOptions(shm_size="8g"), max_concurrent_jobs_per_replica=2,
-    )
-    assert isinstance(deployment, DeploymentSummary)
-    assert deployment.command == ["python", "deployment.py"]
-    assert deployment.env_keys == ["MODEL"]
-    listed = await call(client.list_deployments)
-    filtered = await call(client.list_deployments, node_pool="training pool")
-    assert [item.id for item in listed] == [item.id for item in filtered] == [deployment.id]
-    assert (await call(client.get_deployment, " parity deployments ")).id == deployment.id
-    updated = await call(
-        client.update_deployment, deployment.id, command=None, env=None,
-        docker_options={"memory": None, "cpus": "2", "binds": []},
-    )
-    assert updated.command is None
-    assert updated.env_keys == []
-    assert updated.image == deployment.image
-    assert updated.generation == deployment.generation + 1
-
-    targeted = await call(client.submit, deployment=deployment.id, workload_id="python-targeted-job")
-    assert (await call(targeted.status)).jobs_ahead == 2
-    try:
-        await call(targeted.wait, timeout_seconds=10)
-    except JobFailedError as error:
-        assert error.state == "errored"
-        assert error.status is targeted.last_status
-    else:
-        raise AssertionError("Unsuccessful completion must raise JobFailedError")
-    draining = await call(client.delete_deployment, deployment.id)
-    assert draining.deletion_requested_at is not None
-    assert draining.deleted_at is None
-    return {"image": job.id, "deployment": deployment.id, "targeted": targeted.id}
+    return {"image": job.id}
 
 
 async def main():

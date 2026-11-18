@@ -16,16 +16,6 @@ import {
 } from '../../../src/shared/api-contract/openapi.js';
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch', 'head'] as const;
-const WORKLOAD_OPERATION_IDS = new Set([
-  'discoverDeploymentJobCandidate',
-  'claimDeploymentJob',
-  'getDeploymentJobCancellation',
-  'reportDeploymentJobOutcome',
-  'cleanupDeploymentJob',
-  'getDeploymentJobExecution',
-  'reportDeploymentJobRunner',
-]);
-
 // The client window: the current release's client or the previous one's.
 const CLIENT_WINDOW_OPERATION_IDS = new Set([
   'submitWorkload',
@@ -33,18 +23,10 @@ const CLIENT_WINDOW_OPERATION_IDS = new Set([
   'getWorkloadStatus',
   'terminateWorkload',
   'resubmitWorkload',
-  'observeJobSubmission',
   'getWorkloadSshAccess',
   'upgradeService',
   'getWorkloadCost',
   'getWorkloadCostReport',
-  'createDeployment',
-  'listDeployments',
-  'getDeployment',
-  'updateDeployment',
-  'deleteDeployment',
-  'listNodePools',
-  'getNodePool',
   'rotateApiToken',
   'listCredentials',
   'getCredential',
@@ -54,7 +36,6 @@ const CLIENT_WINDOW_OPERATION_IDS = new Set([
 const RELEASE_WINDOW_OPERATION_IDS = new Set([
   'exchangeApiToken',
   'requestSystemRelease',
-  'drainPoolJobs',
   'runKubernetesStep',
   'backupSystemDatabase',
   'getSystemReleaseStatus',
@@ -315,7 +296,7 @@ describe('production oRPC OpenAPI document', () => {
     );
 
     expect(operations).toHaveLength(countContractProcedures(apiContract));
-    expect(operations).toHaveLength(74);
+    expect(operations).toHaveLength(55);
     expect(operationIds.every(Boolean)).toBe(true);
     expect(new Set(operationIds).size).toBe(operationIds.length);
     expect(
@@ -328,7 +309,6 @@ describe('production oRPC OpenAPI document', () => {
         'API Access',
         'Buckets',
         'Clusters',
-        'Node pools',
         'Credentials',
         'Database',
         'Workload Admission',
@@ -339,8 +319,6 @@ describe('production oRPC OpenAPI document', () => {
         'Service Upgrades',
         'Spend Controls',
         'System Release',
-        'Deployment Workload',
-        'Deployments',
       ]),
     );
   });
@@ -352,7 +330,7 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.servers).toEqual([
       { url: 'http://localhost:8080/v1', description: 'Local API' },
     ]);
-    expect(Object.keys(document.paths ?? {})).toHaveLength(53);
+    expect(Object.keys(document.paths ?? {})).toHaveLength(39);
     expect(document.paths).toMatchObject({
       '/workloads': {
         get: expect.any(Object),
@@ -376,15 +354,7 @@ describe('production oRPC OpenAPI document', () => {
         get: expect.any(Object),
         delete: expect.any(Object),
       },
-      '/node-pools': {
-        get: expect.any(Object),
-        post: expect.any(Object),
-      },
       '/system-release': { post: expect.any(Object), get: expect.any(Object) },
-      '/node-pools/{id}': {
-        get: expect.any(Object),
-        delete: expect.any(Object),
-      },
     });
     expect(document.paths).not.toHaveProperty('/quota/operations');
     expect(document.paths).not.toHaveProperty('/quota/operations/{id}');
@@ -395,7 +365,7 @@ describe('production oRPC OpenAPI document', () => {
     );
   });
 
-  it('documents both dedicated and Deployment-targeted submissions', async () => {
+  it('documents Workload submission and no retired surfaces', async () => {
     const document = await generateApiOpenApiDocument({ version: 'test' });
 
     expect(document.paths?.['/workloads']?.post).toMatchObject({
@@ -411,8 +381,6 @@ describe('production oRPC OpenAPI document', () => {
         },
       },
     });
-    expect(document.paths).toHaveProperty('/deployments');
-    expect(document.paths).toHaveProperty('/deployments/{id}');
     // The retired independent-Cluster and Kubernetes-root surfaces are gone;
     // `/clusters` is the installation's one Kubernetes cluster.
     expect(document.paths).not.toHaveProperty('/roots');
@@ -421,41 +389,12 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.paths).not.toHaveProperty('/cluster-deployments/{id}');
   });
 
-  it('exports optional queue counts as nullable nonnegative safe integers', async () => {
-    const document = await generateApiOpenApiDocument({ version: 'test' });
-
-    // A later safe-integer check can overwrite the exported minimum even
-    // while Zod still rejects negative values during runtime validation.
-    expect(
-      componentSchema(document, '#/components/schemas/WorkloadStatusResponse'),
-    ).toMatchObject({
-      properties: {
-        jobsAhead: {
-          anyOf: [
-            {
-              type: 'integer',
-              minimum: 0,
-              maximum: Number.MAX_SAFE_INTEGER,
-            },
-            { type: 'null' },
-          ],
-        },
-      },
-      required: expect.not.arrayContaining(['jobsAhead']),
-    });
-  });
-
-  it('documents management and workload authentication independently', async () => {
+  it('documents user authentication and the client version on every operation', async () => {
     const document = await generateApiOpenApiDocument({ version: 'test' });
     const operations = documentOperations(document);
 
     expect(document.components?.securitySchemes).toMatchObject({
       userBearer: { type: 'http', scheme: 'bearer' },
-      workloadBearer: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
     });
     expect(document.components?.parameters?.AnyCloudClientVersion).toEqual({
       name: 'AnyCloud-Client-Version',
@@ -472,29 +411,9 @@ describe('production oRPC OpenAPI document', () => {
           '$ref' in parameter &&
           parameter.$ref === '#/components/parameters/AnyCloudClientVersion',
       );
-      if (WORKLOAD_OPERATION_IDS.has(operationId)) {
-        expect(operation.security, operationId).toEqual([
-          { workloadBearer: [] },
-        ]);
-        expect(versionParameters, operationId).toHaveLength(0);
-      } else {
-        expect(operation.security, operationId).toEqual([{ userBearer: [] }]);
-        expect(versionParameters, operationId).toHaveLength(1);
-      }
+      expect(operation.security, operationId).toEqual([{ userBearer: [] }]);
+      expect(versionParameters, operationId).toHaveLength(1);
     }
-
-    expect(operations).toHaveLength(67 + WORKLOAD_OPERATION_IDS.size);
-  });
-
-  // Replicas skip the client version check, and the API and replicas
-  // both parse these payloads strictly, so any wire change here breaks replicas
-  // of the previous release. The snapshot is the last released wire;
-  // update it (and say so in the PR) only for an approved break.
-  it('keeps the replica-facing operations on the previous release wire', async () => {
-    const document = await generateApiOpenApiDocument({ version: 'test' });
-    await expect(
-      operationsWire(document, WORKLOAD_OPERATION_IDS),
-    ).toMatchFileSnapshot('__snapshots__/replica-openapi.snap');
   });
 
   // The client window admits the previous release's CLI, which doesn't
@@ -575,53 +494,10 @@ describe('production oRPC OpenAPI document', () => {
       return response ? [response] : [];
     });
 
-    expect(responses).toHaveLength(19);
+    expect(responses).toHaveLength(15);
     for (const response of responses) {
       expect(response).not.toHaveProperty('content');
     }
-    expect(
-      document.paths?.['/deployments/{deploymentId}/jobs/candidate']?.get
-        ?.responses,
-    ).toMatchObject({
-      200: { content: { 'application/json': expect.any(Object) } },
-      204: { description: expect.any(String) },
-    });
-  });
-
-  it('documents cluster filtering as an optional node-pool-list query parameter', async () => {
-    const document = await generateApiOpenApiDocument({ version: 'test' });
-    const operation = document.paths?.['/node-pools']?.get;
-    const parameter = operation?.parameters?.find(
-      (parameter) => !('$ref' in parameter) && parameter.name === 'cluster',
-    );
-
-    expect(parameter).toMatchObject({
-      name: 'cluster',
-      in: 'query',
-      schema: { type: 'string', minLength: 1 },
-    });
-    expect(parameter).not.toHaveProperty('required', true);
-    expect(document.components?.schemas).not.toHaveProperty(
-      'ListNodePoolsInput',
-    );
-    expect(document.components?.schemas).toHaveProperty('ClusterSummary');
-    expect(document.components?.schemas).toHaveProperty('NodePoolSummary');
-  });
-
-  it('documents node pool filtering as an optional Deployment-list query parameter', async () => {
-    const document = await generateApiOpenApiDocument({ version: 'test' });
-    const operation = document.paths?.['/deployments']?.get;
-    const parameter = operation?.parameters?.find(
-      (parameter) => !('$ref' in parameter) && parameter.name === 'nodePool',
-    );
-
-    expect(parameter).toMatchObject({
-      name: 'nodePool',
-      in: 'query',
-      schema: { type: 'string', minLength: 1 },
-    });
-    expect(parameter).not.toHaveProperty('required', true);
-    expect(operation?.requestBody).toBeUndefined();
   });
 
   it('uses named components for every public JSON body', async () => {
@@ -665,13 +541,8 @@ describe('production oRPC OpenAPI document', () => {
       '#/components/schemas/WorkloadAdmissionInput',
     );
     expect(componentSchema(document, admissionReference.$ref)).toMatchObject({
-      anyOf: [
-        { required: ['deployment'], additionalProperties: false },
-        {
-          required: ['image', 'cloudConfig'],
-          additionalProperties: false,
-        },
-      ],
+      required: ['image', 'cloudConfig'],
+      additionalProperties: false,
     });
   });
 
@@ -682,16 +553,6 @@ describe('production oRPC OpenAPI document', () => {
       properties: {
         cloudProvider: { type: 'string', enum: ['AWS'] },
       },
-    });
-    expect(document.components?.schemas?.WorkloadAdmissionInput).toMatchObject({
-      anyOf: [
-        {
-          properties: {
-            workloadType: { type: 'string', enum: ['job'] },
-          },
-        },
-        expect.any(Object),
-      ],
     });
     expect(document.components?.schemas?.BucketEntryPage).toMatchObject({
       properties: {
@@ -928,7 +789,7 @@ describe('production oRPC OpenAPI document', () => {
     expect(missing).toEqual([]);
   });
 
-  it('distinguishes Workloads from persistent Deployments without Worker aliases', async () => {
+  it('names Workload operations without Worker aliases', async () => {
     const document = await generateApiOpenApiDocument({ version: 'test' });
     const serialized = JSON.stringify(document);
     expect(document.paths?.['/workloads']?.get?.operationId).toBe(
@@ -937,19 +798,10 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.paths?.['/workloads']?.post?.operationId).toBe(
       'submitWorkload',
     );
-    expect(document.paths?.['/deployments']?.get?.operationId).toBe(
-      'listDeployments',
-    );
-    expect(document.paths?.['/deployments']?.post?.operationId).toBe(
-      'createDeployment',
-    );
     expect(serialized).not.toMatch(/worker/i);
     expect(serialized).not.toContain('deploymentType');
     expect(document.components?.schemas?.WorkloadStatusResponse).toMatchObject({
       required: expect.arrayContaining(['workload']),
-    });
-    expect(document.components?.schemas?.DeploymentResponse).toMatchObject({
-      required: expect.arrayContaining(['deployment']),
     });
   });
 });
@@ -974,10 +826,7 @@ describe('client version windows', () => {
         throw new Error('Expected an ephemeral TCP address');
       }
       const document = await generateApiOpenApiDocument({ version: 'test' });
-      const operations = documentOperations(document).filter(
-        ({ operation }) =>
-          !WORKLOAD_OPERATION_IDS.has(operation.operationId as string),
-      );
+      const operations = documentOperations(document);
       const [major, minor, patch] = config.currVersion.split('.').map(Number);
       const newer = `${major}.${minor}.${patch + 3}`;
       const tooOld = `${major}.${minor}.${patch - 2}`;

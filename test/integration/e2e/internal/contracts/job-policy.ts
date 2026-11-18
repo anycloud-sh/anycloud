@@ -3,7 +3,6 @@ import { WorkloadState } from '../../../../../src/shared/workload.js';
 import type { Environment } from '../environment.js';
 import { isRecord } from '../types.js';
 import { JOB_TARGET_PROFILES } from '../targets/job-profiles.js';
-import { CHECK_IMAGE } from './pool-checks.js';
 import { HOST_DOCKER_IMAGE } from '../targets/host-docker-probe.js';
 import type {
   JobExtension,
@@ -13,6 +12,10 @@ import type {
   JobMemberProfile,
   JobStageBudget,
 } from '../targets/job-types.js';
+
+/** A Debian image with python3, for small check Jobs. */
+export const CHECK_IMAGE =
+  'mirror.gcr.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f';
 
 const BUCKET_IMAGE =
   'ghcr.io/anycloud-sh/mace@sha256:c60574d120937bd1db9c0c579d427f2b48d307f44c552888952354bf77c2d19d';

@@ -413,12 +413,9 @@ export function validateComputeCapabilities(
  *
  * It deliberately does not construct a compute gateway.
  */
-export function validateWorkloadStorageRequest(
-  config: CloudConfig,
-  checkSource = true,
-): void {
+export function validateWorkloadStorageRequest(config: CloudConfig): void {
   validateStorageRequestShape(config);
-  validateStorageCapabilities(config, checkSource);
+  validateStorageCapabilities(config);
 
   if (config.inputBucket) {
     const cloud =
@@ -533,15 +530,8 @@ function validateStorageRequestShape(config: CloudConfig): void {
  *
  * Runs after storage request-shape validation, which already rejects missing
  * regions and same-cloud-no-storage cases with their own messages.
- *
- * `checkSource` false is a pool Job's admission, which proves its signing
- * credential with a trial mint instead of the provider's VM bucket-sync
- * source check (RFC 0043), and accepts an explicit GCP storage credential.
  */
-export function validateStorageCapabilities(
-  cloudConfig: CloudConfig,
-  checkSource = true,
-): void {
+export function validateStorageCapabilities(cloudConfig: CloudConfig): void {
   const checks: Array<{
     label: 'input' | 'output' | 'checkpoint';
     creds: CloudCredentials | undefined;
@@ -578,13 +568,12 @@ export function validateStorageCapabilities(
 
     // Any explicit cross-cloud storage cred must come from a provider that can
     // mint scoped, short-lived tokens through the branded CloudStorage surface.
-    // GCP mints for its own VMs (RFC 0047) and for pool Jobs, whose trial mint
-    // proves it (RFC 0043 D-s3gcs); widening explicit GCP storage credentials
-    // to VM Jobs is a separate owner decision.
+    // GCP mints for its own VMs (RFC 0047); widening explicit GCP storage
+    // credentials to VM Jobs is a separate owner decision.
     if (
       !storage ||
       !canMintScopedStorageToken(storage) ||
-      (creds.cloudProvider === CloudType.GCP && checkSource)
+      creds.cloudProvider === CloudType.GCP
     ) {
       throw new DeployError(
         `Cross-cloud ${label} storage requires credentials that can mint scoped bucket-sync tokens (got ${creds.cloudProvider}). ` +
@@ -593,7 +582,7 @@ export function validateStorageCapabilities(
       );
     }
 
-    if (checkSource) storage.validateScopedStorageTokenSource();
+    storage.validateScopedStorageTokenSource();
   }
 }
 
@@ -647,7 +636,7 @@ export async function resolveCredentialByName(name: string): Promise<{
   return { id: row.id, cloudProvider: row.cloudProvider, creds };
 }
 
-/** A saved storage credential by name, as VM and pool Jobs name it. */
+/** A saved storage credential by name, as VM Jobs name it. */
 export async function resolveStorageCredential(
   name: string,
   role: 'Input' | 'Output' | 'Checkpoint',
@@ -717,7 +706,7 @@ function buildCloudConfig(
     diskIops: workload.diskIops ?? undefined,
     diskThroughputMibps: workload.diskThroughputMibps ?? undefined,
     regions: workload.regions ?? undefined,
-    // Workloads follow the catalog on AWS; on GCP a node pool or a VM Job asks.
+    // Workloads follow the catalog on AWS; on GCP a VM Job asks.
     nestedVirtualization: workload.requireNestedVirtualization || undefined,
     availabilityZone: workload.availabilityZone ?? undefined,
     credentials: extractCredentials(credentials),
@@ -793,7 +782,7 @@ export interface WorkloadConfigStore extends ProvisioningTargetStore {
   ): Promise<string | undefined>;
 }
 
-export async function loadWorkloadStorageCredentials(
+async function loadWorkloadStorageCredentials(
   workload: StoredWorkload,
   credentials: StorageCredentialReads,
   activeCredentialId?: string,
@@ -869,7 +858,7 @@ async function buildCredentiallessCloudConfigForProvider(
     diskIops: workload.diskIops ?? undefined,
     diskThroughputMibps: workload.diskThroughputMibps ?? undefined,
     regions: workload.regions ?? undefined,
-    // Workloads follow the catalog on AWS; on GCP a node pool or a VM Job asks.
+    // Workloads follow the catalog on AWS; on GCP a VM Job asks.
     nestedVirtualization: workload.requireNestedVirtualization || undefined,
     availabilityZone: workload.availabilityZone ?? undefined,
     credentials: undefined,
@@ -964,7 +953,7 @@ export async function loadBillingIdentity(
     VmNeedingCost,
     'workload_id' | 'credential_id' | 'region' | 'vm_type'
   > &
-    Partial<Pick<VmNeedingCost, 'node_pool_id' | 'cluster_id'>>,
+    Partial<Pick<VmNeedingCost, 'cluster_id'>>,
 ): Promise<VmCostIdentity | null> {
   let stored: BillingIdentity | null;
   if (firstVm.workload_id) {
@@ -974,13 +963,13 @@ export async function loadBillingIdentity(
       firstVm.credential_id,
     );
   } else if (
-    (firstVm.node_pool_id || firstVm.cluster_id) &&
+    firstVm.cluster_id &&
     firstVm.region &&
     firstVm.vm_type &&
     firstVm.credential_id
   ) {
-    // Discovery already checked the deleted owner. Preserve the node pool
-    // guard and exact attempt credential without re-reading that parent.
+    // Discovery already checked the destroyed owner. Keep the exact attempt
+    // credential without re-reading that parent.
     const credentials: CredentialReads = getCredentialSecretStore();
     stored = await credentials.getCredentialWithCloudProvider(
       firstVm.credential_id,

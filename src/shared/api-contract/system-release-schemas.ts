@@ -164,42 +164,6 @@ export type SystemReleaseResponse = z.output<
   typeof systemReleaseResponseSchema
 >;
 
-export const drainPoolJobsInputSchema = z
-  .object({
-    /** Stop the pool Jobs in flight instead of waiting; each retries. */
-    force: z.boolean(),
-    /**
-     * A hosted upgrade's image: a release `request` would refuse is refused
-     * here, and one already carried drains nothing.
-     */
-    image: requestSystemReleaseInputSchema.shape.image.optional(),
-    /**
-     * Runner releases the new release accepts: with `force`, their Jobs keep
-     * running instead of stopping (RFC 0049 C27).
-     */
-    keep: z.array(z.string().min(1)).max(2).optional(),
-  })
-  .strict();
-export type DrainPoolJobsInput = z.infer<typeof drainPoolJobsInputSchema>;
-
-/** The pool Jobs in flight; `api upgrade` waits for those outside `keep`. */
-export const drainPoolJobsResponseSchema = z
-  .object({
-    jobs: z.array(
-      z
-        .object({
-          id: z.string().min(1),
-          state: z.string().min(1),
-          nodePool: z.string().min(1),
-          /** The release of the runner it runs on; null when unrecorded. */
-          runnerRelease: z.string().min(1).nullable(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-export type DrainPoolJobsResponse = z.infer<typeof drainPoolJobsResponseSchema>;
-
 /** `cluster delete` asks the hosted API to delete its installation, itself last (RFC 0049 C26, seed design). */
 export const selfDeleteInputSchema = z
   .object({

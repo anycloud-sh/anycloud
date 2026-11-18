@@ -214,7 +214,7 @@ describe('Azure container SAS minting', () => {
     expect(listKeys).not.toHaveBeenCalled();
   });
 
-  it('keeps refusing explicit Azure storage credentials for VM bucket sync, but not for pool Jobs, which mint at admission', () => {
+  it('keeps refusing explicit Azure storage credentials for VM bucket sync', () => {
     const lambda = completeCloudConfig({
       cloudProvider: CloudType.Lambda,
       region: 'us-east-1',
@@ -226,6 +226,5 @@ describe('Azure container SAS minting', () => {
     expect(() => validateStorageCapabilities(lambda)).toThrow(
       /storage requires credentials that can mint/,
     );
-    expect(() => validateStorageCapabilities(lambda, false)).not.toThrow();
   });
 });

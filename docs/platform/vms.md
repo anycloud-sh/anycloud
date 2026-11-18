@@ -31,8 +31,7 @@ CI or another non-interactive shell, pass both the image and either `--vm-type`
 or `--gpu-type`; Anycloud does not choose an implicit small VM.
 
 VM creation supports AWS, Azure, GCP, and Lambda accounts. It uses
-on-demand capacity and creates exactly one host. Kubernetes does not support
-VMs.
+on-demand capacity and creates exactly one host.
 
 See [GPUs & VM Types](/platform/gpus-vm-types) for hardware selection and the
 [`vm` reference](/reference/cli/vm) for every creation option.
