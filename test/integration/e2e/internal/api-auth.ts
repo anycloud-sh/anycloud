@@ -548,14 +548,19 @@ export class ApiAuthScenarios {
       listed.users.find((user) => user.kind === 'service'),
       { kind: 'service', userId: 'service:ci', username: 'ci' },
     );
-    rejectedCommand(
-      await fixture
-        .client(null)
-        .cli.run(['api', 'access', 'add', '--service', 'other'], {
-          env: asService(issued.token),
-        }),
-      'Only the owner of this hosted API',
-    );
+    // A service can't manage service tokens, nor hold a member's API token.
+    for (const [args, refusal] of [
+      [['api', 'access', 'add', '--service', 'other'], 'Only the owner'],
+      [['api', 'token', 'rotate', '--service', 'ci'], 'Only the owner'],
+      [['api', 'access', 'remove', '--service', 'ci'], 'Only the owner'],
+      [['api', 'token', 'rotate'], 'API access denied'],
+    ] as const)
+      rejectedCommand(
+        await fixture
+          .client(null)
+          .cli.run(args, { env: asService(issued.token) }),
+        refusal,
+      );
     const stored = JSON.stringify(
       await fixture
         .client()
