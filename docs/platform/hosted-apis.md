@@ -265,8 +265,11 @@ cluster-hosted API to upgrade, without Docker or the local API. It refuses
 while the hosted API still has node pools, Deployments or node pool Services,
 naming each; see [`api upgrade`](/reference/cli/cluster). An older CLI skips
 that check, so the release's pre-upgrade hook repeats it against the running
-API's database: the upgrade fails, nothing changes, and the hosted API keeps
-serving on its release until you remove them and upgrade again. From any machine, the
+API's database and fails the upgrade before the API Pod is replaced: the hosted
+API keeps serving on its release. That CLI reports only `BackoffLimitExceeded`;
+the reason is in `kubectl logs job/anycloud-api-guard-<revision>` on the
+management VM, and this release's `api upgrade` names each one. Remove them,
+then upgrade again. From any machine, the
 hosted API first brings the cluster's K3s configuration to the new release's from a Job
 on the management Node, briefly restarting the Kubernetes API server when it
 changed, and labels the management Node with the label that the API and its

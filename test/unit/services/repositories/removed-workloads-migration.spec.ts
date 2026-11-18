@@ -126,7 +126,10 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
   it("refuses from the running API's database file, read-only, as the pre-upgrade hook does", () => {
     const directory = mkdtempSync(join(tmpdir(), 'removed-workloads-'));
     try {
-      expect(() => refuseRemovedWorkloadsIn(directory)).not.toThrow();
+      // An upgrade always has a database: none is a wrong mount.
+      expect(() => refuseRemovedWorkloadsIn(directory)).toThrow(
+        `No API database in ${directory}`,
+      );
       const file = join(directory, 'api.db');
       writeFileSync(file, sqlite.serialize());
       expect(() => refuseRemovedWorkloadsIn(directory)).toThrow(
@@ -140,6 +143,31 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
       writeFileSync(file, sqlite.serialize());
       expect(() => refuseRemovedWorkloadsIn(directory)).not.toThrow();
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a WAL database while the running API holds it open for writing', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'removed-workloads-wal-'));
+    const file = join(directory, 'api.db');
+    writeFileSync(file, sqlite.serialize());
+    // As the API opens it: WAL, with its writes still in the log.
+    const writer = new BetterSqlite3(file);
+    try {
+      writer.pragma('journal_mode = WAL');
+      writer.pragma('wal_autocheckpoint = 0');
+      writer.exec(`
+        INSERT INTO node_pools (id, cluster_id, owner_user_id, name, state,
+            compute_credential_id, vm_type, min_vm_count, max_vm_count, created_at, updated_at)
+          VALUES ('pool-2', 'cluster', 'owner', 'fresh', 'ready', 'cred', 't3.small', 0, 1, 1, 1);
+      `);
+      writer.exec('BEGIN IMMEDIATE');
+      expect(() => refuseRemovedWorkloadsIn(directory)).toThrow(
+        '  node pool fresh (pool-2)',
+      );
+      writer.exec('ROLLBACK');
+    } finally {
+      writer.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

@@ -92,13 +92,14 @@ export function refuseRemovedWorkloads(
 /**
  * The same refusal against the API database in `directory`, opened read-only:
  * the system release's pre-upgrade hook runs it while the API it would
- * replace still serves.
+ * replace still serves. An upgrade always has a database, so none there is a
+ * wrong mount and fails closed.
  */
 export function refuseRemovedWorkloadsIn(directory: string): void {
   const path = ['api.db', 'conductor.db']
     .map((name) => join(directory, name))
     .find((candidate) => existsSync(candidate));
-  if (!path) return;
+  if (!path) throw new Error(`No API database in ${directory}`);
   const database = new BetterSqlite3(path, {
     readonly: true,
     fileMustExist: true,
