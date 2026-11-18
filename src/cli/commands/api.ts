@@ -87,6 +87,11 @@ import type {
 import { createApiAccessCommand, createApiTokenCommand } from './api-access.js';
 import { drainPoolJobs } from '../use-cases/pool-job-drain.js';
 import {
+  RemovedWorkloadsError,
+  remainingRemovedWorkloads,
+  removedWorkloadsRefusal,
+} from '../use-cases/removed-workloads.js';
+import {
   inspectLocalApiContainer,
   isLocalApiContainerRunning,
   LOCAL_API_CONTAINER_NAME,
@@ -340,6 +345,10 @@ through the upgrade and are listed. The upgrade waits for older ones, and
 for all of them with an --image of another release; with --force those are
 stopped instead, and each retries after the upgrade.
 
+Node pools, Kubernetes Deployments and node pool Services are removed: a
+hosted API that still runs any is refused before anything changes, naming
+them.
+
 ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API only).
 `,
     )
@@ -437,6 +446,20 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
           // The hosted API resolves this CLI's release tag to its published
           // digest itself; an explicit --image is used exactly as given.
           const image = options.image ?? `${IMAGE_NAME}:${currentVersion}`;
+          // Refused before anything changes while the API runs what this
+          // release removes.
+          await refuseRemovedWorkloads(activeTarget.url, served).catch(
+            (error: unknown) =>
+              exitWithLifecycleError(
+                'Hosted API upgrade refused',
+                error,
+                options.json,
+                (refusal) =>
+                  refusal instanceof RemovedWorkloadsError
+                    ? refusal.code
+                    : undefined,
+              ),
+          );
           // A pinned image of another release has a window this CLI can't
           // name, so every pool Job drains.
           await drainPoolJobs(hostedRelease, !!options.force, printInfo, {
@@ -535,6 +558,17 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         process.exit(exitCode);
       }
     });
+}
+
+/** Refuses while the API at `url` runs anything this release removes. */
+async function refuseRemovedWorkloads(
+  url: string,
+  servedVersion: string,
+): Promise<void> {
+  const bearer = await hostedApiBearer(url, async () => optionalGitHubToken());
+  if (!bearer) throw new Error('No GitHub sign-in found.');
+  const remaining = await remainingRemovedWorkloads(url, servedVersion, bearer);
+  if (remaining.length > 0) throw removedWorkloadsRefusal(remaining);
 }
 
 function formatApiTargetSource(source: ApiTargetRow['source']): string {

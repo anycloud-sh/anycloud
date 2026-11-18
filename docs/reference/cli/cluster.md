@@ -418,8 +418,9 @@ holds one JSON document: the result, or the failure
 where `code` is the API's error code (`CLUSTER_EXISTS`, `CLUSTER_BUSY`,
 `NODE_POOL_REFERENCED`, `SYSTEM_RELEASE_REFUSED`, …) or one of the CLI's:
 `INVALID_ARGUMENT` (a missing or invalid flag), `API_UNREACHABLE` (no answer
-from the API, or it is restarting), `LOCAL_API_STILL_STARTING` or
-`UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
+from the API, or it is restarting), `LOCAL_API_STILL_STARTING`,
+`REMOVED_WORKLOADS_REMAIN` (`api upgrade`: node pools, Deployments or node pool
+Services remain) or `UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
 sign-in, the document is instead the
 [`actionRequired` relay](/reference/cli/api-utilities#anycloud-login) with the device
 code, and the exit status is `2`: approve the code and run it again.
@@ -471,6 +472,15 @@ as a chart Secret on the cluster.
 ```bash
 anycloud api upgrade [--image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>]
 ```
+
+Node pools, Kubernetes Deployments and node pool Services are removed.
+Before anything changes, `api upgrade` lists a hosted API's node pools,
+Deployments and live node pool Services and refuses while any remain, naming
+each, with the error code `REMOVED_WORKLOADS_REMAIN`. Remove
+them on the current release, Services first, then Deployments, then node
+pools, and upgrade again. Run Jobs as [VM Jobs](/platform/jobs) and
+long-running processes on a [VM](/platform/vms) or as a
+[VM Service](/platform/services).
 
 With the hosted API active, `anycloud api upgrade` (alias `update`) asks it for this CLI's
 release (`POST /v1/system-release`) — any GitHub account the API admits, no
