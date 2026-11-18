@@ -393,7 +393,6 @@
             "Ebs": {
               "VolumeType": "gp3",
               "VolumeSize": 16,
-              "Iops": 8000,
               "DeleteOnTermination": true
             }
           }
