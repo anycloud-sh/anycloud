@@ -248,6 +248,7 @@ const config: Config = {
             to: '/platform/hosted-apis',
           },
           { from: '/platform/servers', to: '/platform/services' },
+          { from: '/platform/clusters', to: '/platform/hosted-apis' },
           { from: '/concepts/bucket-sync', to: '/platform/buckets' },
           { from: '/guides/bucket-sync', to: '/platform/buckets' },
           { from: '/guides/deploying-jobs', to: '/platform/jobs' },

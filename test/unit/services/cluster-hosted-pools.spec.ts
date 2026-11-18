@@ -177,15 +177,15 @@ describe('hosted node pool inventory (installer → hosted API)', () => {
   it.each([
     [
       '0.1.65',
-      "refused this CLI's version: this CLI (0.1.64) is older than the hosted API (0.1.65); run anycloud update, then run anycloud cluster delete again",
+      "refused this CLI's version: this CLI (0.1.64) is older than the hosted API (0.1.65); run anycloud update, then run anycloud api delete again",
     ],
     [
       '0.1.63',
-      "refused this CLI's version: the hosted API (0.1.63) is older than this CLI (0.1.64); upgrade it (anycloud api use https://install-production-1.anycloud.sh, anycloud api upgrade, then anycloud api use local) or install anycloud 0.1.63 (curl -fsSL https://get.anycloud.sh | sh -s -- --version 0.1.63), then run anycloud cluster delete again",
+      "refused this CLI's version: the hosted API (0.1.63) is older than this CLI (0.1.64); upgrade it (anycloud api use https://install-production-1.anycloud.sh, anycloud api upgrade, then anycloud api use local) or install anycloud 0.1.63 (curl -fsSL https://get.anycloud.sh | sh -s -- --version 0.1.63), then run anycloud api delete again",
     ],
     [
       null,
-      "refused this CLI's version: run anycloud update if this CLI (0.1.64) is the older side, or upgrade the hosted API (anycloud api use https://install-production-1.anycloud.sh, anycloud api upgrade, then anycloud api use local) if the hosted API is older, then run anycloud cluster delete again",
+      "refused this CLI's version: run anycloud update if this CLI (0.1.64) is the older side, or upgrade the hosted API (anycloud api use https://install-production-1.anycloud.sh, anycloud api upgrade, then anycloud api use local) if the hosted API is older, then run anycloud api delete again",
     ],
   ])(
     'names the side behind when the hosted API serves %s',

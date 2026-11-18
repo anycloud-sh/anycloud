@@ -1,7 +1,7 @@
 /**
  * `quota status --cloud`: current quota limits read through the user's own
  * cloud CLI, with no API and no saved credential, so a caller can check
- * capacity before `cluster create`.
+ * capacity before `api create`.
  */
 import type { QuotaStatusEntry } from '../../shared/api-contract/quota-schemas.js';
 import { QuotaProviderStatus } from '../../shared/quota.js';

@@ -45,7 +45,7 @@ export const clusterSummarySchema = z
     networkScope: z.string().min(1).nullable(),
     /**
      * The hosted API's checkpoint bucket; `managed` ones are Anycloud's and
-     * kept by `cluster delete` unless it is given `--delete-buckets`. Null
+     * kept by `api delete` unless it is given `--delete-buckets`. Null
      * once a delete removed the bucket, and on a hosted API's record from
      * before 0.1.74.
      */

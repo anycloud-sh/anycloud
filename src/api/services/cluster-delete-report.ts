@@ -9,7 +9,7 @@ import type { ApiBackupManifest } from '../../shared/api-backup-manifest.js';
 import type { StoredCluster } from './cluster-installer-store.js';
 import { clusterHostname } from '../../shared/api-ingress.js';
 
-/** `cluster delete`'s final backup (RFC 0049 C28), as its result reports it. */
+/** `api delete`'s final backup (RFC 0049 C28), as its result reports it. */
 export type FinalBackup =
   | { finalBackup: 'taken'; backedUpAt: string }
   | { finalBackup: 'failed'; backedUpAt: string | null; error: string }
@@ -128,10 +128,10 @@ export function deleteReport(
         managed: bucket.managed,
         reason: bucket.managed ? 'kept' : 'supplied',
         ...(backup ?? { finalBackup: 'skipped', backedUpAt: null }),
-        restoreCommand: `anycloud cluster create ${installation.name} --cloud ${installation.cloudProvider.toLowerCase()} --region ${installation.region}${zone} --vm-type ${installation.vmType} --checkpoint-bucket ${bucket.name}`,
+        restoreCommand: `anycloud api create ${installation.name} --cloud ${installation.cloudProvider.toLowerCase()} --region ${installation.region}${zone} --vm-type ${installation.vmType} --checkpoint-bucket ${bucket.name}`,
         ...(bucket.managed
           ? {
-              deleteCommand: `anycloud cluster delete ${installation.id} --delete-buckets`,
+              deleteCommand: `anycloud api delete ${installation.id} --delete-buckets`,
             }
           : {}),
       },

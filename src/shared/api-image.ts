@@ -8,7 +8,7 @@ import {
 /**
  * An API image's immutable digest and the digest-pinned chart it was built
  * with, read anonymously from its registry: the API's upgrades and the CLI's
- * `cluster create` (RFC 0049 C26 (e)) resolve a release the same way, the
+ * `api create` (RFC 0049 C26 (e)) resolve a release the same way, the
  * CLI before anything is bought.
  */
 export async function resolveApiImage(

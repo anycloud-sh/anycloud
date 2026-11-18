@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * RFC 0049 C26 (d): what a lifecycle command deleted and what remains, each
- * resource in exactly one list. `cluster delete` defines the kinds below;
+ * resource in exactly one list. `api delete` defines the kinds below;
  * other lifecycle results add theirs to these unions.
  */
 

@@ -31,7 +31,7 @@
     },
     {
       "id": "cluster-destroy-recorded",
-      "requirement": "anycloud cluster delete leaves the cluster destroyed and the installer lists no live cluster.",
+      "requirement": "anycloud api delete leaves the cluster destroyed and the installer lists no live cluster.",
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: destroy; contracts/cluster-cloud.ts: ClusterCloudContract.run."
     },
     {

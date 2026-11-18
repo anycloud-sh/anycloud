@@ -417,31 +417,31 @@ management VM; for a GCP or Azure one, its VM and network by its
 `anycloud-cluster-<id>` scope and its checkpoint buckets through the
 product's storage gateway, written as `cluster-native-sweep`);
 `contracts/cluster-cloud.ts` bootstraps a
-cluster on the management VM's cloud (this tree's `cluster create` runs in the
+cluster on the management VM's cloud (this tree's `api create` runs in the
 CLI process on the cluster credential as its cloud session: AWS keys, a GCP
 service-account key file it writes for Application Default Credentials, or an
 Azure service principal in `AZURE_*`), and every journey then drives the
 hosted API on the cluster, since no local API holds it. The default journey
 runs the `api use`, `credentials new` and `api access` walk, then deletes the
 cluster and sweeps by the product's tags.
-`cluster delete` keeps the managed checkpoint bucket after a final backup
+`api delete` keeps the managed checkpoint bucket after a final backup
 (RFC 0049 C28): on the default journey the harness checks it, then removes it
 through the product's storage gateway, since deleting a kept bucket later is
 the unreachable delete path's; the hosted journey deletes it
-with `cluster delete <id> --delete-buckets --confirm <id>`. Cleanup removes
+with `api delete <id> --delete-buckets --confirm <id>`. Cleanup removes
 any bucket a failed run's delete kept.
 `restore_stage` restores the default journey's cluster from that kept bucket
-instead (`cluster create --checkpoint-bucket <id>`, same id and hostname),
+instead (`api create --checkpoint-bucket <id>`, same id and hostname),
 then deletes it with the bucket. `dead_api_delete` deletes it as from a second
 machine: the runner's cloud CLI stops the management VM, and once the hosted
 API no longer answers its health route, the CLI in a fresh home runs
-`cluster delete <id> --cloud <c> --region <r>` (plans only), then with
+`api delete <id> --cloud <c> --region <r>` (plans only), then with
 `--delete-vms`, `--delete-buckets` and `--skip-cloud`, each with
 `--confirm <id>`; a failure past the stop leaves cleanup to delete the VMs and
 buckets the same way.
 Runs are concurrent: each stamps its own version (`0.0.<run id>`), so its API,
 chart and receiver tags are its own, and the fixture records the installation
-id `cluster create` prints first, even when create then fails or runs out of
+id `api create` prints first, even when create then fails or runs out of
 time. The workflow's sweeps then touch only
 that record's ids; without a record, only ids older than the longest job
 (`ci/cleanup/e2e-cluster-stale-ids.ts`), never a live run's.
@@ -456,7 +456,7 @@ With `from_release` (for example `0.1.66`) that release's CLI starts the
 installer on the published image (`e2e.sh` pulls it first, since other e2e
 builds on the runner's Docker host tag this tree as `api:<package version>`),
 saves the credential, creates the cluster, waits until that installer lists
-it up (from 0.1.66 `cluster create` returns at once, and restarting the
+it up (from 0.1.66 `api create` returns at once, and restarting the
 installer mid-creation orphans it) and runs `api use`, `credentials new` and
 the VM Service against its hosted API; this tree's `api upgrade`, with the installer's local
 API active, then restarts the installer on this tree, and a later `api upgrade`
@@ -530,7 +530,7 @@ the API refuses an image older than its database.
   It must refuse a token the retired key signed for it.
 
 `cluster_provider` (`E2E_CLUSTER_PROVIDER`: `aws` by default, `gcp`, `azure`)
-chooses the management VM's cloud: the credential `cluster create` uses, its
+chooses the management VM's cloud: the credential `api create` uses, its
 region and VM type (`substrates/cloud-cluster/configuration.ts`: `us-east-2` /
 `t3.medium`, `us-central1` / `e2-standard-2`, `westus2` / `Standard_D2s_v5`).
 A GCP or Azure management VM runs only the default journey (`hosted_stage` is

@@ -99,7 +99,7 @@ export interface HostedStage {
   terminate(id: string, kind: 'Service' | 'Job'): Promise<void>;
   /**
    * Runs each cleanup still owed through the hosted API, before
-   * `cluster delete` removes the API.
+   * `api delete` removes the API.
    */
   settleCleanups(): Promise<void>;
   captureDiagnostics(): Promise<void>;
@@ -171,7 +171,7 @@ export interface ClusterCloudSubstrate {
   /** Null where it is not read: a GCP or Azure management VM. */
   backupObjectVersions(): Promise<number | null>;
   /**
-   * `cluster delete`: keeps the managed checkpoint bucket after a final
+   * `api delete`: keeps the managed checkpoint bucket after a final
    * backup, or with `deleteBuckets` deletes it too (RFC 0049 C28).
    */
   destroy(timeoutMs: number, deleteBuckets?: boolean): Promise<LiveCluster>;
@@ -213,7 +213,7 @@ export type KeptBucketRecord =
   | {
       readonly name: string;
       readonly kept: true;
-      /** `cluster delete` took a final backup before releasing the VM. */
+      /** `api delete` took a final backup before releasing the VM. */
       readonly finalBackup: 'taken';
     }
   | {

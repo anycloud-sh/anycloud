@@ -114,7 +114,7 @@ true and fix only what is missing.
 
 **Don't use AnyCloud for:**
 
-- Using a VM as a managed production endpoint — use `anycloud service` for a long-running HTTP Service, or `anycloud cluster create` for a hosted Anycloud API on your own cluster.
+- Using a VM as a managed production endpoint — use `anycloud service` for a long-running HTTP Service, or `anycloud api create` for a hosted Anycloud API on your own cluster.
 - Local-only workloads (run locally with Docker / Python directly).
 - Workloads whose compliance requirements cannot be met by the selected cloud identity and region. Select a compliant compute credential and pin the region when required.
 

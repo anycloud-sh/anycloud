@@ -93,7 +93,7 @@ const kubernetes = authenticated
   });
 
 /**
- * RFC 0049 C28: `cluster delete` keeps the checkpoint bucket, so it first asks
+ * RFC 0049 C28: `api delete` keeps the checkpoint bucket, so it first asks
  * the hosted API for the backup an upgrade takes before a release.
  */
 const backup = authenticated
@@ -114,7 +114,7 @@ const backup = authenticated
   .errors(unavailable);
 
 /**
- * `cluster delete` with the hosted API reachable: refused while
+ * `api delete` with the hosted API reachable: refused while
  * live VM workloads remain; otherwise the API takes C28's final backup,
  * answers, sweeps its VM Jobs and per-Job buckets, and deletes its own
  * stack, group or instance last.

@@ -134,14 +134,14 @@ export interface SystemReleaseDomain {
     signal?: AbortSignal,
   ): Promise<SystemReleaseResponse>;
   status(actor: User, signal?: AbortSignal): Promise<SystemReleaseStatus>;
-  /** C28: `cluster delete`'s final backup, the one an upgrade takes. */
+  /** C28: `api delete`'s final backup, the one an upgrade takes. */
   backup(actor: User): Promise<SystemBackupResponse>;
   /** RFC 0049 C26 (b)'s K3s step, which `api upgrade` runs first. */
   kubernetes(
     actor: User,
     input: KubernetesStepInput,
   ): Promise<KubernetesStepResponse>;
-  /** `cluster delete`: the installation, this API last. */
+  /** `api delete`: the installation, this API last. */
   selfDelete(actor: User, input: SelfDeleteInput): Promise<SelfDeleteStatus>;
   selfDeleteStatus(actor: User): Promise<SelfDeleteStatus>;
   /**
@@ -405,7 +405,7 @@ export function createSystemReleaseDomain(
           'no database backup is configured',
         );
       }
-      return { backedUpAt: await deps.backup.run('cluster delete') };
+      return { backedUpAt: await deps.backup.run('api delete') };
     },
 
     async selfDelete(actor, input) {

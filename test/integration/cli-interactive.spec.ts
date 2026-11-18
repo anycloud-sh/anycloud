@@ -993,19 +993,16 @@ describe('cluster create — management VM pickers (PTY)', () => {
   });
 
   it('picks the VM type and a region that offers it, then stops at the signed-out cloud CLI', async () => {
-    const run = spawnCli(
-      ['cluster', 'create', 'pty-cluster', '--cloud', 'aws'],
-      {
-        setup: ({ env }) => {
-          env.PATH = clis.env.PATH!;
-          for (const key of Object.keys(env)) {
-            if (key.startsWith('AWS_')) delete env[key];
-          }
-          env.IS_TEST = 'true';
-          env.ANYCLOUD_GITHUB_URL = githubUrl;
-        },
+    const run = spawnCli(['api', 'create', 'pty-cluster', '--cloud', 'aws'], {
+      setup: ({ env }) => {
+        env.PATH = clis.env.PATH!;
+        for (const key of Object.keys(env)) {
+          if (key.startsWith('AWS_')) delete env[key];
+        }
+        env.IS_TEST = 'true';
+        env.ANYCLOUD_GITHUB_URL = githubUrl;
       },
-    );
+    });
     try {
       await run.waitFor('Pick a VM type', 20000);
       run.pty.write('t3.medium');

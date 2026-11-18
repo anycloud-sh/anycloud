@@ -38,7 +38,7 @@ S3 reserves forms such as an `xn--` prefix or an `-an` suffix for new buckets.
 The same applies to an output bucket that doesn't exist yet.
 Cluster-hosted APIs create a managed checkpoint bucket by default. To retain a
 bucket you own, create it first and pass
-`anycloud cluster create --checkpoint-bucket`.
+`anycloud api create --checkpoint-bucket`.
 
 ## Attach input and output
 

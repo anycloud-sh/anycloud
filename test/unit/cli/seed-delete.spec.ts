@@ -170,7 +170,7 @@ describe('cluster delete through the hosted API', () => {
           kind: 'checkpointBucket',
           name: ID,
           managed: true,
-          deleteCommand: `anycloud cluster delete ${ID} --delete-buckets`,
+          deleteCommand: `anycloud api delete ${ID} --delete-buckets`,
         },
       ],
     });

@@ -306,7 +306,7 @@ describe('api target discovery', () => {
         'https://api-1.anycloud.sh is a VM-hosted API (the removed anycloud api serve)',
       ),
     ]);
-    expect(discovery.warnings[0]).toContain('anycloud cluster create');
+    expect(discovery.warnings[0]).toContain('anycloud api create');
     expect(discovery.warnings[0]).toContain('anycloud terminate api-1');
     expect(
       fetchMock.mock.calls.some(([input]) =>

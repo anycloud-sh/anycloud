@@ -29,8 +29,8 @@ const SIGN_IN: Record<SeedCloud, string> = {
 /**
  * What creating an installation needs, per cloud: its template or calls,
  * the management VM and its network, its own identity scoped to the bucket
- * and to deleting the installation, and the bucket. `cluster create` checks
- * them before anything is bought; docs/reference/cli/cluster.md lists them.
+ * and to deleting the installation, and the bucket. `api create` checks
+ * them before anything is bought; docs/reference/cli/api-utilities.md lists them.
  */
 export const SEED_RIGHTS: Record<SeedCloud, readonly string[]> = {
   aws: [
