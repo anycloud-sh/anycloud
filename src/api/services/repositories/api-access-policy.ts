@@ -22,18 +22,6 @@ export interface ApiAccessUser {
   username: string;
 }
 
-/**
- * A registered Deployment name's principal ID (RFC 0049 C29). SQLite's
- * `lower()` makes it, as it does the Deployment name index, so the two agree.
- */
-const SERVICE_ACCOUNT_USER_PREFIX = 'serviceaccount:';
-const serviceAccountUserIdSql = (name: string) =>
-  `'${SERVICE_ACCOUNT_USER_PREFIX}' || lower(${name})`;
-
-export function isServiceAccountUserId(userId: string): boolean {
-  return userId.startsWith(SERVICE_ACCOUNT_USER_PREFIX);
-}
-
 /** An owner-issued service token's principal ID; its name is lowercase. */
 const SERVICE_USER_PREFIX = 'service:';
 
@@ -44,26 +32,6 @@ export function serviceUserId(name: string): string {
 export function isServiceUserId(userId: string): boolean {
   return userId.startsWith(SERVICE_USER_PREFIX);
 }
-
-/** SQL for whether Deployment `alias` is unmanaged and its name registered. */
-export function deploymentApiIdentitySql(alias: string): string {
-  return `(${alias}.managed = 0 AND EXISTS (
-    SELECT 1 FROM api_access_users r
-     WHERE r.user_id = ${serviceAccountUserIdSql(`${alias}.name`)}))`;
-}
-
-/**
- * The live, unmanaged Deployment that holds registration `a`'s name, if any,
- * by the active-name index.
- */
-const REGISTERED_USER_COLUMNS =
-  'a.user_id AS userId, a.username, d.id AS deploymentId';
-/** An entry, with the live Deployment its registered name is held by. */
-type RegisteredUser = ApiAccessUser & { deploymentId: string | null };
-const REGISTERED_DEPLOYMENT_JOIN = `LEFT JOIN deployments d
-  ON a.user_id LIKE '${SERVICE_ACCOUNT_USER_PREFIX}%'
- AND lower(d.name) = substr(a.user_id, ${SERVICE_ACCOUNT_USER_PREFIX.length + 1})
- AND d.deleted_at IS NULL AND d.managed = 0`;
 
 interface ApiAccessPolicyRow {
   owner_user: string;
@@ -193,39 +161,12 @@ export async function setApiGithubApps(
 
 export async function listApiAccessUsers(
   db: DB = getDB(),
-): Promise<RegisteredUser[]> {
-  return db.query<RegisteredUser>(
-    `SELECT ${REGISTERED_USER_COLUMNS}
-       FROM api_access_users a ${REGISTERED_DEPLOYMENT_JOIN}
-      ORDER BY a.username COLLATE NOCASE, a.user_id`,
+): Promise<ApiAccessUser[]> {
+  const rows = await db.query<ApiAccessUserRow>(
+    `SELECT user_id, username FROM api_access_users
+      ORDER BY username COLLATE NOCASE, user_id`,
   );
-}
-
-/**
- * Register a Deployment name, live or not yet created, unless a managed
- * Deployment holds it: Job code reads a managed replica's tokens.
- */
-export async function registerApiServiceAccount(
-  deploymentName: string,
-  db: DB = getDB(),
-): Promise<RegisteredUser | { managedDeploymentId: string }> {
-  const name = deploymentName.trim();
-  return db.transaction((tx) => {
-    const [holder] = tx.query<{ id: string; managed: number }>(
-      `SELECT id, managed FROM deployments
-        WHERE lower(name) = lower(?) AND deleted_at IS NULL`,
-      [name],
-    );
-    if (holder?.managed) return { managedDeploymentId: holder.id };
-    const [row] = tx.query<ApiAccessUserRow>(
-      `INSERT INTO api_access_users (user_id, username)
-       VALUES (${serviceAccountUserIdSql('?')}, ?)
-       ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
-       RETURNING user_id, username`,
-      [name, name],
-    );
-    return { ...rowToUser(row!), deploymentId: holder?.id ?? null };
-  });
+  return rows.map(rowToUser);
 }
 
 /** A new service's token, or null when the name already has one. */
@@ -273,25 +214,6 @@ export async function findServiceTokenUser(
   return row ? rowToUser(row) : null;
 }
 
-/** A registration whose name a live, unmanaged Deployment holds. */
-export interface ServiceAccountDeployment extends ApiAccessUser {
-  deploymentId: string;
-  nodePoolId: string;
-  clusterId: string;
-}
-
-/** Every registration a token could match; registrations are few. */
-export async function listServiceAccountDeployments(
-  db: DB = getDB(),
-): Promise<ServiceAccountDeployment[]> {
-  return db.query<ServiceAccountDeployment>(
-    `SELECT a.user_id AS userId, a.username, d.id AS deploymentId,
-            d.node_pool_id AS nodePoolId, p.cluster_id AS clusterId
-       FROM api_access_users a ${REGISTERED_DEPLOYMENT_JOIN}
-       JOIN node_pools p ON p.id = d.node_pool_id`,
-  );
-}
-
 export async function upsertApiAccessUser(
   user: ApiAccessUser,
   db: DB = getDB(),
@@ -313,30 +235,20 @@ export async function upsertApiAccessUser(
   return normalized;
 }
 
-/**
- * Removal also deletes the member's API token, so its next request fails,
- * and names the Deployment a removed registration's name held.
- */
+/** Removal also deletes the member's API token, so its next request fails. */
 export async function removeApiAccessUser(
   userId: string,
   db: DB = getDB(),
-): Promise<RegisteredUser | null> {
-  const serviceAccount = isServiceAccountUserId(userId);
+): Promise<ApiAccessUser | null> {
   return db.transaction((tx) => {
-    const [row] = tx.query<RegisteredUser>(
-      `SELECT ${REGISTERED_USER_COLUMNS}
-         FROM api_access_users a ${REGISTERED_DEPLOYMENT_JOIN}
-        WHERE a.user_id = ${serviceAccount ? serviceAccountUserIdSql(`trim(substr(?, ${SERVICE_ACCOUNT_USER_PREFIX.length + 1}))`) : '?'}`,
-      [
-        serviceAccount || isServiceUserId(userId)
-          ? userId
-          : normalizeUserId(userId),
-      ],
+    const [row] = tx.query<ApiAccessUserRow>(
+      'SELECT user_id, username FROM api_access_users WHERE user_id = ?',
+      [isServiceUserId(userId) ? userId : normalizeUserId(userId)],
     );
     if (!row) return null;
-    tx.query('DELETE FROM api_tokens WHERE user_id = ?', [row.userId]);
-    tx.query('DELETE FROM api_access_users WHERE user_id = ?', [row.userId]);
-    return row;
+    tx.query('DELETE FROM api_tokens WHERE user_id = ?', [row.user_id]);
+    tx.query('DELETE FROM api_access_users WHERE user_id = ?', [row.user_id]);
+    return rowToUser(row);
   });
 }
 

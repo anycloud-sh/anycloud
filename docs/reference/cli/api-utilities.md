@@ -17,8 +17,8 @@ anycloud api upgrade|update [--image <reference>] [--force] [--sign-in-apps <id,
 anycloud api start [options]
 anycloud api stop
 anycloud api logs [-f]
-anycloud api access add <github-user> | --service <name> | --service-account <deployment> [--json]
-anycloud api access remove|rm <github-user-or-id> | --service <name> | --service-account <deployment>
+anycloud api access add <github-user> | --service <name> [--json]
+anycloud api access remove|rm <github-user-or-id> | --service <name>
 anycloud api access list|ls [--json]
 anycloud api token [rotate [--service <name>] [--json]]
 ```
@@ -149,13 +149,8 @@ and names each creator whenever the result includes another account's work,
 including a result containing only that teammate's workloads. See [Hosted
 APIs](/platform/hosted-apis) for the complete setup, lifecycle, and trust model.
 
-`--service-account <deployment>` registers a Deployment by name instead of a
-GitHub user, so a client running in that Deployment authenticates with its
-replicas' ServiceAccount token and stores no API token; see
-[Clients inside the cluster](/platform/hosted-apis#clients-inside-the-cluster).
-`list` shows each entry's `KIND` (`github`, `service` or `serviceaccount`)
-and, for a registered Deployment, its ID or `no deployment`; `--json` adds
-`kind` and `deploymentId`.
+`list` shows each entry's `KIND` (`github` or `service`); `--json` adds
+`kind`.
 
 ### Service tokens
 

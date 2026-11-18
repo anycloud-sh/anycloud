@@ -11,9 +11,6 @@ import { createApiClient } from '../../../src/shared/services/api-client/rpc.js'
 import { log } from '../../../src/api/services/logger';
 import { authenticateApiToken } from '../../../src/api/services/api-authentication';
 import { getWorkloadApiUrl } from '../../../src/api/config';
-import { getDeploymentStore } from '../../../src/api/services/persistence';
-import { makeContainerSpec } from '../helpers/fixtures';
-import { seedReadyNodePool } from '../helpers/node-pool-seed';
 
 const AUTH = { Authorization: 'Bearer owner-token' };
 
@@ -184,11 +181,6 @@ describe('hosted API access routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'second-member' }),
       }),
-      await apiAccessRequest('', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceAccount: 'backmesh/listener' }),
-      }),
       await apiAccessRequest('/3', { method: 'DELETE' }),
       await apiAccessRequest('/2', { method: 'DELETE' }),
       await apiAccessRequest('/1', { method: 'DELETE' }),
@@ -255,115 +247,8 @@ describe('hosted API access routes', () => {
     expect(response.status).toBe(401);
   });
 
-  it('registers a Deployment name, lists it with its live Deployment, and removes it by the escaped ID', async () => {
-    await seedReadyNodePool({ nodePoolId: 'pool-a' });
-    const register = () =>
-      apiAccessRequest('', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceAccount: 'backmesh/listener' }),
-      });
-    const added = await register();
-    expect(added.status).toBe(200);
-    expect(await added.json()).toEqual({
-      kind: 'serviceaccount',
-      userId: 'serviceaccount:backmesh/listener',
-      username: 'backmesh/listener',
-      deploymentId: null,
-    });
-
-    await getDeploymentStore().create(
-      {
-        id: 'listener-1',
-        ownerUserId: '1',
-        name: 'Backmesh/Listener',
-        nodePoolId: 'pool-a',
-        config: makeContainerSpec(),
-        gpuCount: 0,
-        maxConcurrentJobsPerReplica: 1,
-      },
-      { kind: 'api' },
-    );
-    expect(await (await apiAccessRequest()).json()).toEqual({
-      owner: { userId: '1', username: 'owner' },
-      users: [
-        {
-          kind: 'serviceaccount',
-          userId: 'serviceaccount:backmesh/listener',
-          username: 'backmesh/listener',
-          deploymentId: 'listener-1',
-        },
-      ],
-    });
-
-    const removed = await apiAccessRequest(
-      `/${encodeURIComponent('serviceaccount:backmesh/listener')}`,
-      { method: 'DELETE' },
-    );
-    expect(removed.status).toBe(204);
-    expect(await (await apiAccessRequest()).json()).toMatchObject({
-      users: [],
-    });
-  });
-
-  it('refuses to register a managed Deployment’s name', async () => {
-    await seedReadyNodePool({ nodePoolId: 'pool-a' });
-    await getDeploymentStore().create(
-      {
-        id: 'managed-1',
-        ownerUserId: '1',
-        name: 'runner',
-        nodePoolId: 'pool-a',
-        config: makeContainerSpec(),
-        gpuCount: 0,
-        maxConcurrentJobsPerReplica: 1,
-      },
-      { kind: 'api' },
-    );
-    await getDB().query(
-      "UPDATE deployments SET managed = 1 WHERE id = 'managed-1'",
-    );
-
-    const response = await apiAccessRequest('', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serviceAccount: 'runner' }),
-    });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      code: 'API_ACCESS_MANAGED_DEPLOYMENT',
-    });
-  });
-
-  it.each(['Owner', 'member'])(
-    'refuses to register a name equal to the GitHub login %s, so listings stay unambiguous',
-    async (name) => {
-      await upsertApiAccessUser({ userId: '2', username: 'member' });
-
-      const response = await apiAccessRequest('', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceAccount: name }),
-      });
-      expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({
-        code: 'API_ACCESS_NAME_TAKEN',
-      });
-    },
-  );
-
   it('reports that sharing does not apply on a local API', async () => {
     await getDB().query('DELETE FROM api_access_policy');
-
-    const registration = await apiAccessRequest('', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serviceAccount: 'backmesh/listener' }),
-    });
-    expect(registration.status).toBe(400);
-    expect(await registration.json()).toMatchObject({
-      code: 'API_ACCESS_NOT_HOSTED',
-    });
 
     const response = await apiAccessRequest();
     expect(response.status).toBe(400);

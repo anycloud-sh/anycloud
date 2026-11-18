@@ -33,12 +33,6 @@ export const ANYCLOUD_POD_FINALIZER = 'anycloud.sh/outcome';
 /** The audience of a replica's projected claim-queue token. */
 export const ANYCLOUD_WORKLOAD_TOKEN_AUDIENCE = 'anycloud-runtime';
 
-/**
- * The audience of a registered Deployment's API token (RFC 0049 C29): never
- * the replica routes', so neither token passes for the other.
- */
-export const ANYCLOUD_API_TOKEN_AUDIENCE = 'anycloud-api';
-
 const RUNTIME_IDENTITY_VOLUME = 'anycloud-runtime-identity';
 const RUNTIME_IDENTITY_DIRECTORY = '/var/run/secrets/anycloud';
 
@@ -75,15 +69,8 @@ export interface PodTemplateSpec {
   container?: Pick<V1Container, 'ports' | 'startupProbe' | 'readinessProbe'>;
   /** Application env in one owned Secret, under every explicit `env` entry. */
   envSecret?: { name: string; values: Record<string, string> };
-  /**
-   * A projected token for this audience, under the named ServiceAccount,
-   * and with `apiToken` a second one that authenticates to the API.
-   */
-  runtimeIdentity?: {
-    serviceAccountName: string;
-    audience: string;
-    apiToken?: boolean;
-  };
+  /** A projected token for this audience, under the named ServiceAccount. */
+  runtimeIdentity?: { serviceAccountName: string; audience: string };
   /** Placement hints added to the pool's own node selector. */
   nodeSelector?: Record<string, string>;
   /** `terminationGracePeriodSeconds`, which the runner splits. */
@@ -143,11 +130,6 @@ export function podTemplate(spec: PodTemplateSpec): {
       ...(runtimeIdentity
         ? {
             ANYCLOUD_WORKLOAD_TOKEN_FILE: `${RUNTIME_IDENTITY_DIRECTORY}/token`,
-          }
-        : {}),
-      ...(runtimeIdentity?.apiToken
-        ? {
-            ANYCLOUD_API_TOKEN_FILE: `${RUNTIME_IDENTITY_DIRECTORY}/api-token`,
           }
         : {}),
       ...(runner
@@ -240,17 +222,6 @@ export function podTemplate(spec: PodTemplateSpec): {
                   path: 'token',
                 },
               },
-              ...(runtimeIdentity.apiToken
-                ? [
-                    {
-                      serviceAccountToken: {
-                        audience: ANYCLOUD_API_TOKEN_AUDIENCE,
-                        expirationSeconds: 3600,
-                        path: 'api-token',
-                      },
-                    },
-                  ]
-                : []),
             ],
           },
         },

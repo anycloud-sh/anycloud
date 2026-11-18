@@ -212,8 +212,6 @@ export function renderDeploymentObjects(
     runtimeIdentity: {
       serviceAccountName: name,
       audience: ANYCLOUD_WORKLOAD_TOKEN_AUDIENCE,
-      // Registering or removing the name rolls the replicas by the hash.
-      ...(deployment.apiIdentity && { apiToken: true }),
     },
     finalizer: true,
     hardening: managedReplicaRequests(deployment, nodePool),

@@ -1016,7 +1016,7 @@ export class ClusterCloudContract {
     if (selected.includes('role-trust-pinning'))
       await this.#roles().trustPinning();
     if (selected.includes('role-storage-tokens'))
-      await this.#roles().storageTokens(nodePoolId);
+      await this.#roles().storageTokens();
     // With `fromRelease` it ran on the release, before the upgrade.
     if (selected.includes('cpu-cold-start') && !this.#dependencies.fromRelease)
       await run.cpuColdStart(true);

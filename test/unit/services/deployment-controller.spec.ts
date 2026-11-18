@@ -59,7 +59,6 @@ function makeDeployment(
     minReplicas: 1,
     maxReplicas: 1,
     managed: false,
-    apiIdentity: false,
     runnerRelease: null,
     deletionRequestedAt: null,
     deletedAt: null,
@@ -369,36 +368,6 @@ describe('Deployment owner', () => {
         template: { metadata: { finalizers: [ANYCLOUD_POD_FINALIZER] } },
       },
     });
-    expect(f.deployments.advanceGeneration).toHaveBeenCalledOnce();
-  });
-
-  it('RFC 0049 C29 rolls a Deployment exactly once when its name is registered, and never without a registration', async () => {
-    const f = harness(makeDeployment());
-    f.idle();
-    seedApplied(f, () => undefined);
-    const deploymentCalls = async () =>
-      (await f.pass()).filter((call) => call.endsWith(' Deployment'));
-    // Unregistered: the template renders as applied, so nothing rolls.
-    expect(await deploymentCalls()).toEqual([]);
-    expect(await deploymentCalls()).toEqual([]);
-    expect(f.deployments.advanceGeneration).not.toHaveBeenCalled();
-
-    // Registered: the anycloud-api token changes the template hash once.
-    f.deployments.getById.mockResolvedValue(
-      makeDeployment({ apiIdentity: true }),
-    );
-    expect(await deploymentCalls()).toEqual([]);
-    expect(f.deployments.advanceGeneration).toHaveBeenCalledExactlyOnceWith(
-      'deployment-a',
-      2,
-    );
-    f.deployments.getById.mockResolvedValue(
-      makeDeployment({ apiIdentity: true, generation: 3 }),
-    );
-    expect(await deploymentCalls()).toEqual(['delete Deployment']);
-    expect(await deploymentCalls()).toEqual(['create Deployment']);
-    expect(await deploymentCalls()).toEqual([]);
-    expect(await deploymentCalls()).toEqual([]);
     expect(f.deployments.advanceGeneration).toHaveBeenCalledOnce();
   });
 

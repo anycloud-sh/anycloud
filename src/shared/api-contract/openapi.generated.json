@@ -47,41 +47,6 @@
         ],
         "type": "object"
       },
-      "ApiAccessManagedDeploymentApiError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "enum": [
-              "API_ACCESS_MANAGED_DEPLOYMENT"
-            ],
-            "type": "string"
-          },
-          "data": {},
-          "defined": {
-            "enum": [
-              true
-            ],
-            "type": "boolean"
-          },
-          "message": {
-            "default": "A managed Deployment cannot be registered",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              400
-            ],
-            "type": "integer"
-          }
-        },
-        "required": [
-          "defined",
-          "code",
-          "status",
-          "message"
-        ],
-        "type": "object"
-      },
       "ApiAccessMember": {
         "anyOf": [
           {
@@ -131,42 +96,6 @@
               "kind",
               "userId",
               "username"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "deploymentId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "kind": {
-                "enum": [
-                  "serviceaccount"
-                ],
-                "type": "string"
-              },
-              "userId": {
-                "pattern": "^serviceaccount:.*",
-                "type": "string"
-              },
-              "username": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "userId",
-              "username",
-              "deploymentId"
             ],
             "type": "object"
           }
@@ -3732,35 +3661,17 @@
         "type": "object"
       },
       "GrantApiAccessInput": {
-        "anyOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "username": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": [
-              "username"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "serviceAccount": {
-                "maxLength": 64,
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": [
-              "serviceAccount"
-            ],
-            "type": "object"
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "minLength": 1,
+            "type": "string"
           }
-        ]
+        },
+        "required": [
+          "username"
+        ],
+        "type": "object"
       },
       "InvalidGithubUserIdApiError": {
         "additionalProperties": false,
@@ -11423,8 +11334,6 @@
                   "discriminator": {
                     "mapping": {
                       "API_ACCESS_ACCOUNT_NOT_USER": "#/components/schemas/ApiAccessAccountNotUserApiError",
-                      "API_ACCESS_MANAGED_DEPLOYMENT": "#/components/schemas/ApiAccessManagedDeploymentApiError",
-                      "API_ACCESS_NAME_TAKEN": "#/components/schemas/ApiAccessNameTakenApiError",
                       "API_ACCESS_NOT_HOSTED": "#/components/schemas/ApiAccessNotHostedApiError",
                       "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError"
                     },
@@ -11433,12 +11342,6 @@
                   "oneOf": [
                     {
                       "$ref": "#/components/schemas/ApiAccessAccountNotUserApiError"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ApiAccessManagedDeploymentApiError"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ApiAccessNameTakenApiError"
                     },
                     {
                       "$ref": "#/components/schemas/ApiAccessNotHostedApiError"

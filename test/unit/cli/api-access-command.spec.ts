@@ -60,13 +60,6 @@ async function runAccess(argv: string[]): Promise<void> {
 const SERVICE = { kind: 'service', userId: 'service:ci', username: 'ci' };
 const SERVICE_TOKEN = `acapi_${'a'.repeat(43)}`;
 
-const SERVICE_ACCOUNT = {
-  kind: 'serviceaccount',
-  userId: 'serviceaccount:backmesh/listener',
-  username: 'backmesh/listener',
-  deploymentId: 'deployment-1',
-};
-
 describe('api access command', () => {
   let exitSpy: MockInstance<typeof process.exit>;
   let logSpy: MockInstance<typeof console.log>;
@@ -81,10 +74,7 @@ describe('api access command', () => {
     });
     mocks.listApiAccessUsers.mockResolvedValue({
       owner: { userId: '1', username: 'owner' },
-      users: [
-        { kind: 'github', userId: '2', username: 'member' },
-        SERVICE_ACCOUNT,
-      ],
+      users: [{ kind: 'github', userId: '2', username: 'member' }],
     });
     mocks.revokeApiAccessUser.mockResolvedValue({
       userId: '2',
@@ -186,77 +176,9 @@ describe('api access command', () => {
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify({
         owner: { userId: '1', username: 'owner' },
-        users: [
-          { kind: 'github', userId: '2', username: 'member' },
-          SERVICE_ACCOUNT,
-        ],
+        users: [{ kind: 'github', userId: '2', username: 'member' }],
       }),
     );
-  });
-
-  it.each([
-    ['deployment-1', 'its replicas restart to mount the token'],
-    [null, 'once it exists'],
-  ])(
-    'registers a Deployment name (live: %s)',
-    async (deploymentId, outcome) => {
-      mocks.grantApiAccessUser.mockResolvedValue({
-        ...SERVICE_ACCOUNT,
-        deploymentId,
-      });
-
-      await runAccess(['add', '--service-account', 'backmesh/listener']);
-
-      expect(mocks.grantApiAccessUser).toHaveBeenCalledWith({
-        serviceAccount: 'backmesh/listener',
-      });
-      expect(mocks.printSuccess).toHaveBeenCalledWith(
-        expect.stringContaining(outcome),
-      );
-    },
-  );
-
-  it.each([[[]], [['member', '--service-account', 'backmesh/listener']]])(
-    'takes exactly one of a GitHub user and --service-account (%j)',
-    async (argv) => {
-      await expect(runAccess(['add', ...argv])).rejects.toThrow(
-        'process.exit:1',
-      );
-      expect(mocks.grantApiAccessUser).not.toHaveBeenCalled();
-    },
-  );
-
-  it('lists a registration with its kind and Deployment, or none', async () => {
-    mocks.listApiAccessUsers.mockResolvedValue({
-      owner: { userId: '1', username: 'owner' },
-      users: [{ ...SERVICE_ACCOUNT, deploymentId: null }],
-    });
-
-    await runAccess(['list']);
-
-    const table = String(logSpy.mock.calls[0]![0]);
-    expect(table).toMatch(
-      /member\s.*serviceaccount\s.*backmesh\/listener\s.*no deployment/,
-    );
-  });
-
-  it('removes a registration by its Deployment name without listing first', async () => {
-    await runAccess(['remove', '--service-account', 'BackMesh/Listener']);
-
-    expect(mocks.listApiAccessUsers).not.toHaveBeenCalled();
-    expect(mocks.revokeApiAccessUser).toHaveBeenCalledWith({
-      params: { userId: 'serviceaccount:BackMesh/Listener' },
-    });
-    expect(mocks.printSuccess).toHaveBeenCalledWith(
-      'Deployment BackMesh/Listener no longer has hosted API access.',
-    );
-  });
-
-  it('never resolves a GitHub name to a registration', async () => {
-    await expect(runAccess(['remove', 'backmesh/listener'])).rejects.toThrow(
-      'process.exit:1',
-    );
-    expect(mocks.revokeApiAccessUser).not.toHaveBeenCalled();
   });
 
   it('issues a service token, printing only the token on stdout, or JSON', async () => {
