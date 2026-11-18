@@ -54,7 +54,7 @@ on:
         type: string
         default: ''
       restore_stage:
-        description: On the default journey, after cluster delete keeps the checkpoint bucket, restore the cluster from it (api create --checkpoint-bucket <id>, same ID and hostname), then cluster delete --delete-buckets deletes it (RFC 0049 C28); adds one management VM bootstrap
+        description: On the default journey, after api delete keeps the checkpoint bucket, restore the cluster from it (api create --checkpoint-bucket <id>, same ID and hostname), then api delete --delete-buckets deletes it (RFC 0049 C28); adds one management VM bootstrap
         type: boolean
         default: false
       dead_api_delete:

@@ -452,7 +452,7 @@ describe('api command', () => {
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
   });
 
-  it('api upgrade names a VM-hosted API for what it is and points at cluster create', async () => {
+  it('api upgrade names a VM-hosted API for what it is and points at api create', async () => {
     useHostedActive();
 
     mocks.activeVmHostedApi.mockResolvedValue({

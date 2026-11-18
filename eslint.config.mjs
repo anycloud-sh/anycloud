@@ -66,7 +66,7 @@ const lowerLayerIntegrationTests = [
   'test/integration/ssh-starvation.spec.ts', // OpenSSH transport isolation against a stock sshd
   'test/integration/credential-lifecycle.spec.ts', // RFC 0034 fake-provider wire lane
   'test/integration/cli-piped-output.spec.ts', // Compiled CLI binary stdio against a fake API; no Workload lifecycle
-  'test/integration/cli-seed-smoke.spec.ts', // The compiled seed's cluster create against fake cloud CLIs; no Workload lifecycle
+  'test/integration/cli-seed-smoke.spec.ts', // The compiled seed's api create against fake cloud CLIs; no Workload lifecycle
   'test/integration/agent-onboarding.spec.ts', // Local: coding agents follow SKILL.md with the released CLI in Docker-in-Docker; the agent owns submission
 
   'test/integration/kubernetes-host-step.spec.ts', // RFC 0049 C26 (b): the K3s host step on the pinned K3s server; no Workload lifecycle

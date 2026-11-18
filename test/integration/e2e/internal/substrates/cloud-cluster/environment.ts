@@ -8,6 +8,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { lookup } from 'node:dns/promises';
+import * as semver from 'semver';
 import { z } from 'zod';
 import type { DeleteReport } from '../../../../../../src/cli/services/seed-delete.js';
 
@@ -90,12 +91,16 @@ type ClusterInventory = Pick<
 >;
 
 /**
- * Every `anycloud cluster …` verb the member drives lives here, typed against
+ * Every create and delete verb this tree's CLI runs lives here, typed against
  * the generated CLI surface, so a renamed verb is a compile error in this
  * file alone.
  */
-const CLUSTER_CREATE = 'api create' satisfies CliPath;
-const CLUSTER_DELETE = 'api delete' satisfies CliPath;
+const API_CREATE = 'api create' satisfies CliPath;
+const API_DELETE = 'api delete' satisfies CliPath;
+
+/** The group a `from_release` CLI creates and deletes with: 0.1.78 and earlier had `cluster create|delete`. */
+const releasedLifecycleGroup = (version: string): 'cluster' | 'api' =>
+  semver.lte(version, '0.1.78') ? 'cluster' : 'api';
 
 /**
  * Lane S6's `api delete --json` report (`DeleteReport`): what was deleted
@@ -601,12 +606,13 @@ export class CloudClusterEnvironment {
     const deadline = Date.now() + timeoutMs;
     const remaining = () => Math.max(10_000, deadline - Date.now());
     if (!fromRelease) return this.#bootstrapInProcess(remaining());
-    // The released `cluster create` waits for the cluster itself.
+    // The released create waits for the cluster itself.
+    const group = releasedLifecycleGroup(fromRelease.version);
     const result = successful(
       // The released CLI's own surface: it creates through its local API.
       await fromRelease.cli.run(
         [
-          'cluster',
+          group,
           'create',
           this.#clusterName,
           '--credentials',
@@ -617,12 +623,12 @@ export class CloudClusterEnvironment {
           this.#options.managementVmType,
           '--json',
         ],
-        { timeoutMs: remaining(), label: 'cluster-create' },
+        { timeoutMs: remaining(), label: 'released-create' },
       ),
-      'cluster create (released)',
+      `${group} create (released)`,
     );
     const { id } = createdSchema.parse(
-      parseJson(result, 'cluster create (released)'),
+      parseJson(result, `${group} create (released)`),
     );
     this.#installationId = id;
     // Recorded before bootstrap runs: the workflow sweep scopes to this id.
@@ -705,7 +711,7 @@ export class CloudClusterEnvironment {
     this.#accessKubeConfig = join(access, 'kubeconfig');
     const result = await this.#options.cli.run(
       cliArgs(
-        CLUSTER_CREATE,
+        API_CREATE,
         {
           cloud: this.clusterProvider,
           region: this.#options.region,
@@ -722,7 +728,7 @@ export class CloudClusterEnvironment {
           ANYCLOUD_E2E_ACCESS: '1',
         },
         timeoutMs,
-        label: 'cluster-create',
+        label: 'api-create',
       },
     );
     // A running cluster is the one JSON document; a failed or cut-short
@@ -996,7 +1002,7 @@ export class CloudClusterEnvironment {
         successful(
           await this.#options.cli.run(
             cliArgs(
-              CLUSTER_DELETE,
+              API_DELETE,
               {
                 json: true,
                 // Used only when the hosted API no longer answers.
@@ -1014,7 +1020,7 @@ export class CloudClusterEnvironment {
                 ...this.#clusterApiEnvironment(),
               },
               timeoutMs,
-              label: 'cluster-delete',
+              label: 'api-delete',
             },
           ),
           'api delete',
@@ -1054,7 +1060,7 @@ export class CloudClusterEnvironment {
     const run = async (flags: string[], expected: string | undefined) => {
       const result = await this.#options.cli.run(
         cliArgs(
-          CLUSTER_DELETE,
+          API_DELETE,
           {
             cloud: this.clusterProvider,
             region: this.#options.region,
@@ -1075,7 +1081,7 @@ export class CloudClusterEnvironment {
             API_URL: cluster.managementApiUrl!,
           },
           timeoutMs,
-          label: `cluster-delete-dead-api${flags[0] ?? ''}`,
+          label: `api-delete-dead-api${flags[0] ?? ''}`,
         },
       );
       const report = deleteReportSchema.parse(
@@ -1127,7 +1133,7 @@ export class CloudClusterEnvironment {
       },
     );
     if ((await run([], 'planned')).deleted.length > 0) {
-      throw new Error('cluster delete without --delete-vms deleted something');
+      throw new Error('api delete without --delete-vms deleted something');
     }
     await run(['--delete-vms', '--confirm', id], 'destroyed');
     const buckets = await run(
@@ -1165,7 +1171,7 @@ export class CloudClusterEnvironment {
         successful(
           await this.#options.cli.run(
             cliArgs(
-              CLUSTER_DELETE,
+              API_DELETE,
               {
                 'delete-buckets': true,
                 confirm: id,
@@ -1182,12 +1188,12 @@ export class CloudClusterEnvironment {
                 API_URL: this.cluster().managementApiUrl!,
               },
               timeoutMs: 300_000,
-              label: 'cluster-delete-kept-bucket',
+              label: 'api-delete-kept-bucket',
             },
           ),
-          'cluster delete --delete-buckets (kept bucket)',
+          'api delete --delete-buckets (kept bucket)',
         ),
-        'cluster delete --delete-buckets (kept bucket)',
+        'api delete --delete-buckets (kept bucket)',
       ),
     );
     if (!deletedBucket(report, id)) {
@@ -1237,7 +1243,7 @@ export class CloudClusterEnvironment {
     this.#destroyed = false;
     const result = await this.#options.cli.run(
       cliArgs(
-        CLUSTER_CREATE,
+        API_CREATE,
         {
           cloud: this.clusterProvider,
           region: this.#options.region,
@@ -1262,8 +1268,8 @@ export class CloudClusterEnvironment {
     }
     const restored = clusterSummarySchema.parse(
       parseJson(
-        successful(result, 'cluster create --checkpoint-bucket (restore)'),
-        'cluster create --checkpoint-bucket (restore)',
+        successful(result, 'api create --checkpoint-bucket (restore)'),
+        'api create --checkpoint-bucket (restore)',
       ),
     );
     if (
@@ -1826,16 +1832,16 @@ export class CloudClusterEnvironment {
       // a budget inside the process timeout.
       await released.run(
         [
-          'cluster',
+          releasedLifecycleGroup(this.#options.fromRelease!.version),
           'delete',
           this.#clusterName,
           '--json',
           '--timeout',
           String(Math.max(60, Math.floor(destroyTimeoutMs / 1000) - 60)),
         ],
-        { timeoutMs: destroyTimeoutMs, label: 'released-cluster-delete' },
+        { timeoutMs: destroyTimeoutMs, label: 'released-delete' },
       ),
-      'cluster delete (released)',
+      'delete (released)',
     );
     this.#destroyed = true;
   }

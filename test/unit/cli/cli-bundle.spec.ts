@@ -1,5 +1,5 @@
 /**
- * The CLI drives the user's own cloud CLIs for cluster create and delete
+ * The CLI drives the user's own cloud CLIs for api create and delete
  * (RFC 0049 C26 (e)) and never bundles the API or a cloud SDK. This bundles
  * the CLI's entry as `bun build --compile` does, dynamic imports included,
  * and lists what Bun put in it.

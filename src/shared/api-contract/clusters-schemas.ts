@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { CloudType } from '../cloud.js';
 import { CLUSTER_WORKLOAD_STATES } from '../clusters.js';
-import {
-  deletedResourceSchema,
-  remainingResourceSchema,
-} from './lifecycle-results-schemas.js';
 
 export const clusterReleaseSummarySchema = z
   .object({
@@ -79,31 +75,10 @@ export const clusterResponseSchema = z
   .object({ cluster: clusterSummarySchema })
   .strict();
 
-/** What the delete releases (in the background) and what it keeps. */
-export const deleteClusterResponseSchema = z
-  .object({
-    cluster: clusterSummarySchema,
-    deleted: z.array(deletedResourceSchema),
-    remaining: z.array(remainingResourceSchema),
-  })
-  .strict();
-
-export const forgetClusterResponseSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    /** Cloud resources left for the operator to delete by hand. */
-    leftovers: z.array(z.string()),
-  })
-  .strict();
-
 export const listClustersResponseSchema = z
   .object({ clusters: z.array(clusterSummarySchema) })
   .strict();
 
 export type ClusterSummary = z.output<typeof clusterSummarySchema>;
 export type ClusterResponse = z.output<typeof clusterResponseSchema>;
-export type DeleteClusterResponse = z.output<
-  typeof deleteClusterResponseSchema
->;
 export type ListClustersResponse = z.output<typeof listClustersResponseSchema>;

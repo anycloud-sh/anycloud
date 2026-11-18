@@ -297,7 +297,7 @@ describe('production oRPC OpenAPI document', () => {
     );
 
     expect(operations).toHaveLength(countContractProcedures(apiContract));
-    expect(operations).toHaveLength(55);
+    expect(operations).toHaveLength(53);
     expect(operationIds.every(Boolean)).toBe(true);
     expect(new Set(operationIds).size).toBe(operationIds.length);
     expect(
@@ -331,7 +331,7 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.servers).toEqual([
       { url: 'http://localhost:8080/v1', description: 'Local API' },
     ]);
-    expect(Object.keys(document.paths ?? {})).toHaveLength(39);
+    expect(Object.keys(document.paths ?? {})).toHaveLength(38);
     expect(document.paths).toMatchObject({
       '/workloads': {
         get: expect.any(Object),
@@ -351,10 +351,7 @@ describe('production oRPC OpenAPI document', () => {
       '/quota/status': { get: expect.any(Object) },
       '/quota/canceled': { get: expect.any(Object) },
       '/clusters': { get: expect.any(Object) },
-      '/clusters/{id}': {
-        get: expect.any(Object),
-        delete: expect.any(Object),
-      },
+      '/clusters/{id}': { get: expect.any(Object) },
       '/system-release': { post: expect.any(Object), get: expect.any(Object) },
     });
     expect(document.paths).not.toHaveProperty('/quota/operations');

@@ -281,7 +281,7 @@ describe('api target discovery', () => {
     ).toBe(false);
   });
 
-  it('names an active VM-hosted API for what it is, with the migration to cluster create', async () => {
+  it('names an active VM-hosted API for what it is, with the migration to api create', async () => {
     process.env.API_URL = 'https://api-1.anycloud.sh';
     mocks.inspectLocalApiContainer.mockReturnValue({
       running: true,

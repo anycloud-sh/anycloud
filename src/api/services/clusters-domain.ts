@@ -1,6 +1,5 @@
 import type {
   ClusterResponse,
-  DeleteClusterResponse,
   ClusterSummary,
   ListClustersResponse,
 } from '../../shared/api-contract/clusters-schemas.js';
@@ -11,17 +10,9 @@ import {
   ClusterExistsError,
   ClusterInvalidError,
   ClusterNotFoundError,
-  ClusterReachableError,
-  ClusterReferencedError,
-  dependentsRefusal,
   ClusterReleaseConflictError,
   ClusterUnavailableError,
-  ClusterUnreachableError,
-  ClusterVmPresentError,
-  HostedApiAccessError,
 } from './cluster-errors.js';
-import { OWNER_API_TAG } from './api-identity.js';
-import { hostedApiIdentity } from '../../shared/hosted-api-identity.js';
 import {
   isComputeProvider,
   storageOnlyComputeMessage,
@@ -29,11 +20,6 @@ import {
 import type { CloudCredentials, CloudType } from '../../shared/cloud.js';
 import type { ApiBackupManifest } from '../../shared/api-backup-manifest.js';
 import { isApiBackupBucket } from './bucket-storage-operation.js';
-import {
-  deleteReport,
-  takeFinalBackup,
-  type FinalBackup,
-} from './cluster-delete-report.js';
 import {
   ClusterState,
   ClusterStep,
@@ -109,48 +95,6 @@ import {
   MANAGEMENT_KUBERNETES_READY_COMMAND,
   MANAGEMENT_LABEL_COMMAND,
 } from './system-release/management-host.js';
-
-export function hostedVersionFix(
-  url: string,
-  cli: string,
-  hosted: string | null,
-): string {
-  const upgradeHosted = `anycloud api use ${url}, anycloud api upgrade, then anycloud api use local`;
-  if (hosted && semver.valid(hosted) && semver.valid(cli)) {
-    if (semver.gt(hosted, cli)) {
-      return `this CLI (${cli}) is older than the hosted API (${hosted}); run anycloud update`;
-    }
-    if (semver.lt(hosted, cli)) {
-      return `the hosted API (${hosted}) is older than this CLI (${cli}); upgrade it (${upgradeHosted}) or install anycloud ${hosted} (curl -fsSL https://get.anycloud.sh | sh -s -- --version ${hosted})`;
-    }
-  }
-  return `run anycloud update if this CLI (${cli}) is the older side, or upgrade the hosted API (${upgradeHosted}) if the hosted API is older`;
-}
-
-/** What the hosted API still manages, asked with the bootstrapping account. */
-export type HostedNodePoolInventory =
-  | {
-      kind: 'pools';
-      pools: Array<{ id: string; name: string; liveReferences: number }>;
-    }
-  | { kind: 'unreachable'; reason: string };
-
-/**
- * The installer asks the hosted API (`GET /v1/node-pools` at the
- * installation's hostname with the actor's bearer) which node pools a release
- * from before their removal still runs; a current API has none.
- */
-export interface HostedNodePoolInventorySource {
-  inventory(
-    installation: StoredCluster,
-    owner: GithubOwner,
-  ): Promise<HostedNodePoolInventory>;
-  /** C28: the hosted API backs its database up now; rejects with the reason. */
-  backup(
-    installation: StoredCluster,
-    owner: GithubOwner,
-  ): Promise<{ backedUpAt: string }>;
-}
 
 /**
  * The public DNS record the API answers on and its origin TLS, through
@@ -421,7 +365,6 @@ export interface ClusterDomainDependencies {
   host: ManagementHostAccess;
   releases: ClusterReleaseClient;
   dns: ClusterDns;
-  hostedPools: HostedNodePoolInventorySource;
   /**
    * An API image (the bootstrapping API's tag, or the recorded pinned image)
    * → its immutable digest and the digest-pinned chart it was built with.
@@ -463,23 +406,6 @@ export interface ClustersDomain {
     identifier: string,
     signal?: AbortSignal,
   ): Promise<ClusterResponse>;
-  destroy(
-    actor: User,
-    identifier: string,
-    options: { deleteBuckets: boolean },
-    signal?: AbortSignal,
-  ): Promise<DeleteClusterResponse>;
-  /**
-   * Delete the installer's record of a cluster whose hosted API is
-   * unreachable and whose management VM the cloud shows gone, and its DNS
-   * record. The cloud and the checkpoint bucket are untouched; the answer
-   * names what is left to delete by hand.
-   */
-  forget(
-    actor: User,
-    identifier: string,
-    signal?: AbortSignal,
-  ): Promise<{ id: string; name: string; leftovers: string[] }>;
 }
 
 /** Clusters bind their hosted API to a GitHub account and publish its DNS record. */
@@ -1731,85 +1657,6 @@ export function createClustersDomain(
     );
   }
 
-  /** What stays in the cloud account once the installer forgets a cluster. */
-  function leftoverResources(installation: StoredCluster): string[] {
-    const bucket = installation.checkpointBucket;
-    // A destroyed cluster's network went with its VM; a delete without
-    // --delete-buckets kept its managed bucket, and the record names it.
-    const destroyed = installation.state === ClusterState.Destroyed;
-    return [
-      ...(destroyed
-        ? []
-        : [
-            `the management VM's network resources named ${clusterScope(installation).id} (its security group, firewall or network)`,
-          ]),
-      `Workload VMs, networks and disks tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
-      ...(bucket?.managed
-        ? [
-            `checkpoint bucket ${bucket.name}, kept on purpose with its backups; delete it only if you no longer need them`,
-          ]
-        : []),
-    ];
-  }
-
-  /** Destroy without the hosted API: restore it first when the bucket can. */
-  async function unreachableGuidance(
-    installation: StoredCluster,
-    apiUrl: string,
-    reason: string,
-  ): Promise<string> {
-    const { name } = installation;
-    const bucket = installation.checkpointBucket?.name;
-    const backup = bucket
-      ? await dependencies
-          .backupManifest(
-            await dependencies.storageCredential(
-              installation.computeCredentialId,
-            ),
-            bucket,
-            installation.region,
-          )
-          .catch((error: unknown) => errorMessage(error))
-      : null;
-    const vm = await installations.getManagementVm(installation.id);
-    if (backup !== null && typeof backup === 'object') {
-      const zone = installation.zone ? ` --zone ${installation.zone}` : '';
-      const terminate = vm
-        ? ` (if its management VM ${vm.cloudId} still runs but the cluster is broken, terminate that VM first)`
-        : '';
-      return `The hosted API at ${apiUrl} is unreachable (${reason}). Restore it with anycloud api create ${name} --cloud ${(backup.cloud ?? installation.cloudProvider).toLowerCase()} --region ${backup.region ?? installation.region}${zone} --vm-type ${backup.vmType ?? installation.vmType} --checkpoint-bucket ${bucket}${terminate}, then run anycloud api delete ${name}.`;
-    }
-    const why =
-      backup === 'unrestorable' || (bucket && backup === null)
-        ? 'its bucket holds no restorable backup'
-        : backup
-          ? `its backup could not be read (${backup})`
-          : 'it has no checkpoint bucket';
-    const vms = [
-      ...(vm ? [`management VM ${vm.cloudId}`] : []),
-      `Workload VMs tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
-    ];
-    return `The hosted API at ${apiUrl} is unreachable (${reason}) and ${why}. Terminate ${vms.join(' and ')}, then run anycloud api delete ${name} --skip-cloud; it names what else is left.`;
-  }
-
-  /** A destroyed record's kept managed bucket, under the installation's claim. */
-  async function deleteKeptBucket(installation: StoredCluster): Promise<void> {
-    const bucket = installation.checkpointBucket!;
-    const holder = active.get(installation.id);
-    if (holder) throw new ClusterBusyError(holder);
-    active.set(installation.id, ClusterState.Destroying);
-    try {
-      await dependencies.infrastructure!.deleteCheckpointBucket({
-        credential: await recordedCredential(installation),
-        region: installation.region,
-        bucket: bucket.name,
-      });
-      await installations.clearCheckpointBucket(installation.id);
-    } finally {
-      active.delete(installation.id);
-    }
-  }
-
   /**
    * The management VM, then the DNS record; the managed checkpoint bucket
    * only with `deleteBuckets` (RFC 0049 C28), last, so a failure before it
@@ -2082,163 +1929,6 @@ export function createClustersDomain(
       );
       if (!record) throw new ClusterNotFoundError(identifier);
       return recordSummary(record);
-    },
-
-    async destroy(actor, identifier, { deleteBuckets }, signal) {
-      signal?.throwIfAborted();
-      if (!dependencies.infrastructure) {
-        throw new ClusterUnavailableError();
-      }
-      const owner = await githubOwner(actor, CLUSTERS_NEED, signal);
-      const scope = await dependencies.resolveScope(actor);
-      const installation = await resolveForScope(identifier, scope);
-      if (!installation) {
-        throw new ClusterNotFoundError(identifier);
-      }
-      const deletesBucket =
-        deleteBuckets && installation.checkpointBucket?.managed === true;
-      const vm = await installations.getManagementVm(installation.id);
-      // A destroyed record still naming its kept managed bucket: with
-      // --delete-buckets only that bucket goes, here, since a destroyed
-      // record never changes state again (RFC 0049 C28).
-      if (installation.state === ClusterState.Destroyed) {
-        if (deletesBucket) await deleteKeptBucket(installation);
-        return {
-          ...(await summary(
-            (await installations.getForScope(installation.id, scope))!,
-          )),
-          ...deleteReport(installation, {
-            managementVm: null,
-            dnsRecord: false,
-            bucketDeleted: deletesBucket,
-            backup: deletesBucket
-              ? null
-              : await takeFinalBackup(dependencies, installation, owner, false),
-          }),
-        };
-      }
-      const taken: { backup?: FinalBackup } = {};
-      // A task running in this process owns the installation, and the claim
-      // refuses delete. Without one, an API restart interrupted it: destroy
-      // resumes an interrupted destruction and takes over an interrupted
-      // creation.
-      const destroying = await start(
-        installation.id,
-        ClusterState.Destroying,
-        async () => {
-          if (installation.state === ClusterState.Destroying) {
-            return installation;
-          }
-          // A hosted API from before node pools were removed may still run
-          // some, whose VMs would outlive the cluster: the operator removes
-          // them first. An unreachable hosted API is restored first
-          // (or, with no restorable backup, cleaned up by hand and forgotten). An
-          // installation whose release never completed, or whose management VM
-          // a failed delete already released, has no hosted API to ask:
-          // destroy proceeds directly.
-          const hostedApiRuns =
-            stepCompleted(installation, ClusterStep.Release) && vm !== null;
-          const inventory: HostedNodePoolInventory = hostedApiRuns
-            ? await dependencies.hostedPools.inventory(installation, owner)
-            : { kind: 'pools', pools: [] };
-          const apiUrl = clusterApiUrl(installation.id);
-          if (inventory.kind === 'unreachable') {
-            throw new ClusterUnreachableError(
-              await unreachableGuidance(installation, apiUrl, inventory.reason),
-            );
-          }
-          const refusal = dependentsRefusal(
-            { pools: inventory.pools, workloads: [] },
-            installation.name,
-            apiUrl,
-          );
-          if (refusal) throw new ClusterReferencedError(refusal);
-          // A kept bucket's newest backup is the restore point: take one now.
-          if (!deletesBucket && installation.checkpointBucket) {
-            taken.backup = await takeFinalBackup(
-              dependencies,
-              installation,
-              owner,
-              hostedApiRuns,
-            );
-          }
-          await installations.setState(
-            installation.id,
-            ClusterState.Destroying,
-          );
-          return (await installations.getForScope(installation.id, scope))!;
-        },
-        (row) => runDestroy(owner, row, scope, deletesBucket),
-      );
-      return {
-        ...(await summary(destroying)),
-        ...deleteReport(installation, {
-          managementVm: vm?.cloudId ?? null,
-          dnsRecord: true,
-          bucketDeleted: deletesBucket,
-          backup:
-            taken.backup ??
-            (deletesBucket
-              ? null
-              : await takeFinalBackup(
-                  dependencies,
-                  installation,
-                  owner,
-                  false,
-                )),
-        }),
-      };
-    },
-
-    async forget(actor, identifier, signal) {
-      signal?.throwIfAborted();
-      const owner = await githubOwner(actor, CLUSTERS_NEED, signal);
-      const scope = await dependencies.resolveScope(actor);
-      const installation = await resolveForScope(identifier, scope);
-      if (!installation) throw new ClusterNotFoundError(identifier);
-      if (active.has(installation.id)) {
-        throw new ClusterBusyError(installation.state);
-      }
-      const { name } = installation;
-      const apiUrl = clusterApiUrl(installation.id);
-      // As in delete, an installation whose release never completed has no
-      // hosted API to ask. Resolving its hostname before the record is
-      // published would cache NXDOMAIN for the next create's lookups.
-      if (stepCompleted(installation, ClusterStep.Release)) {
-        const inventory = await dependencies.hostedPools
-          .inventory(installation, owner)
-          .catch((error: unknown) => {
-            if (!(error instanceof HostedApiAccessError)) throw error;
-            throw new ClusterReachableError(
-              error.versionFix
-                ? `The hosted API at ${apiUrl} answered but refused this CLI's version, so it is reachable: ${error.versionFix}, then run anycloud api delete ${name}.`
-                : error.status === 400
-                  ? `${error.message}, so it is reachable; run anycloud api delete ${name} instead.`
-                  : `The hosted API at ${apiUrl} answered but refused this account (HTTP ${error.status}), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud api delete ${name}.`,
-            );
-          });
-        if (inventory.kind !== 'unreachable') {
-          throw new ClusterReachableError(
-            `The hosted API at ${apiUrl} is reachable; run anycloud api delete ${name} instead.`,
-          );
-        }
-      }
-      const live =
-        installation.state === ClusterState.Destroyed
-          ? null
-          : await liveManagementVm(installation);
-      if (live) {
-        throw new ClusterVmPresentError(
-          live.error === null
-            ? `Management VM ${live.cloudId} of cluster "${name}" still exists. Terminate it, then run anycloud api delete ${name} --skip-cloud again.`
-            : `Could not check management VM ${live.cloudId} of cluster "${name}" (${live.error}); retry once it can be read.`,
-        );
-      }
-      const leftovers = leftoverResources(installation);
-      await dependencies.dns.removeTls(installation.id, owner.token);
-      await dependencies.dns.remove(installation.id, owner.token);
-      await installations.forget(installation.id);
-      return { id: installation.id, name: installation.name, leftovers };
     },
   };
 }

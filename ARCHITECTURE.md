@@ -133,18 +133,14 @@ workload cleanup but not for a future owner-scoped orphan reconciliation.
 
 ### Cluster lifecycle and restore
 
-The installer API runs `anycloud api create` and `anycloud api delete` (whose
-`--skip-cloud` forgets); the cluster
+The installer API runs `anycloud api create`; the cluster
 record, its VM ledger and the compute credential stay there. `create` records
 the full target before any cloud mutation, then creates the management VM, starts
 K3s, and installs the chart its API image names as one `HelmChart`; re-running it resumes from
-the last completed step. `delete` is refused while the hosted API is
-unreachable. It still asks an older hosted API for node pools, whose VMs would
-outlive the cluster, and is refused while any remain; an API without them
-answers 404 on that route, which counts as none
-(`src/api/services/cluster-hosted-pools.ts`). `forget` drops the
-record and DNS record only when the API is unreachable and the cloud shows the
-management VM gone.
+the last completed step. `anycloud api delete` runs through the seed
+(`src/cli/services/seed-delete.ts`): a reachable hosted API deletes what it
+manages and then itself, refused while Workloads still run; with the API
+unreachable, the seed's guards decide whether its cloud CLI fallback may run.
 
 The hosted API backs up hourly and before every self-update: `cipher.key`,
 `database.sqlite` and last a `backup.json` manifest naming the cluster id,
