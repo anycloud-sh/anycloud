@@ -44,7 +44,7 @@ The same API image can run in two modes:
   `http://localhost:8080`; the host port is bound to loopback. Durable state is
   stored under `~/.anycloud/` and mounted into the container.
 - **Hosted API**: a Helm release on the installation's Kubernetes cluster,
-  created by `anycloud cluster create` and served at
+  created by `anycloud api create` and served at
   `https://<cluster-id>.anycloud.sh`. Its `ANYCLOUD_DIR` is `/mnt/checkpoint`
   on the `anycloud-api-state` PersistentVolumeClaim, which holds the live
   SQLite database and cipher key. The API backs both up to the cluster's
@@ -133,7 +133,8 @@ workload cleanup but not for a future owner-scoped orphan reconciliation.
 
 ### Cluster lifecycle and restore
 
-The installer API runs `cluster create`, `delete` and `forget`; the cluster
+The installer API runs `anycloud api create` and `anycloud api delete` (whose
+`--skip-cloud` forgets); the cluster
 record, its VM ledger and the compute credential stay there. `create` records
 the full target before any cloud mutation, then creates the management VM, starts
 K3s, and installs the chart its API image names as one `HelmChart`; re-running it resumes from

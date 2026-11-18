@@ -94,11 +94,11 @@ type ClusterInventory = Pick<
  * the generated CLI surface, so a renamed verb is a compile error in this
  * file alone.
  */
-const CLUSTER_CREATE = 'cluster create' satisfies CliPath;
-const CLUSTER_DELETE = 'cluster delete' satisfies CliPath;
+const CLUSTER_CREATE = 'api create' satisfies CliPath;
+const CLUSTER_DELETE = 'api delete' satisfies CliPath;
 
 /**
- * Lane S6's `cluster delete --json` report (`DeleteReport`): what was deleted
+ * Lane S6's `api delete --json` report (`DeleteReport`): what was deleted
  * and what remains (RFC 0049 C26 (d), C28), each resource once.
  */
 const deleteEntrySchema = z.discriminatedUnion('kind', [
@@ -193,8 +193,8 @@ export interface CloudClusterEnvironmentOptions {
   readonly http: Pick<TargetHttpClient, 'get'>;
   /**
    * The management VM's cloud credential; AWS, GCP or Azure. The runner's
-   * cloud CLI is signed in as it, and this tree's `cluster create` and
-   * `cluster delete` drive that CLI as the user's session (RFC 0049 C26 (e));
+   * cloud CLI is signed in as it, and this tree's `api create` and
+   * `api delete` drive that CLI as the user's session (RFC 0049 C26 (e));
    * only a released installer saves it.
    */
   readonly profile: VmProfile;
@@ -270,7 +270,7 @@ const releasedClusterSchema = z
 type ReleasedCluster = z.output<typeof releasedClusterSchema>;
 /**
  * Creation still running (0.1.65's `bootstrapping`, then the workload states
- * a released or this tree's installer reports); `cluster delete` is refused
+ * a released or this tree's installer reports); `api delete` is refused
  * until it settles.
  */
 const CLUSTER_CREATING: readonly string[] = [
@@ -351,18 +351,18 @@ export class CloudClusterEnvironment {
   readonly #clusterInventory: ClusterInventory | null;
   #cluster: ClusterSummary | undefined;
   #destroyed = false;
-  /** What this tree's `cluster delete` deleted and kept (RFC 0049 C26 (d), C28). */
+  /** What this tree's `api delete` deleted and kept (RFC 0049 C26 (d), C28). */
   #deleteResult: ParsedDeleteReport | undefined;
   #keptBucketRemoved = false;
   /** `from_release`: set once this CLI's `api upgrade` has moved the installer to this tree. */
   #installerUpgraded = false;
   /** The hosted stage sent `api upgrade`: an older hosted API may still be rolling out. */
   #hostedUpgradeRequested = false;
-  /** This run's installation id, known once `cluster create` returns it. */
+  /** This run's installation id, known once `api create` returns it. */
   #installationId: string | undefined;
   /** Bootstrap waited out its budget for creation to settle: cleanup does not wait again. */
   #creationStuck = false;
-  /** This tree's `cluster create` ran: its installation may need deleting. */
+  /** This tree's `api create` ran: its installation may need deleting. */
   #createStarted = false;
   /** The runner's cloud CLI session, signed in once per run. */
   #session: Promise<Record<string, string | undefined>> | undefined;
@@ -576,7 +576,7 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * `anycloud cluster create`, the seed: it drives the runner's cloud CLI,
+   * `anycloud api create`, the seed: it drives the runner's cloud CLI,
    * signed in as the cluster's credential, and returns once the hosted API
    * answers; without `--checkpoint-bucket` the product manages the bucket. A
    * released installer's create is polled to running instead. Destroy is
@@ -619,9 +619,11 @@ export class CloudClusterEnvironment {
         ],
         { timeoutMs: remaining(), label: 'cluster-create' },
       ),
-      'cluster create',
+      'cluster create (released)',
     );
-    const { id } = createdSchema.parse(parseJson(result, 'cluster create'));
+    const { id } = createdSchema.parse(
+      parseJson(result, 'cluster create (released)'),
+    );
     this.#installationId = id;
     // Recorded before bootstrap runs: the workflow sweep scopes to this id.
     await this.#recordRun();
@@ -748,7 +750,7 @@ export class CloudClusterEnvironment {
     ) {
       await this.#captureConsole();
       throw new Error(
-        `cluster create failed (exit ${String(result.exitCode)}, timeout ${String(result.timedOut)}): ${cluster ? `${cluster.state}: ${cluster.lastError ?? ''}` : result.combined}`,
+        `api create failed (exit ${String(result.exitCode)}, timeout ${String(result.timedOut)}): ${cluster ? `${cluster.state}: ${cluster.lastError ?? ''}` : result.combined}`,
       );
     }
     this.#installationId = cluster.id;
@@ -969,7 +971,7 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * `cluster delete`, through the runner's signed-in cloud CLI as the
+   * `api delete`, through the runner's signed-in cloud CLI as the
    * user's session; it returns once the cluster is gone. It keeps the managed
    * checkpoint bucket after a final backup unless `deleteBuckets` (RFC 0049
    * C28), which needs `--confirm` without a terminal.
@@ -1015,9 +1017,9 @@ export class CloudClusterEnvironment {
               label: 'cluster-delete',
             },
           ),
-          'cluster delete',
+          'api delete',
         ),
-        'cluster delete',
+        'api delete',
       ),
     );
     if (
@@ -1026,7 +1028,7 @@ export class CloudClusterEnvironment {
         result.clusterId !== this.#installationId)
     ) {
       throw new Error(
-        `cluster delete reported ${result.outcome} for ${result.clusterId}: ${JSON.stringify(result.remaining)}`,
+        `api delete reported ${result.outcome} for ${result.clusterId}: ${JSON.stringify(result.remaining)}`,
       );
     }
     this.#destroyed = true;
@@ -1037,7 +1039,7 @@ export class CloudClusterEnvironment {
    * The cluster deleted as from a second machine once its API is gone (RFC
    * 0049 C26 (c), lane S6): the runner's cloud CLI stops the management VM,
    * and once `https://<id>.anycloud.sh` no longer answers, this tree's CLI,
-   * in a fresh home that knows only the cluster's hostname, runs `cluster delete
+   * in a fresh home that knows only the cluster's hostname, runs `api delete
    * <id> --cloud --region`, which plans and deletes nothing, then with
    * `--delete-vms`, `--delete-buckets` and `--skip-cloud`.
    */
@@ -1077,11 +1079,11 @@ export class CloudClusterEnvironment {
         },
       );
       const report = deleteReportSchema.parse(
-        parseJson(successful(result, 'cluster delete'), 'cluster delete'),
+        parseJson(successful(result, 'api delete'), 'api delete'),
       );
       if (expected !== undefined && report.outcome !== expected) {
         throw new Error(
-          `cluster delete ${flags.join(' ')} with the API gone: ${report.outcome}, not ${expected}`,
+          `api delete ${flags.join(' ')} with the API gone: ${report.outcome}, not ${expected}`,
         );
       }
       const deleted = report.deleted.map(entryName);
@@ -1135,7 +1137,7 @@ export class CloudClusterEnvironment {
     // The sweep reads the cloud for the bucket, after its own settle wait.
     if (!deletedBucket(buckets, id)) {
       throw new Error(
-        `cluster delete --delete-buckets did not report the bucket ${id} deleted`,
+        `api delete --delete-buckets did not report the bucket ${id} deleted`,
       );
     }
     // Nothing left in the cloud: cleanup's fallback would only be refused.
@@ -1152,7 +1154,7 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * The kept bucket deleted once its API is gone (lane S6): `cluster delete
+   * The kept bucket deleted once its API is gone (lane S6): `api delete
    * <id> --delete-buckets --confirm <id>` with `--cloud` and `--region`, which
    * the CLI needs when no hosted API can name them.
    */
@@ -1190,7 +1192,7 @@ export class CloudClusterEnvironment {
     );
     if (!deletedBucket(report, id)) {
       throw new Error(
-        `cluster delete --delete-buckets did not delete the kept bucket ${id}: ${JSON.stringify(report)}`,
+        `api delete --delete-buckets did not delete the kept bucket ${id}: ${JSON.stringify(report)}`,
       );
     }
     this.#keptBucketRemoved = true;
@@ -1209,20 +1211,20 @@ export class CloudClusterEnvironment {
       this.#deleteResult?.finalBackup !== 'taken'
     ) {
       throw new Error(
-        `cluster delete did not keep the managed bucket ${id} after a final backup: ${JSON.stringify(kept ?? null)}`,
+        `api delete did not keep the managed bucket ${id} after a final backup: ${JSON.stringify(kept ?? null)}`,
       );
     }
     if (!(await this.#checkpointBuckets()).includes(id)) {
-      throw new Error(`cluster delete deleted the kept bucket ${id}`);
+      throw new Error(`api delete deleted the kept bucket ${id}`);
     }
     return { name: id, kept: true, finalBackup: 'taken' };
   }
 
   /**
    * RFC 0049 C28's restore, on the seed: after the delete that kept the
-   * managed bucket, `cluster create --checkpoint-bucket <id>` brings the
+   * managed bucket, `api create --checkpoint-bucket <id>` brings the
    * cluster back from it under the same ID and hostname, its record read
-   * back from the restored database, then `cluster delete --delete-buckets`
+   * back from the restored database, then `api delete --delete-buckets`
    * removes it with the bucket.
    */
   async restoreFromKeptBucket(
@@ -1305,7 +1307,7 @@ export class CloudClusterEnvironment {
     ) {
       return Promise.reject(
         new Error(
-          `cluster delete --delete-buckets left ${JSON.stringify(result?.remaining ?? null)} and deleted ${JSON.stringify(result?.deleted ?? null)}`,
+          `api delete --delete-buckets left ${JSON.stringify(result?.remaining ?? null)} and deleted ${JSON.stringify(result?.deleted ?? null)}`,
         ),
       );
     }
@@ -1431,7 +1433,7 @@ export class CloudClusterEnvironment {
     // The Worker's delete is idempotent (2xx proves nothing): it purges; DNS
     // answers whether the destroy left the record. Only once the cluster is
     // destroyed: on a failed journey the sweep runs before the cleanup stack,
-    // whose `cluster delete` still needs `https://<id>.anycloud.sh` — the
+    // whose `api delete` still needs `https://<id>.anycloud.sh` — the
     // workflow's own DNS sweep step covers that path after teardown.
     const dnsRecords: string[] = [];
     if (!this.#cluster || this.#destroyed) {

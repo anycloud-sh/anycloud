@@ -424,7 +424,7 @@ describe('system release domain (hosted, industry pattern)', () => {
     await expect(domain().backup(peer)).resolves.toEqual({
       backedUpAt: '2026-11-04T18:12:03.000Z',
     });
-    expect(events).toEqual(['backup:cluster delete']);
+    expect(events).toEqual(['backup:api delete']);
     await expect(
       createSystemReleaseDomain({ ...deps, backup: null }).backup(peer),
     ).rejects.toThrow('no database backup is configured');

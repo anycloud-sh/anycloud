@@ -107,7 +107,7 @@ function argumentSpec(argument: Argument): string {
 }
 
 /**
- * Every command reachable from `commands`, keyed by its path (`cluster create`);
+ * Every command reachable from `commands`, keyed by its path (`api create`);
  * a command's aliases are keys of their own at the same level.
  */
 export function cliSurfaceFromCommands(

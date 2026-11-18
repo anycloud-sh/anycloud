@@ -954,14 +954,14 @@ describe('kubernetes clusters domain', () => {
       ],
     };
     await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      /Node pool gpu-a still has Deployments or Services.*anycloud deployment delete <id> \/ anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete production again\.$/,
+      /Node pool gpu-a still has Deployments or Services.*anycloud deployment delete <id> \/ anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud api delete production again\.$/,
     );
     fakes.hostedPools = {
       kind: 'pools',
       pools: [{ id: 'np-2', name: 'cpu-b', liveReferences: 0 }],
     };
     await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      /Node pool cpu-b still exists.*anycloud node-pool delete <name>, then anycloud cluster delete production again\.$/,
+      /Node pool cpu-b still exists.*anycloud node-pool delete <name>, then anycloud api delete production again\.$/,
     );
   });
 
@@ -996,7 +996,7 @@ describe('kubernetes clusters domain', () => {
     const withBackup = domain({ backupManifest: async () => manifest });
     fakes.hostedPools = { kind: 'unreachable', reason: 'connect timeout' };
     await expect(withBackup.destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      `The hosted API at https://${cluster.id}.anycloud.sh is unreachable (connect timeout). Restore it with anycloud cluster create production --cloud aws --region us-east-1 --zone us-east-1a --vm-type t3.medium --checkpoint-bucket my-api-state (if its management VM anycloud-cluster-${cluster.id} still runs but the cluster is broken, terminate that VM first), then run anycloud cluster delete production.`,
+      `The hosted API at https://${cluster.id}.anycloud.sh is unreachable (connect timeout). Restore it with anycloud api create production --cloud aws --region us-east-1 --zone us-east-1a --vm-type t3.medium --checkpoint-bucket my-api-state (if its management VM anycloud-cluster-${cluster.id} still runs but the cluster is broken, terminate that VM first), then run anycloud api delete production.`,
     );
     // The management VM is gone; the restore replaces the record.
     fakes.provisioned.clear();
@@ -1016,7 +1016,7 @@ describe('kubernetes clusters domain', () => {
     const { cluster } = await domain().create(actor, request);
     await drain();
     await expect(domain().forget(actor, cluster.id)).rejects.toThrow(
-      'is reachable; run anycloud cluster delete production instead',
+      'is reachable; run anycloud api delete production instead',
     );
     const refusing = domain({
       hostedPools: {
@@ -1027,7 +1027,7 @@ describe('kubernetes clusters domain', () => {
       },
     });
     await expect(refusing.forget(actor, cluster.id)).rejects.toThrow(
-      `answered but refused this account (HTTP 403), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud cluster delete production.`,
+      `answered but refused this account (HTTP 403), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud api delete production.`,
     );
     const rejecting = domain({
       hostedPools: {
@@ -1038,14 +1038,14 @@ describe('kubernetes clusters domain', () => {
       },
     });
     await expect(rejecting.forget(actor, cluster.id)).rejects.toThrow(
-      'The hosted API at https://x rejected the node pool check (HTTP 400: x), so it is reachable; run anycloud cluster delete production instead.',
+      'The hosted API at https://x rejected the node pool check (HTTP 400: x), so it is reachable; run anycloud api delete production instead.',
     );
     expect(new HostedApiAccessError('https://x', 400).message).toBe(
       'The hosted API at https://x rejected the node pool check (HTTP 400)',
     );
     fakes.hostedPools = { kind: 'unreachable', reason: 'connect timeout' };
     const hand = new RegExp(
-      `Terminate management VM anycloud-cluster-${cluster.id} and Workload VMs tagged anycloud_owner_api=[0-9a-f]{32}, then run anycloud cluster forget production; it names what else is left\\.$`,
+      `Terminate management VM anycloud-cluster-${cluster.id} and Workload VMs tagged anycloud_owner_api=[0-9a-f]{32}, then run anycloud api delete production --skip-cloud; it names what else is left\\.$`,
     );
     await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
       new RegExp(
@@ -1063,7 +1063,7 @@ describe('kubernetes clusters domain', () => {
       ),
     );
     await expect(domain().forget(actor, cluster.id)).rejects.toThrow(
-      `Management VM anycloud-cluster-${cluster.id} of cluster "production" still exists. Terminate it, then run anycloud cluster forget production again.`,
+      `Management VM anycloud-cluster-${cluster.id} of cluster "production" still exists. Terminate it, then run anycloud api delete production --skip-cloud again.`,
     );
     const releases = fakes.releaseCalls;
     fakes.provisioned.clear();
@@ -1782,7 +1782,7 @@ describe('kubernetes clusters domain', () => {
     const outcome = await domain().get(actor, cluster.id);
     expect(outcome.cluster.state).toBe(WorkloadState.Failed);
     expect(outcome.cluster.lastError).toContain(
-      'run anycloud cluster delete production again',
+      'run anycloud api delete production again',
     );
     expect(fakes.provisionCalls).toBe(1);
     expect(await vmRows()).toHaveLength(1);
@@ -2326,7 +2326,7 @@ describe('kubernetes clusters domain', () => {
 
     const destroying = await domain().destroy(actor, 'production', KEEP);
     expect(destroying.cluster.state).toBe(WorkloadState.Terminated);
-    const restoreCommand = `anycloud cluster create production --cloud aws --region us-east-1 --vm-type t3.medium --checkpoint-bucket ${cluster.id}`;
+    const restoreCommand = `anycloud api create production --cloud aws --region us-east-1 --vm-type t3.medium --checkpoint-bucket ${cluster.id}`;
     expect(destroying).toMatchObject({
       deleted: [
         { kind: 'managementVm', id: `anycloud-cluster-${cluster.id}` },
@@ -2341,7 +2341,7 @@ describe('kubernetes clusters domain', () => {
           finalBackup: 'taken',
           backedUpAt: '2026-11-04T18:12:03.000Z',
           restoreCommand,
-          deleteCommand: `anycloud cluster delete ${cluster.id} --delete-buckets`,
+          deleteCommand: `anycloud api delete ${cluster.id} --delete-buckets`,
         },
       ],
     });

@@ -372,7 +372,7 @@ export async function resolveWorkloadAdmission(args: {
     isHostedApiImage(input.image)
   ) {
     throw new InvalidAnycloudConfigError(
-      'VM-hosted APIs are no longer supported. Use `anycloud cluster create` to host an API, then `anycloud api use` to select it.',
+      'VM-hosted APIs are no longer supported. Use `anycloud api create` to host an API, then `anycloud api use` to select it.',
     );
   }
 

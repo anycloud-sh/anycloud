@@ -3,7 +3,7 @@ import { dependentsRefusal } from '../../../src/api/services/cluster-errors';
 
 /** The cloud-cluster contract's check that a refusal names the steps. */
 const STEPS =
-  /anycloud node-pool delete <name>, then anycloud cluster delete [^ ]+ again/u;
+  /anycloud node-pool delete <name>, then anycloud api delete [^ ]+ again/u;
 
 describe('cluster delete refusals', () => {
   it('lets the delete go on when nothing holds the cluster', () => {
@@ -22,7 +22,7 @@ describe('cluster delete refusals', () => {
       'prod-1',
     );
     expect(refusal).toBe(
-      "Node pools cpu-a, cpu-b still exist. With the CLI of the hosted API's release, run anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.",
+      "Node pools cpu-a, cpu-b still exist. With the CLI of the hosted API's release, run anycloud node-pool delete <name>, then anycloud api delete prod-1 again.",
     );
     expect(refusal).toMatch(STEPS);
   });
@@ -40,7 +40,7 @@ describe('cluster delete refusals', () => {
       'https://prod-1.anycloud.sh',
     );
     expect(refusal).toBe(
-      'Node pool gpu still has Deployments or Services. Node pool cpu also exists. Against the hosted API (https://prod-1.anycloud.sh) with the CLI of its release: run anycloud deployment delete <id> / anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete production again.',
+      'Node pool gpu still has Deployments or Services. Node pool cpu also exists. Against the hosted API (https://prod-1.anycloud.sh) with the CLI of its release: run anycloud deployment delete <id> / anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud api delete production again.',
     );
     expect(refusal).toMatch(STEPS);
   });
@@ -49,7 +49,7 @@ describe('cluster delete refusals', () => {
     expect(
       dependentsRefusal({ pools: [], workloads: ['svc-1', 'job-2'] }, 'prod-1'),
     ).toBe(
-      'Workloads svc-1, job-2 still run. Run anycloud terminate <id>, then anycloud cluster delete prod-1 again.',
+      'Workloads svc-1, job-2 still run. Run anycloud terminate <id>, then anycloud api delete prod-1 again.',
     );
   });
 
@@ -59,7 +59,7 @@ describe('cluster delete refusals', () => {
       'prod-1',
     );
     expect(refusal).toBe(
-      "Workload svc-1 still runs. Node pool cpu also exists. With the CLI of the hosted API's release, run anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.",
+      "Workload svc-1 still runs. Node pool cpu also exists. With the CLI of the hosted API's release, run anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud api delete prod-1 again.",
     );
     expect(refusal).toMatch(STEPS);
   });

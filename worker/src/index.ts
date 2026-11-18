@@ -590,7 +590,7 @@ async function apiTls(
     if (denied) return denied;
     return activate(env, hostname);
   }
-  // `cluster delete` and `cluster forget`, before the DNS record goes, in the
+  // `api delete` and `api delete --skip-cloud`, before the DNS record goes, in the
   // reverse order of activation.
   if (route === 'DELETE /v1/api-tls') {
     const denied = await owned(env, body.subdomain, username, false);

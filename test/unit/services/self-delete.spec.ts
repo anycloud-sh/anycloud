@@ -175,7 +175,7 @@ describe('the hosted API deleting itself', () => {
     ).rejects.toMatchObject({
       name: 'SelfDeleteRefusedError',
       message:
-        'Workload svc-1 still runs. Run anycloud terminate <id>, then anycloud cluster delete prod-1 again.',
+        'Workload svc-1 still runs. Run anycloud terminate <id>, then anycloud api delete prod-1 again.',
     });
     expect(order).toEqual([]);
     expect(selfDelete.status().state).toBe('idle');
@@ -250,7 +250,7 @@ describe('the hosted API deleting itself', () => {
     await vi.waitFor(() => expect(selfDelete.status().state).toBe('failed'));
     expect(order).toEqual(['backup']);
     expect(selfDelete.status().error).toBe(
-      'Workload late-1 still runs. Run anycloud terminate <id>, then anycloud cluster delete prod-1 again.',
+      'Workload late-1 still runs. Run anycloud terminate <id>, then anycloud api delete prod-1 again.',
     );
   });
 

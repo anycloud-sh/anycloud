@@ -126,7 +126,7 @@ describe('API database backup', () => {
         ]);
       }
     })();
-    // The answer is the manifest's time, which `cluster delete` reports.
+    // The answer is the manifest's time, which `api delete` reports.
     await expect(backup().run('spec')).resolves.toBe(
       '2026-09-27T12:00:00.000Z',
     );

@@ -63,7 +63,7 @@ export interface VmHostedApi {
 export function vmHostedApiMigrationMessage(api: VmHostedApi): string {
   return (
     `${api.url} is a VM-hosted API (the removed anycloud api serve); it can no longer be updated. ` +
-    'Create its successor with "anycloud cluster create <name> --cloud <cloud> --region <region> --vm-type <type>", ' +
+    'Create its successor with "anycloud api create <name> --cloud <cloud> --region <region> --vm-type <type>", ' +
     'select it with "anycloud api use https://<cluster-id>.anycloud.sh" (then "anycloud credentials new" and "anycloud api access add" there), ' +
     `and retire the VM-hosted API through its installer API with "API_URL=${api.installerUrl} anycloud terminate ${api.id}".`
   );

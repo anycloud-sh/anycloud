@@ -375,7 +375,7 @@ export async function applyRoleSetup(
 /**
  * Report an `--apply` failure and exit. A sign-in the CLI needs is a step for
  * the user, relayed as `actionRequired` with `--json` (exit 2, as for GitHub);
- * a missing CLI and a refusal take `cluster create`'s codes.
+ * a missing CLI and a refusal take `api create`'s codes.
  */
 export function exitWithRoleApplyError(
   failure: string,

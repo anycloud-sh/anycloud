@@ -221,7 +221,7 @@ describe('/v1/workloads endpoint', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({
         code: 'WORKLOAD_ADMISSION_REJECTED',
-        message: expect.stringContaining('anycloud cluster create'),
+        message: expect.stringContaining('anycloud api create'),
       });
       expect(await queries().getWorkload(id)).toBeNull();
     },
@@ -254,7 +254,7 @@ describe('/v1/workloads endpoint', () => {
         expect(response.status).toBe(400);
         await expect(response.json()).resolves.toMatchObject({
           code: 'SERVICE_UPGRADE_INVALID',
-          message: expect.stringContaining('anycloud cluster create'),
+          message: expect.stringContaining('anycloud api create'),
         });
         expect(inspectImage).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
@@ -937,7 +937,7 @@ describe('/v1/workloads endpoint', () => {
     await walkToState(id, WorkloadState.Terminated);
     const response = await requestResubmit(id);
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain('anycloud cluster create');
+    expect(await response.text()).toContain('anycloud api create');
     expect(await queries().getWorkload(id)).toMatchObject({
       state: WorkloadState.Terminated,
     });

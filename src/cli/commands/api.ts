@@ -1,5 +1,7 @@
 import { Command, InvalidArgumentError } from 'commander';
 import { apiClient, hostedApiBearer } from '../services/auth.js';
+import { createApiCreateCommand } from './cluster.js';
+import { createApiDeleteCommand } from './cluster-delete.js';
 import * as semver from 'semver';
 import { newTable } from '../renderers/table.js';
 import { spawnSync, spawn } from 'child_process';
@@ -323,7 +325,7 @@ Examples:
   $ anycloud api upgrade --image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>
 
 With the local API active, it is started or restarted on this CLI's release. If the
-active API is a Helm-managed API on a cluster (anycloud cluster create), it is
+active API is a Helm-managed API on a cluster (anycloud api create), it is
 asked to move to this CLI's release, without Docker or the local API:
 it backs its database up and hands the new image to helm-controller, then is
 replaced by it while it keeps running. "anycloud api status" shows the
@@ -504,7 +506,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         const legacy = await activeVmHostedApi();
         if (legacy) throw new Error(vmHostedApiMigrationMessage(legacy));
         throw new Error(
-          `Active API ${activeTarget.url} is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud cluster create.`,
+          `Active API ${activeTarget.url} is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud api create.`,
         );
       } catch (error) {
         if (options.json) {
@@ -1104,6 +1106,8 @@ function createStatusCommand(): Command {
 export function createApiCommand(): Command {
   const api = new Command('api').description('Manage AnyCloud API servers');
 
+  api.addCommand(createApiCreateCommand());
+  api.addCommand(createApiDeleteCommand());
   api.addCommand(createListCommand());
   api.addCommand(createUseCommand());
   api.addCommand(createApiUpgradeCommand());

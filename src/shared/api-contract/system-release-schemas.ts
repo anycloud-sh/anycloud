@@ -114,7 +114,7 @@ export const systemReleaseStatusSchema = z
     managementNodeLabelled: z.boolean().optional(),
     /**
      * The first database backup through the management VM's identity (RFC
-     * 0049 C26 (e)), which `cluster create` waits for. Omitted without a
+     * 0049 C26 (e)), which `api create` waits for. Omitted without a
      * backup, and by APIs before it.
      */
     firstBackup: z
@@ -148,7 +148,7 @@ export const systemReleaseResponseSchema = z
   })
   .strict();
 
-/** `cluster delete`'s final backup: the manifest time of the backup taken. */
+/** `api delete`'s final backup: the manifest time of the backup taken. */
 export const systemBackupResponseSchema = z
   .object({ backedUpAt: z.string().min(1) })
   .strict();
@@ -164,7 +164,7 @@ export type SystemReleaseResponse = z.output<
   typeof systemReleaseResponseSchema
 >;
 
-/** `cluster delete` asks the hosted API to delete its installation, itself last (RFC 0049 C26, seed design). */
+/** `api delete` asks the hosted API to delete its installation, itself last (RFC 0049 C26, seed design). */
 export const selfDeleteInputSchema = z
   .object({
     /** The cluster the caller means; refused unless it is this API's. */

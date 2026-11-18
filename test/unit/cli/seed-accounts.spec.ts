@@ -286,8 +286,8 @@ describe('the rights check through each CLI', () => {
   });
 });
 
-it('the cluster reference lists exactly the rights create checks', () => {
-  const doc = readFileSync('docs/reference/cli/cluster.md', 'utf8');
+it('the api reference lists exactly the rights create checks', () => {
+  const doc = readFileSync('docs/reference/cli/api-utilities.md', 'utf8');
   const section = doc.slice(
     doc.indexOf('### Cloud rights'),
     doc.indexOf("**The API's URL"),

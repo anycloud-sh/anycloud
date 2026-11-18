@@ -14,7 +14,7 @@ export const FIRST_BACKUP_BUDGET_MS = {
 } as const;
 const FIRST_BACKUP_INTERVAL_MS = 15_000;
 
-/** What `api status` reports; `cluster create` waits for `landed`. */
+/** What `api status` reports; `api create` waits for `landed`. */
 export type FirstBackupStatus =
   | { state: 'pending'; attempts: number; lastError: string | null }
   | { state: 'landed'; backedUpAt: string }

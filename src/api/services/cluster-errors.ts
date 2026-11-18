@@ -61,7 +61,7 @@ export class HostedApiAccessError extends Error {
   ) {
     super(
       versionFix
-        ? `The hosted API at ${url} refused this CLI's version: ${versionFix}, then run anycloud cluster delete again`
+        ? `The hosted API at ${url} refused this CLI's version: ${versionFix}, then run anycloud api delete again`
         : status === 400
           ? `The hosted API at ${url} rejected the node pool check (HTTP 400${body.trim() ? `: ${body.trim().slice(0, 200)}` : ''})`
           : `The hosted API at ${url} refused this account (HTTP ${status}); the node pools it manages can only be checked by the account that bootstrapped it — sign in as that account (anycloud api use ${url} shows what it admits)${refusalOf(body)}`,
@@ -111,7 +111,7 @@ export class ClusterBusyError extends Error {
 export class ClusterDestroyFailedError extends Error {
   constructor(name: string) {
     super(
-      `cluster "${name}" failed while being destroyed; run anycloud cluster delete ${name} again to finish releasing it`,
+      `cluster "${name}" failed while being destroyed; run anycloud api delete ${name} again to finish releasing it`,
     );
     this.name = 'ClusterDestroyFailedError';
   }
@@ -137,7 +137,7 @@ const plural = (count: number, one: string, many: string) =>
   count === 1 ? one : many;
 
 /**
- * Why `cluster delete <clusterName>` is refused and what to run first, or
+ * Why `api delete <clusterName>` is refused and what to run first, or
  * null when nothing holds it. `apiUrl` names the hosted API the commands
  * run against when the refusal comes from elsewhere.
  */
@@ -153,7 +153,7 @@ export function dependentsRefusal(
     : pools.length > 0
       ? ` With the CLI of the hosted API's release, run`
       : ' Run';
-  const again = `then anycloud cluster delete ${clusterName} again.`;
+  const again = `then anycloud api delete ${clusterName} again.`;
   const names = (list: ReadonlyArray<{ name: string }>) =>
     list.map((pool) => pool.name).join(', ');
   const referenced = pools.filter((pool) => pool.liveReferences > 0);

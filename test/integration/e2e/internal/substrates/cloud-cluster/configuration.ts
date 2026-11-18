@@ -10,7 +10,7 @@ import { LIVE_CHECKS, type LiveCheck } from '../../contracts/cluster-cloud.js';
 export type CloudProvider = 'aws' | 'gcp' | 'azure';
 
 export interface ClusterCloudConfiguration {
-  /** The cloud `cluster create` uses for the management VM and its checkpoint bucket. */
+  /** The cloud `api create` uses for the management VM and its checkpoint bucket. */
   readonly clusterProvider: CloudProvider;
   readonly clusterRegion: string;
   readonly managementVmType: string;

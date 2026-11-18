@@ -107,8 +107,7 @@ removed. Run `anycloud login <api-url>` for the current token, and update
 ### `GITHUB_SIGN_IN_REQUIRED`.
 
 A 403 with this code means the request needs a GitHub sign-in, even on a local
-API: a Service that publishes a public URL (Local Services publish none), or
-cluster create, delete and forget. "Your GitHub sign-in was rejected" means
+API: a Service that publishes a public URL (Local Services publish none). "Your GitHub sign-in was rejected" means
 your GitHub token (saved or `GITHUB_TOKEN`) expired or was revoked. Run
 `anycloud login`, then retry.
 

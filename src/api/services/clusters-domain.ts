@@ -1773,7 +1773,7 @@ export function createClustersDomain(
       const terminate = vm
         ? ` (if its management VM ${vm.cloudId} still runs but the cluster is broken, terminate that VM first)`
         : '';
-      return `The hosted API at ${apiUrl} is unreachable (${reason}). Restore it with anycloud cluster create ${name} --cloud ${(backup.cloud ?? installation.cloudProvider).toLowerCase()} --region ${backup.region ?? installation.region}${zone} --vm-type ${backup.vmType ?? installation.vmType} --checkpoint-bucket ${bucket}${terminate}, then run anycloud cluster delete ${name}.`;
+      return `The hosted API at ${apiUrl} is unreachable (${reason}). Restore it with anycloud api create ${name} --cloud ${(backup.cloud ?? installation.cloudProvider).toLowerCase()} --region ${backup.region ?? installation.region}${zone} --vm-type ${backup.vmType ?? installation.vmType} --checkpoint-bucket ${bucket}${terminate}, then run anycloud api delete ${name}.`;
     }
     const why =
       backup === 'unrestorable' || (bucket && backup === null)
@@ -1785,7 +1785,7 @@ export function createClustersDomain(
       ...(vm ? [`management VM ${vm.cloudId}`] : []),
       `Workload VMs tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
     ];
-    return `The hosted API at ${apiUrl} is unreachable (${reason}) and ${why}. Terminate ${vms.join(' and ')}, then run anycloud cluster forget ${name}; it names what else is left.`;
+    return `The hosted API at ${apiUrl} is unreachable (${reason}) and ${why}. Terminate ${vms.join(' and ')}, then run anycloud api delete ${name} --skip-cloud; it names what else is left.`;
   }
 
   /** A destroyed record's kept managed bucket, under the installation's claim. */
@@ -1901,7 +1901,7 @@ export function createClustersDomain(
         // this one exists.
         if (existing.computeCredentialId !== credential.id) {
           throw new ClusterExistsError(
-            `Cluster "${existing.name}" exists with different credentials; delete it (anycloud cluster delete ${existing.name}) before creating it again`,
+            `Cluster "${existing.name}" exists with different credentials; delete it (anycloud api delete ${existing.name}) before creating it again`,
           );
         }
         if (
@@ -1910,7 +1910,7 @@ export function createClustersDomain(
           existing.vmType !== input.vmType
         ) {
           throw new ClusterExistsError(
-            `Cluster "${existing.name}" exists in ${existing.region}${existing.zone ? `/${existing.zone}` : ''} on ${existing.vmType}; run anycloud cluster create again with that region, zone and VM type, or delete it first`,
+            `Cluster "${existing.name}" exists in ${existing.region}${existing.zone ? `/${existing.zone}` : ''} on ${existing.vmType}; run anycloud api create again with that region, zone and VM type, or delete it first`,
           );
         }
         // A replayed request re-returns a ready installation or one whose
@@ -2207,15 +2207,15 @@ export function createClustersDomain(
             if (!(error instanceof HostedApiAccessError)) throw error;
             throw new ClusterReachableError(
               error.versionFix
-                ? `The hosted API at ${apiUrl} answered but refused this CLI's version, so it is reachable: ${error.versionFix}, then run anycloud cluster delete ${name}.`
+                ? `The hosted API at ${apiUrl} answered but refused this CLI's version, so it is reachable: ${error.versionFix}, then run anycloud api delete ${name}.`
                 : error.status === 400
-                  ? `${error.message}, so it is reachable; run anycloud cluster delete ${name} instead.`
-                  : `The hosted API at ${apiUrl} answered but refused this account (HTTP ${error.status}), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud cluster delete ${name}.`,
+                  ? `${error.message}, so it is reachable; run anycloud api delete ${name} instead.`
+                  : `The hosted API at ${apiUrl} answered but refused this account (HTTP ${error.status}), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud api delete ${name}.`,
             );
           });
         if (inventory.kind !== 'unreachable') {
           throw new ClusterReachableError(
-            `The hosted API at ${apiUrl} is reachable; run anycloud cluster delete ${name} instead.`,
+            `The hosted API at ${apiUrl} is reachable; run anycloud api delete ${name} instead.`,
           );
         }
       }
@@ -2226,7 +2226,7 @@ export function createClustersDomain(
       if (live) {
         throw new ClusterVmPresentError(
           live.error === null
-            ? `Management VM ${live.cloudId} of cluster "${name}" still exists. Terminate it, then run anycloud cluster forget ${name} again.`
+            ? `Management VM ${live.cloudId} of cluster "${name}" still exists. Terminate it, then run anycloud api delete ${name} --skip-cloud again.`
             : `Could not check management VM ${live.cloudId} of cluster "${name}" (${live.error}); retry once it can be read.`,
         );
       }
