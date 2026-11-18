@@ -418,8 +418,9 @@ holds one JSON document: the result, or the failure
 where `code` is the API's error code (`CLUSTER_EXISTS`, `CLUSTER_BUSY`,
 `NODE_POOL_REFERENCED`, `SYSTEM_RELEASE_REFUSED`, …) or one of the CLI's:
 `INVALID_ARGUMENT` (a missing or invalid flag), `API_UNREACHABLE` (no answer
-from the API, or it is restarting), `LOCAL_API_STILL_STARTING` or
-`UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
+from the API, or it is restarting), `LOCAL_API_STILL_STARTING`,
+`REMOVED_WORKLOADS_REMAIN` (`api upgrade`: node pools, Deployments or node pool
+Services remain) or `UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
 sign-in, the document is instead the
 [`actionRequired` relay](/reference/cli/api-utilities#anycloud-login) with the device
 code, and the exit status is `2`: approve the code and run it again.

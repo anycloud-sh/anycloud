@@ -1,6 +1,9 @@
 import { ANYCLOUD_CLIENT_VERSION_HEADER } from '../../shared/api-version.js';
 import { MAX_LIST_LIMIT } from '../../shared/workload-list.js';
 
+/** Each listing's budget; a stalled API fails the upgrade instead of hanging it. */
+const READ_TIMEOUT_MS = 30_000;
+
 /** One node pool, Kubernetes Deployment or node pool Service still live. */
 export interface RemovedWorkload {
   kind: 'node pool' | 'Deployment' | 'node pool Service';
@@ -26,6 +29,7 @@ export async function remainingRemovedWorkloads(
 ): Promise<RemovedWorkload[]> {
   const read = async <T>(path: string): Promise<T | null> => {
     const response = await fetchImpl(`${apiUrl}/v1${path}`, {
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${bearer}`,
         Accept: 'application/json',
@@ -57,7 +61,12 @@ export async function remainingRemovedWorkloads(
         deletedAt: number | null;
       }[];
     }>('/deployments'),
-    read<{ id: string; nodePoolId?: string | null }[]>(
+    // Capped, so a node pool Service past the cap may go unnamed, but never
+    // the refusal: deleting a node pool is refused while a Service holds it,
+    // so the pool that holds it is still listed and named.
+    read<
+      { id: string; nodePoolId?: string | null; nodePoolName?: string | null }[]
+    >(
       `/workloads?workloadType=service&stateClass=terminatable&limit=${MAX_LIST_LIMIT}`,
     ),
   ]);
@@ -67,7 +76,9 @@ export async function remainingRemovedWorkloads(
       .map((service) => ({
         kind: 'node pool Service' as const,
         id: service.id,
-        name: service.id,
+        name: service.nodePoolName
+          ? `${service.id} (on ${service.nodePoolName})`
+          : service.id,
       })),
     // A managed Deployment (pool Jobs) goes with its node pool.
     ...(deployments?.deployments ?? [])
@@ -91,7 +102,7 @@ export function removedWorkloadsRefusal(
       'This release removes node pools, Kubernetes Deployments and node pool Services, and these remain:',
       ...remaining.map(
         ({ kind, name, id }) =>
-          `  ${kind} ${name}${name === id ? '' : ` (${id})`}`,
+          `  ${kind} ${name}${name.startsWith(id) ? '' : ` (${id})`}`,
       ),
       'Remove them on the current release first: "anycloud terminate <id>" for each Service, "anycloud deployment delete <name>", then "anycloud node-pool delete <name>". Run Jobs as VM Jobs ("anycloud job"), and long-running processes on a VM ("anycloud vm") or as a VM Service ("anycloud service").',
     ].join('\n'),
