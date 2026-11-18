@@ -1,6 +1,6 @@
 /**
  * The cluster-cloud substrate's view of a seed installation (RFC 0049 C26
- * (e), owner decision 2026-11-07). `cluster create` and `cluster delete` run
+ * (e), owner decision 2026-11-07). `api create` and `api delete` run
  * the CLI under test with the runner's own cloud CLI sign-in as the user's
  * session; everything the harness checks about the installation it reads
  * through that same cloud CLI (`aws`, `az`, `gcloud`), by the names the seed
@@ -32,7 +32,7 @@ export type SeedRun = (
   },
 ) => Promise<CommandResult>;
 
-/** What `cluster create --json` prints: its one document, the cluster. */
+/** What `api create --json` prints: its one document, the cluster. */
 export const seedCreatedSchema = z
   .object({
     id: z.string().min(1),

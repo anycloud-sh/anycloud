@@ -144,7 +144,7 @@ export function createSelfDelete(deps: SelfDeleteDependencies): SelfDelete {
     // A supplied bucket is kept whatever the flag, so it gets its backup.
     if (!deleteBuckets || !deps.installation.bucket.managed) {
       finalBackup = await (
-        deps.backup?.run('cluster delete') ??
+        deps.backup?.run('api delete') ??
         Promise.reject(new Error('no backup is configured'))
       )
         .then(() => 'taken' as const)

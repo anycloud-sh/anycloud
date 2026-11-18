@@ -46,7 +46,6 @@ const sidebars: SidebarsConfig = {
           'Configure the images, hardware, access, and controls behind your workloads.',
       },
       items: [
-        'platform/clusters',
         'platform/hosted-apis',
         'platform/container-images',
         'platform/gpus-vm-types',

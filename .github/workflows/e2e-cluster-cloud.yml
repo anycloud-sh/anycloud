@@ -54,11 +54,11 @@ on:
         type: string
         default: ''
       restore_stage:
-        description: On the default journey, after cluster delete keeps the checkpoint bucket, restore the cluster from it (cluster create --checkpoint-bucket <id>, same ID and hostname), then cluster delete --delete-buckets deletes it (RFC 0049 C28); adds one management VM bootstrap
+        description: On the default journey, after api delete keeps the checkpoint bucket, restore the cluster from it (api create --checkpoint-bucket <id>, same ID and hostname), then api delete --delete-buckets deletes it (RFC 0049 C28); adds one management VM bootstrap
         type: boolean
         default: false
       dead_api_delete:
-        description: On the default journey, stop the management VM so the hosted API is gone, then delete the cluster from a machine with no state (cluster delete --cloud, then --delete-vms, --delete-buckets and --skip-cloud) and sweep
+        description: On the default journey, stop the management VM so the hosted API is gone, then delete the cluster from a machine with no state (api delete --cloud, then --delete-vms, --delete-buckets and --skip-cloud) and sweep
         type: boolean
         default: false
       compiled_cli:
@@ -397,7 +397,7 @@ jobs:
             hosted_api="$(jq -r '.hostedApiIdentity // empty' "$record")"
             [ -n "$hosted_api" ] && filters+=("Name=tag:anycloud_owner_api,Values=$hosted_api")
           else
-            # No record (the run failed before `cluster create` printed an
+            # No record (the run failed before `api create` printed an
             # installation id, or this is a sweep-only dispatch). Runs are
             # concurrent: only installations older than any live run are swept.
             echo "No fixture resource record; sweeping stale cluster-tagged resources"

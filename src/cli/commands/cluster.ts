@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { createDeleteCommand } from './cluster-delete.js';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { runSeedCreate, SeedCreateError } from '../seed/create.js';
 import { seedFor } from '../seed/registry.js';
@@ -212,7 +211,8 @@ function seedErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function createCreateCommand(): Command {
+/** `api create`: a new hosted API on its own management VM. */
+export function createApiCreateCommand(): Command {
   return withLifecycleUsageExit(new Command('create'))
     .description(
       'Create a management VM, start Kubernetes on it and install the API system release',
@@ -249,9 +249,9 @@ CLOUD_RIGHTS_MISSING, RESTORE_REFUSED, FIRST_BACKUP_FAILED and API_NOT_READY
 (exit 1).
 
 Examples:
-  $ anycloud cluster create production
-  $ anycloud cluster create production --cloud aws --region us-east-1 --vm-type t3.medium
-  $ anycloud cluster create production --cloud gcp --region us-central1 --vm-type e2-standard-2 --checkpoint-bucket my-api-state
+  $ anycloud api create production
+  $ anycloud api create production --cloud aws --region us-east-1 --vm-type t3.medium
+  $ anycloud api create production --cloud gcp --region us-central1 --vm-type e2-standard-2 --checkpoint-bucket my-api-state
 `,
     )
     .action(async (name: string, options: CreateOptions) => {
@@ -383,8 +383,8 @@ function createStatusCommand(): Command {
         if (cluster.state === WorkloadState.Failed && cluster.cloudProvider) {
           printInfo(
             cluster.lastError?.startsWith(DELETE_FAILED_PREFIX)
-              ? `Finish it with: anycloud cluster delete ${cluster.name}`
-              : `Resume with: anycloud cluster create ${cluster.name} ..., or remove it with: anycloud cluster delete ${cluster.name}`,
+              ? `Finish it with: anycloud api delete ${cluster.name}`
+              : `Resume with: anycloud api create ${cluster.name} ..., or remove it with: anycloud api delete ${cluster.name}`,
           );
         }
       } catch (error) {
@@ -398,14 +398,12 @@ function createStatusCommand(): Command {
     });
 }
 
-/** The `cluster` surface: the installation's single Kubernetes cluster. */
+/** The `cluster` surface: inspect hosted APIs' clusters (`api create` makes one). */
 export function createClusterCommand(): Command {
   const cluster = new Command('cluster').description(
-    "☸️  Create, inspect and delete the installation's Kubernetes cluster",
+    "☸️  Inspect hosted APIs' clusters (create and delete them with anycloud api)",
   );
-  cluster.addCommand(createCreateCommand());
   cluster.addCommand(createListCommand());
   cluster.addCommand(createStatusCommand());
-  cluster.addCommand(createDeleteCommand());
   return cluster;
 }

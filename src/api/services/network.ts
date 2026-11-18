@@ -14,7 +14,7 @@ export function ingressUnsupportedMessage(provider: CloudType): string {
   return `${provider} does not support service workloads with public HTTP ingress`;
 }
 
-export const PUBLIC_SOURCE_RANGES = ['0.0.0.0/0'];
+const PUBLIC_SOURCE_RANGES = ['0.0.0.0/0'];
 
 export function resolveServiceContainerPort(
   env: Record<string, string> | null | undefined,

@@ -372,7 +372,7 @@ const cluster = (state: string) => ({
   updatedAt: 1,
 });
 
-/** `cluster delete --json`: the cluster gone, its bucket kept after a final backup. */
+/** `api delete --json`: the cluster gone, its bucket kept after a final backup. */
 const deleteResult = (deleteBuckets = false) => {
   const gone = cluster('terminated');
   const bucket = gone.checkpointBucket.name;
@@ -402,8 +402,8 @@ const deleteResult = (deleteBuckets = false) => {
             name: bucket,
             managed: true,
             reason: 'kept',
-            restoreCommand: `anycloud cluster create ${gone.name} --cloud aws --region us-east-2 --vm-type t3.medium --checkpoint-bucket ${bucket}`,
-            deleteCommand: `anycloud cluster delete ${gone.id} --delete-buckets`,
+            restoreCommand: `anycloud api create ${gone.name} --cloud aws --region us-east-2 --vm-type t3.medium --checkpoint-bucket ${bucket}`,
+            deleteCommand: `anycloud api delete ${gone.id} --delete-buckets`,
           },
         ],
   };
@@ -484,7 +484,7 @@ describe('AWS cluster substrate', () => {
         );
         expect(kept).toHaveLength(1);
         expect(kept[0]!.args).toEqual([
-          'cluster',
+          'api',
           'delete',
           '--delete-buckets',
           '--confirm',
@@ -748,7 +748,9 @@ describe('AWS cluster substrate', () => {
         wait: pollsOnly(),
       },
     );
-    await expect(aws.bootstrap(60_000)).rejects.toThrow('cluster create');
+    await expect(aws.bootstrap(60_000)).rejects.toThrow(
+      'cluster create (released)',
+    );
     await cleanup.run();
     expect(released.map((args) => args.slice(0, 2))).toEqual([
       ['cluster', 'create'],
@@ -828,8 +830,8 @@ describe('AWS cluster substrate', () => {
       );
       await expect(aws.bootstrap(60_000, 900_000)).rejects.toThrow(
         printsCluster
-          ? 'cluster create failed (exit 1, timeout false): failed: no capacity'
-          : 'cluster create failed (exit null, timeout true)',
+          ? 'api create failed (exit 1, timeout false): failed: no capacity'
+          : 'api create failed (exit null, timeout true)',
       );
       expect(artifacts.json).toHaveBeenCalledWith(
         'e2e-cluster-cloud-resources',
@@ -839,7 +841,7 @@ describe('AWS cluster substrate', () => {
       const deletes = cliRuns.filter(({ args }) => args[1] === 'delete');
       expect(deletes.map(({ args }) => args)).toEqual([
         [
-          'cluster',
+          'api',
           'delete',
           '--json',
           '--cloud',
@@ -957,7 +959,7 @@ describe('AWS cluster substrate', () => {
       expect(created.id).toBe(cluster('running').id);
       const create = cliRuns.find(({ args }) => args[1] === 'create')!;
       expect(create.args).toEqual([
-        'cluster',
+        'api',
         'create',
         '--cloud',
         profile.slug,
@@ -1084,7 +1086,7 @@ describe('AWS cluster substrate', () => {
       expect(String(get.mock.calls[0])).toContain(
         'https://e2e-clust-1790000000000-e5f6.anycloud.sh/v1/version',
       );
-      expect(cliRuns.at(-1)?.args.slice(0, 2)).toEqual(['cluster', 'delete']);
+      expect(cliRuns.at(-1)?.args.slice(0, 2)).toEqual(['api', 'delete']);
     },
   );
 
@@ -1146,7 +1148,7 @@ describe('AWS cluster substrate', () => {
     const { aws, cleanup } = environment(
       () => [],
       (args) =>
-        args[0] === 'cluster'
+        args[0] === 'cluster' || (args[0] === 'api' && args[1] === 'delete')
           ? {
               failed:
                 'Failed to list clusters: Client/API version mismatch. Client version 0.1.999 must exactly match API version 0.1.65.',
@@ -1374,13 +1376,11 @@ describe('AWS cluster substrate', () => {
         if (args.includes('list-buckets')) return [id];
         return [];
       },
-      // `cluster create` returns the id, then the creation fails.
+      // `api create` returns the id, then the creation fails.
       () => cluster('failed'),
       () => 500,
     );
-    await expect(aws.bootstrap(60_000)).rejects.toThrow(
-      'cluster create failed',
-    );
+    await expect(aws.bootstrap(60_000)).rejects.toThrow('api create failed');
     // Recorded before bootstrap ran, for the workflow sweep.
     expect(artifacts.json).toHaveBeenCalledWith(
       'e2e-cluster-cloud-resources',

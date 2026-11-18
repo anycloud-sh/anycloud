@@ -118,60 +118,21 @@ export async function deleteDNSRecord(
   }
 }
 
-async function apiTlsRequest<T>(
-  method: 'POST' | 'DELETE',
-  path: string,
-  githubToken: string | null,
-  body?: object,
-): Promise<T> {
-  const res = await fetch(`${DNS_WORKER_URL}${path}`, {
-    method,
-    headers: getHeaders(githubToken),
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    throw new Error(
-      `DNS Worker ${method} ${path.split('?')[0]} failed (${res.status}): ${await res.text()}`,
-    );
-  }
-  return (await res.json()) as T;
-}
-
-/**
- * Sign the installation's CSR as a Cloudflare Origin CA certificate for
- * `{subdomain}.anycloud.sh`; the caller must hold its DNS record.
- */
-export function issueOriginCertificate(
-  subdomain: string,
-  csr: string,
-  githubToken: string | null,
-): Promise<{ certificate: string; originPullCa: string | null }> {
-  return apiTlsRequest('POST', '/v1/api-tls/certificates', githubToken, {
-    subdomain,
-    csr,
-  });
-}
-
-/** Once the origin serves its certificate: origin pulls, then Full (strict). */
-export async function activateApiTls(
-  subdomain: string,
-  githubToken: string | null,
-): Promise<void> {
-  const result = await apiTlsRequest<{ strict: boolean; originPulls: boolean }>(
-    'POST',
-    '/v1/api-tls/activate',
-    githubToken,
-    { subdomain },
-  );
-}
-
 /** Undo activation and revoke the hostname's certificates (idempotent). */
 export async function removeApiTls(
   subdomain: string,
   githubToken: string | null,
 ): Promise<void> {
   const query = new URLSearchParams({ subdomain });
-  await apiTlsRequest('DELETE', `/v1/api-tls?${query}`, githubToken);
+  const res = await fetch(`${DNS_WORKER_URL}/v1/api-tls?${query}`, {
+    method: 'DELETE',
+    headers: getHeaders(githubToken),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `DNS Worker DELETE /v1/api-tls failed (${res.status}): ${await res.text()}`,
+    );
+  }
 }
 
 const PUBLIC_RESOLVER_URL = 'https://1.1.1.1/dns-query';

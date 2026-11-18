@@ -24,7 +24,7 @@ export function seedFor(
   const create = SEEDS[cloud];
   if (!create) {
     throw new SeedUnavailableError(
-      `cluster create on ${cloud} isn't available in this build`,
+      `api create on ${cloud} isn't available in this build`,
     );
   }
   return create(cli);

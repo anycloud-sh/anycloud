@@ -1,7 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import Github from './gateways/github.js';
 import type { User } from './entities.js';
 import { getWorkloadApiUrl } from '../config.js';
 import {
@@ -146,34 +145,6 @@ export async function readLocalApiToken(
     );
   }
   return token.trim();
-}
-
-/** The GitHub account a cluster's hosted API is bound to and its DNS record is published with. */
-export interface GithubOwner {
-  id: string;
-  username: string;
-  token: string;
-}
-
-/**
- * A hosted actor is a GitHub account already; a local API verifies the
- * caller's GitHub token here, the one place it needs the account behind it.
- */
-export async function githubOwner(
-  actor: User,
-  subject: string,
-  signal?: AbortSignal,
-): Promise<GithubOwner> {
-  if (!actor.token) throw GithubSignInRequiredError.needs(subject);
-  if (!isLocalOwnerId(actor.id)) {
-    return { id: actor.id, username: actor.username, token: actor.token };
-  }
-  try {
-    const { id, username } = await Github.authenticate(actor.token, signal);
-    return { id, username, token: actor.token };
-  } catch (error) {
-    throw GithubSignInRequiredError.fromGithub(error);
-  }
 }
 
 function tokenDigest(token: string): Buffer {

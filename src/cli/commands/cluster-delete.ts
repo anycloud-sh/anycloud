@@ -344,7 +344,7 @@ async function run(
   );
 }
 
-export function createDeleteCommand(): Command {
+export function createApiDeleteCommand(): Command {
   return new Command('delete')
     .aliases(['terminate', 'rm'])
     .description(

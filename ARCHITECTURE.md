@@ -44,7 +44,7 @@ The same API image can run in two modes:
   `http://localhost:8080`; the host port is bound to loopback. Durable state is
   stored under `~/.anycloud/` and mounted into the container.
 - **Hosted API**: a Helm release on the installation's Kubernetes cluster,
-  created by `anycloud cluster create` and served at
+  created by `anycloud api create` and served at
   `https://<cluster-id>.anycloud.sh`. Its `ANYCLOUD_DIR` is `/mnt/checkpoint`
   on the `anycloud-api-state` PersistentVolumeClaim, which holds the live
   SQLite database and cipher key. The API backs both up to the cluster's
@@ -58,9 +58,9 @@ its command behind `tini` to adopt and reap them, and to forward shutdown
 signals to Node.
 
 The active target is selected with `anycloud api use`, persisted in
-`~/.anycloud/api-url`, and overridable per command with `API_URL`. The local
-API that created the cluster (the installer) owns its lifecycle; the hosted API
-updates itself through its `system-release` surface (`anycloud api upgrade`).
+`~/.anycloud/api-url`, and overridable per command with `API_URL`. The CLI
+seed (`src/cli/seed/`) creates and deletes the cluster; the hosted API updates
+itself through its `system-release` surface (`anycloud api upgrade`).
 The chart and the image are one release unit: `release.yml` publishes the chart
 to `oci://ghcr.io/anycloud-sh/api-k8-chart` at the release version, then
 builds the image with that chart's digest-pinned reference in its
@@ -133,26 +133,22 @@ workload cleanup but not for a future owner-scoped orphan reconciliation.
 
 ### Cluster lifecycle and restore
 
-The installer API runs `cluster create`, `delete` and `forget`; the cluster
-record, its VM ledger and the compute credential stay there. `create` records
-the full target before any cloud mutation, then creates the management VM, starts
-K3s, and installs the chart its API image names as one `HelmChart`; re-running it resumes from
-the last completed step. `delete` is refused while the hosted API is
-unreachable. It still asks an older hosted API for node pools, whose VMs would
-outlive the cluster, and is refused while any remain; an API without them
-answers 404 on that route, which counts as none
-(`src/api/services/cluster-hosted-pools.ts`). `forget` drops the
-record and DNS record only when the API is unreachable and the cloud shows the
-management VM gone.
+`anycloud api create` runs through the seed (`src/cli/seed/create.ts`): the
+user's own cloud CLI creates the management VM, whose startup script
+(`src/shared/management-boot.ts`) starts K3s and installs the chart its API
+image names as one `HelmChart`; re-running it resumes the cluster by name. The
+hosted API records its own cluster on first start. `anycloud api delete` runs
+through the seed
+(`src/cli/services/seed-delete.ts`): a reachable hosted API deletes what it
+manages and then itself, refused while Workloads still run; with the API
+unreachable, the seed's guards decide whether its cloud CLI fallback may run.
 
 The hosted API backs up hourly and before every self-update: `cipher.key`,
 `database.sqlite` and last a `backup.json` manifest naming the cluster id,
 backup time, schema version and database SHA-256, plus the saved credentials'
 clouds and accounts, without secrets. `create` with a bucket that
 holds a manifest is a restore: it reuses the backup's cluster id (so the URL
-survives), refuses a backup from a newer API, and refuses while the cloud shows
-a management VM tagged with that cluster, whether this installer still holds
-the record or a fresh installer restores, so two APIs never write one bucket.
+survives) and refuses a backup from a newer API or another cloud account.
 The chart's `restore-state` init container fills the empty state volume from
 the backup before the API's first start. That start adopts the new cluster in
 one transaction: it moves the cluster record to the new `kube-system` UID and
@@ -170,16 +166,12 @@ only.
 
 On 443 Traefik serves a per-installation Cloudflare Origin CA certificate,
 valid for 15 years and revoked whenever its hostname is released. The
-installer generates the key and a CSR in `stepRelease` and writes the key only
-into the `anycloud-api-tls` Secret; the Worker signs a CSR whose single subject
-alternative name is the caller's hostname, and revokes that hostname's
+management VM's startup script generates the key and a CSR and writes the key
+only into the `anycloud-api-tls` Secret; the Worker signs a CSR whose single
+subject alternative name is the caller's hostname, and revokes that hostname's
 certificates that expire earlier. No shared wildcard key exists (RFC 0032).
-Before activation the installer re-applies the VM's firewall, so a resumed or
-restored installation admits 443, and an on-node probe must see 443 serve the
-new certificate. A Ready installation from before this never reaches that step.
-It is converted once by hand: open 443 in its firewall, generate a key and CSR
-on the VM, have the Worker sign the CSR, write the Secret and this release's
-Traefik HelmChart, probe 443, then activate. The Worker then enables
+Before activation an on-node probe must see 443 serve the new certificate. The
+Worker then enables
 per-hostname authenticated origin pulls with anycloud's client certificate (when
 configured; the origin then requires it through the
 `anycloud-api-origin-pull-ca` Secret and a `default` TLSOption, both removed
@@ -588,13 +580,14 @@ Each table, with its purpose, its writer and the invariants it carries:
   own row the facts are the cluster record bootstrap writes into the release
   values: cloud and account, location, VM type, the management VM's provider
   ID, the network scope, the K3s pin and the checkpoint bucket.
-  `cluster-store.ts` and `cluster-installer-store.ts` write it. A unique index
+  The hosted API writes its own row (`cluster-installer-store.ts`); rows an
+  earlier local API created are read only. A unique index
   allows one active cluster, and creation facts are immutable. The
   `kube-system` UID and the hosted row's record change only when a restored
   API adopts a new cluster, which advances `identity_generation`.
 - **`cluster_releases`**: the release ledger for that cluster, one row per
-  revision of API image, chart and values. The installer and the system
-  release intent store write it. Revisions increase, intent columns are
+  revision of API image, chart and values. The system release intent store
+  writes it. Revisions increase, intent columns are
   immutable, and the API image must be digest-pinned.
 - **`workloads`**: a Job, Service or VM. It holds identity, VM-host placement
   and storage requests, `secret_names`, the agent session, the lifecycle state
@@ -1041,8 +1034,7 @@ Workloads, credentials, secrets, spend controls, read-only database inspection,
 and the allowlist listing are reachable by every admitted caller. Only the bound
 owner, the identity the API starts under, can grant or remove access
 (`api access add` and `api access remove`). A member gets
-`API_ACCESS_OWNER_REQUIRED`, and the owner cannot be removed. Separately, the
-installer API that created the cluster keeps control of its lifecycle. Removal
+`API_ACCESS_OWNER_REQUIRED`, and the owner cannot be removed. Removal
 leaves the member's workloads reachable by every remaining caller, so no
 workload is left that nobody can stop.
 
@@ -1120,9 +1112,9 @@ own release. The boundary is that **no credential for it is stored or
 exported** — no kubeconfig, no token row. The cluster record the hosted API
 writes on first start carries the connection kind `in-cluster` with the
 public endpoint and certificate authority, and nothing a client could present.
-The only stored cluster credential is the installer's bootstrap-time
-ServiceAccount token, encrypted on the installer's cluster record (`installer`
-kind) and used only by the installer's `cluster` commands. No client-authored
+A cluster record an earlier local API created may still hold that API's
+bootstrap-time ServiceAccount token (`installer` kind), encrypted; no command
+uses it. No client-authored
 kubeconfig is parsed anywhere. A separate Role lets the API request tokens for
 its own ServiceAccount and the trust probe's, bound to a cloud's audience,
 which role connections exchange for cloud sessions.

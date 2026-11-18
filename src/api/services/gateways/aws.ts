@@ -812,7 +812,6 @@ export class AWS {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       isPlaceholderVMId: (vmId) => !vmId.startsWith('i-'),
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.verifyVMPreemption(cloudId),
       },

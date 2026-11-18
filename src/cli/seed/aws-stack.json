@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "AnyCloud installation: the management VM, its network and identity, and the checkpoint bucket. Created by `anycloud cluster create`; the VM's user-data is added by the CLI.",
+  "Description": "AnyCloud installation: the management VM, its network and identity, and the checkpoint bucket. Created by `anycloud api create`; the VM's user-data is added by the CLI.",
   "Transform": "AWS::LanguageExtensions",
   "Parameters": {
     "ClusterId": {

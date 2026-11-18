@@ -1,5 +1,5 @@
 /**
- * The seed (RFC 0049 C26 (e), owner decision 2026-11-07): `cluster create`
+ * The seed (RFC 0049 C26 (e), owner decision 2026-11-07): `api create`
  * drives the user's own cloud CLI to stand up one management VM whose
  * startup script brings up K3s and the API; the API does every other cloud
  * call. Each cloud implements `CloudSeed` (AWS: one CloudFormation stack;

@@ -420,11 +420,11 @@ describe('system release domain (hosted, industry pattern)', () => {
     expect(events).toEqual([]);
   });
 
-  it("takes cluster delete's final backup and answers its time; unavailable without a backup or the Helm-managed identity", async () => {
+  it("takes api delete's final backup and answers its time; unavailable without a backup or the Helm-managed identity", async () => {
     await expect(domain().backup(peer)).resolves.toEqual({
       backedUpAt: '2026-11-04T18:12:03.000Z',
     });
-    expect(events).toEqual(['backup:cluster delete']);
+    expect(events).toEqual(['backup:api delete']);
     await expect(
       createSystemReleaseDomain({ ...deps, backup: null }).backup(peer),
     ).rejects.toThrow('no database backup is configured');
@@ -595,7 +595,7 @@ describe('system release domain (hosted, industry pattern)', () => {
     });
   });
 
-  it('reports the first backup’s progress, which cluster create waits for, and omits it without a backup', async () => {
+  it('reports the first backup’s progress, which api create waits for, and omits it without a backup', async () => {
     expect(await domain().status(peer)).not.toHaveProperty('firstBackup');
     const pending = {
       state: 'pending' as const,

@@ -17,6 +17,8 @@
 /reference/cli/serve/ /reference/cli/service/ 301
 /platform/hosted-api-sharing /platform/hosted-apis/ 301
 /platform/hosted-api-sharing/ /platform/hosted-apis/ 301
+/platform/clusters /platform/hosted-apis/ 301
+/platform/clusters/ /platform/hosted-apis/ 301
 /platform/servers /platform/services/ 301
 /platform/servers/ /platform/services/ 301
 /concepts/bucket-sync /platform/buckets/ 301

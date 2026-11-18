@@ -719,7 +719,6 @@ export class Azure {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       terminateVMsConcurrency: AZURE_TERMINATE_CONCURRENCY,
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.observeStoppedVm(cloudId),
       },

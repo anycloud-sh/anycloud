@@ -1,6 +1,6 @@
 ---
 title: Hosted APIs
-description: Deploy, select, share, update, and retire an Anycloud API running in your cloud account.
+description: Create, select, share, upgrade, restore, and delete an Anycloud API running in your cloud account.
 ---
 
 # Hosted APIs
@@ -10,10 +10,10 @@ your machine. A hosted API runs in your cloud account and has a stable public
 URL, so you can use it from multiple machines or share it with trusted
 teammates.
 
-A hosted API runs on the installation's Kubernetes cluster. The
-[Clusters](/platform/clusters) guide covers its creation, upgrade and
-deletion. The local Docker API remains the installer that
-manages the cluster's lifecycle.
+A hosted API runs on its own Kubernetes cluster: a management VM in your cloud
+account running a pinned K3s server, with the API installed on it as a Helm
+release. The VMs, VM Jobs and VM Services you run through it each get VMs of
+their own, as they do through a local API.
 
 An existing VM-hosted API, created by the removed `anycloud api serve`, can
 only be terminated; [migrate it](#migrate-an-existing-vm-hosted-api) to a
@@ -23,56 +23,56 @@ Hosting changes where the API runs; it does not create tenant isolation.
 Everyone admitted to one hosted API shares its operational resources and trust
 boundary.
 
-## Create a hosted API on the cluster
+## Create a hosted API
 
-Start the local API if it is not already running, make it active, and add the
-cloud credential the cluster will use:
-
-```bash
-anycloud api start
-anycloud api use local
-anycloud credentials new my-aws
-```
-
-Create the cluster. The command creates a management VM, starts a pinned
-Kubernetes control plane on it and installs the API as a Helm-managed release;
-it prints each completed step, then the API's URL and the next command:
+You need the cloud's own CLI on this machine, signed in to the account that
+will run the management VM: `aws` for AWS, `gcloud` with a project set for
+GCP, or `az` for Azure. The signed-in identity needs the
+[cloud rights](/reference/cli/api-utilities#cloud-rights) create checks.
+Lambda can't host an API. Run `anycloud login` too: the hosted API requires
+GitHub authentication. Create needs no Docker, no local API and no saved cloud
+credential.
 
 ```bash
-anycloud cluster create prod \
-  --credentials my-aws \
+anycloud api create prod \
+  --cloud aws \
   --region us-east-2 \
   --vm-type t3.medium
 ```
 
-```text
-✓ Cluster prod creation started.
-ID: <cluster-id>
-Watch it with: anycloud cluster status prod --watch
-```
-
-`anycloud cluster status prod --watch` follows it through `provisioning`,
-`initializing` and `starting` to `running`, then prints the next command:
+`create` checks the identity's rights, creates the management VM through the
+cloud CLI, publishes the API's DNS record once the VM has an address, and
+returns once the API answers at its URL and its first backup has landed:
 
 ```text
+[12:00:00] Using aws account 123456789012 as arn:aws:iam::123456789012:user/ops
+[12:00:01] Creating cluster prod (ID: <cluster-id>)
+[12:00:02] Deploying the management VM in us-east-2
+[12:02:40] Published <cluster-id>.anycloud.sh at <management-vm-ip>
+[12:02:51] Waiting for the API and its first backup
+✓ Cluster prod is running.
 Next: anycloud api use https://<cluster-id>.anycloud.sh
 ```
+
+Creation takes a few minutes. If it stops, **re-running the same `create`
+resumes** it, from this machine or another. Pass `--checkpoint-bucket <name>`
+to back the database up to a bucket you own; without it a managed bucket is
+created. A bucket that already holds a backup makes `create` a
+[restore](#back-up-and-restore). See
+[`api create`](/reference/cli/api-utilities#create-a-hosted-api) for every
+flag.
 
 Point the CLI at it:
 
 ```bash
 anycloud api use https://<cluster-id>.anycloud.sh
+anycloud credentials new aws
 ```
 
-The hosted API starts with an empty database; the cluster record, its ledger
-and the cluster's credential stay on the local API that created it (the
-**installer**). Add the credentials you want your Workloads to use against the
-hosted API, then run Jobs, Services and VMs against it. Pass `--checkpoint-bucket <name>` to back the hosted
-API's database up to a bucket you own; without it `cluster create` creates a
-managed one. A bucket that already holds a backup (`anycloud-api/backup.json`)
-makes `create` a [restore](#back-up-and-restore) that keeps the cluster id and
-URL. See [`anycloud cluster`](/reference/cli/cluster) for every flag,
-the creation steps and how a failed creation resumes.
+Unless it was restored, the hosted API starts with an empty database: add the
+credentials your Workloads will use, then run [Jobs](/platform/jobs),
+[Services](/platform/services) and [VMs](/platform/vms) as you would against a
+local API. `anycloud cluster status <name>` shows the cluster it runs on.
 
 ## Select an API
 
@@ -104,9 +104,8 @@ change it.
 Only add people you trust with the API's cloud access. Everyone with access is
 an equal peer. They can use credentials and secrets, inspect the database,
 manage spend controls, and operate everyone else's workloads just as they can
-their own. Apart from managing access, there is no admin role inside the hosted
-API. The account that created it controls the cluster through the installer API
-that created it.
+their own. Apart from managing access and deleting the hosted API, which only its owner
+can do, there is no admin role inside it.
 
 First make the hosted API the active target, then add a GitHub username:
 
@@ -260,124 +259,126 @@ anycloud update
 anycloud api upgrade
 ```
 
-With a hosted API active, `api upgrade` (alias `update`) asks the
-cluster-hosted API to upgrade, without Docker or the local API. It refuses
-while the hosted API still has node pools, Deployments or node pool Services,
-naming each; see [`api upgrade`](/reference/cli/cluster). An older CLI skips
-that check, so the release's pre-upgrade hook repeats it against the running
-API's database and fails the upgrade before the API Pod is replaced: the hosted
-API keeps serving on its release. That CLI reports only `BackoffLimitExceeded`;
-the reason is in `kubectl logs job/anycloud-api-guard-<revision>` on the
-management VM, and this release's `api upgrade` names each one. Remove them,
-then upgrade again. From any machine, the
-hosted API first brings the cluster's K3s configuration to the new release's from a Job
-on the management Node, briefly restarting the Kubernetes API server when it
-changed, and labels the management Node with the label that the API and its
-Traefik select. See [`api upgrade`](/reference/cli/cluster).
+```text
+✓ Hosted API upgrade 1 started: <old-version> → <version>.
+```
 
-The hosted API is asked directly for this CLI's release. It refuses an image that is not the
-official digest-pinned API image, or one older than the version its database
-was last used by (the same rule the API applies to itself at startup). It then
-**backs its database up** to the cluster's checkpoint bucket (see
-[Back up and restore](#back-up-and-restore)), records the
-upgrade, and patches its own Helm release through its in-cluster
-ServiceAccount, against the cluster record it wrote on its first start. The
-patch moves the release to the new image and the chart published with it, so
-new chart templates and permissions arrive in the same Helm run.
-helm-controller recreates the API Deployment with the new image; the chart's
-pre-upgrade guard refuses stale revisions. An image released before 0.1.68
-names no chart, so the API refuses to upgrade to it.
+With a hosted API active, `api upgrade` (alias `update`) asks it directly for
+this CLI's release, without Docker or the local API, from any machine. It
+refuses while the hosted API still has node pools, Deployments or node pool
+Services, naming each. An older CLI skips that check, so the release's
+pre-upgrade hook repeats it against the running API's database and fails the
+upgrade before the API Pod is replaced: the hosted API keeps serving on its
+release. That CLI reports only `BackoffLimitExceeded`; the reason is in
+`kubectl logs job/anycloud-api-guard-<revision>` on the management VM, and this
+release's `api upgrade` names each one. Remove them, then upgrade again. The hosted API first brings the cluster's K3s
+configuration to the new release's, briefly restarting the Kubernetes API
+server when it changed. It refuses an image that is not the official
+digest-pinned API image, or one older than the version its database was last
+used by. It then **backs its database up** to the checkpoint bucket, records
+the upgrade, and patches its own Helm release to the new image and its chart.
+An API already on that release answers
+`Hosted API <url> already matches anycloud <version>.`; a refused upgrade
+prints `Hosted API upgrade refused: <reason>` and exits 1.
 
-Upgrading from 0.1.67 or earlier takes a second Helm run: that release patches
-only the image, and the new API then applies its own chart. That run repeats
-the ready check, so `anycloud api status` can briefly show `Upgrade N` as
-`starting` again, or `failed` if it does not pass. The API stays `running`
-throughout.
+The API stays `running` while its Pod is replaced, but is unavailable for a
+short while. A stopping API answers `API_RESTARTING` (HTTP 503); the CLI
+prints `API restarting, waiting…` once and retries for about two minutes.
+Commands that may have taken effect, such as `api access add`, still fail and
+ask you to check the result before retrying. Upgrading from 0.1.67 or earlier
+takes a second Helm run, so the upgrade can briefly show `starting` again.
 
-The API Pod is replaced, so the API is unavailable for a short while, and
-when upgrading from 0.1.67 or earlier once more if the chart run restarts it.
-A stopping API answers `API_RESTARTING` (HTTP 503). The CLI retries through the gap
-for about two minutes; the CLI prints `API restarting, waiting…` once. Commands
-that may have taken effect, such as `api access add`, still fail and ask you to
-check the result before retrying.
-
-The command returns once the upgrade is recorded, and prints `Hosted API
-upgrade N started`. Follow it with:
+Follow the upgrade:
 
 ```bash
 anycloud api status --watch
 ```
 
-It prints each change until the upgrade is `running` or `failed`, then shows the served version and the schema version, then `Upgrade N ·
-<version>` with one line: `◌ starting` until the new release's ready check
-passes, `✓ running` after that, or `✗ failed` with the reason. It also shows
-how many replicas of the native Deployment are ready. `anycloud api upgrade --image
-ghcr.io/anycloud-sh/api:<version>@sha256:<digest>` pins an exact image
-instead of this CLI's release. An image **older** than the served one is
-refused: each start stamps the database with its version, and an older image
-would refuse to run against it. To go back, restore the pre-release backup,
-the previous object version in the bucket; see
-[Recover after losing the management VM](/reference/cli/cluster#recover-after-losing-the-management-vm).
-These two calls and the token exchange accept the previous release's CLI or
-any newer one. Workload and credential read, quota status, cost
-and token rotation requests accept this release's or the previous release's
-CLI, so a CLI pinned to one release keeps working through the next upgrade.
-Upgrade the Python SDK together with the API. Every
-other request needs this release's, so run `anycloud update` first.
+```text
+⚡  running
 
-The active target does not change.
+   URL      https://<cluster-id>.anycloud.sh
+   Source   ~/.anycloud/api-url
+   Version  <version>
+   Schema   <version>
+
+   Upgrade 1 · <version>
+   ✓ api  running · 1/1 ready
+```
+
+The upgrade line reads `◌ starting` until the new release's ready check
+passes, then `✓ running`, or `✗ failed` with the reason. `--watch` prints each
+change until then; without it, `api status` reads once.
+
+`anycloud api upgrade --image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>`
+pins an exact image instead of this CLI's release. An image **older** than the
+served one is refused: each start stamps the database with its version, and an
+older image would refuse to run against it. To go back, restore the
+pre-upgrade backup, the previous object version in the bucket.
+
+`api upgrade`, `api status` and the token exchange accept the previous
+release's CLI or any newer one. Workload and credential reads, quota status,
+cost and token rotation accept this release's or the previous release's CLI,
+so a CLI pinned to one release keeps working through the next upgrade. Every
+other request needs this release's, so run `anycloud update` first. Upgrade
+the Python SDK together with the API. See
+[`api upgrade`](/reference/cli/api-utilities#upgrade-the-api) for the details
+and its JSON result.
 
 ## Back up and restore
 
-The hosted API keeps its database on the cluster and backs it up hourly and
-before every update to the checkpoint bucket, as `anycloud-api/database.sqlite`
-with the cipher key (`anycloud-api/cipher.key`) and a manifest
-(`anycloud-api/backup.json`). History is the bucket's object versioning; on a
-bucket you supplied, the hourly backup starts only once versioning is on and
-the API restarts. **Anyone
-who can read the bucket can decrypt every stored credential, secret and API
-token**, so keep it private.
+The hosted API backs its database up hourly and before every upgrade to the
+checkpoint bucket, as `anycloud-api/database.sqlite` with the cipher key
+(`anycloud-api/cipher.key`) and a manifest (`anycloud-api/backup.json`).
+History is the bucket's object versioning; on a bucket you supplied, the
+hourly backup starts only once versioning is on and the API restarts.
+**Anyone who can read the bucket can decrypt every stored credential, secret
+and API token**, so keep it private.
 
-If the management VM is lost, run the same `anycloud cluster create` with
-`--checkpoint-bucket` set to that bucket. The restored API keeps the cluster id
-and URL and adopts the new cluster; up to one backup interval of changes is
-lost. The
-installer that created the cluster, or a fresh one, can restore; either is
-refused while the cloud still shows the lost management VM, so two APIs never
-write the same bucket. See
-[Recover after losing the management VM](/reference/cli/cluster#recover-after-losing-the-management-vm).
+If the management VM is lost, run the same `anycloud api create` with
+`--checkpoint-bucket` set to the cluster's bucket (its ID for a managed
+bucket). The restored API keeps the cluster ID and URL and adopts the new
+cluster; up to an hour of changes is lost. Restore is refused while the cloud
+still shows the lost management VM, so two APIs never write the same bucket.
+See [Back up and restore](/reference/cli/api-utilities#back-up-and-restore).
+
 After a restore, every member runs `anycloud api token rotate`, and the owner
 rotates every service token and removes again any service removed since the
-backup: the backup brings back the API tokens it held. Restoring the backup taken by
-`api upgrade` also drops what the new API recorded.
+backup: the backup brings back the API tokens it held. Restoring the backup
+taken by `api upgrade` also drops what the new API recorded.
 
 A backup that still has live node pools, Deployments or node pool Services
 can't be restored by this release: the API refuses to start and names them.
 Restore it with the release that took it, remove them there, then upgrade.
 
-## Retire a hosted API
+## Delete a hosted API
 
-Retire the workloads it runs, then the cluster — the first step against the
-hosted API, the last on the installer API that created the cluster:
+Terminate its Workloads, then delete it, both against the hosted API. Only the
+owner can delete it:
 
 ```bash
 anycloud api use https://<cluster-id>.anycloud.sh
 anycloud terminate <id>                # every Job, Service and VM
-anycloud api use local
-anycloud cluster delete prod
+anycloud api delete prod
 ```
 
-`cluster delete` asks the hosted API what it still manages and is refused,
-naming each, while an API from an earlier release still has node pools; see
-[`anycloud cluster`](/reference/cli/cluster#inspect-and-delete) for what delete
-removes and what to do when the hosted API is unreachable. Delete keeps the
-checkpoint bucket, with the database and its cipher key, so the cluster can be
-restored; run `anycloud cluster delete <cluster-id> --delete-buckets` (it asks
-you to type the cluster name) to delete it too.
+The API refuses while a Job, Service or VM still runs, naming each. Otherwise
+it takes a final backup, deletes its Workloads' leftovers and asks its cloud
+to delete its own stack, group or instance; the CLI follows it until your
+cloud CLI shows it gone, then removes the DNS record. The checkpoint bucket is
+kept with its backups, and the result prints its restore command and the
+command that deletes it later: `anycloud api delete <cluster-id>
+--delete-buckets` (it asks you to type the cluster ID).
+
+If the hosted API is **gone**, run `anycloud api delete <cluster-id> --cloud
+<cloud> --region <region>` from any machine whose cloud CLI is signed in to
+the cluster's account. It lists what it would delete, and deletes only what
+`--delete-vms` and `--delete-buckets` name; see
+[Delete with the hosted API gone](/reference/cli/api-utilities#delete-with-the-hosted-api-gone).
 
 ## Migrate an existing VM-hosted API
 
-Create a successor with `anycloud cluster create`, then select its URL with
+Create a successor with `anycloud api create`, then select its URL with
 `anycloud api use`. The new API starts with an empty database: add its cloud
 credentials with `anycloud credentials new` and restore team access with
 `anycloud api access add`. Workloads and access entries are not transferred
@@ -393,8 +394,8 @@ anycloud list
 anycloud terminate <workload-id>
 ```
 
-Then return to the installer API and terminate the old hosted Service, which
-also removes its public API record:
+Then return to the local API that created it and terminate the old hosted
+Service, which also removes its public API record:
 
 ```bash
 anycloud api use local
@@ -420,8 +421,8 @@ a fresh hosted API and retire the old one.
 ## Troubleshooting
 
 - Run `anycloud api status` and confirm the intended hosted URL is active.
-- Run `anycloud cluster status <name>` against the installer API to inspect
-  the cluster that hosts the API.
+- Run `anycloud cluster status <name>` to inspect the cluster that hosts the
+  API.
 - Run `anycloud login <api-url>` again if a teammate authenticated with a
   different GitHub account, or after a token was rotated.
 - Confirm an access entry with `anycloud api access list`.

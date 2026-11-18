@@ -45,10 +45,6 @@ ruleTester.run(
         filename: 'src/api/services/node-pool-controller.ts',
         code: 'const vm = bindVmCompute(compute, identity); await terminateVmComputes([vm]);',
       },
-      {
-        filename: 'src/api/services/cluster-installer-runtime.ts',
-        code: 'const vm = bindVmCompute(compute, identity); await terminateVmComputes([vm]); await vm.confirmRelease();',
-      },
       ...[
         'vm-compute',
         ...['cloud', 'aws', 'azure', 'gcp', 'lambda', 'local'].map(

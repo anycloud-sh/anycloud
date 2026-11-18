@@ -1,3 +1,4 @@
+import { Command } from 'commander';
 import { ORPCError } from '@orpc/client';
 import {
   afterEach,
@@ -15,8 +16,6 @@ const mocks = vi.hoisted(() => ({
   createCluster: vi.fn(),
   getCluster: vi.fn(),
   listClusters: vi.fn(),
-  destroyCluster: vi.fn(),
-  forgetCluster: vi.fn(),
   printError: vi.fn(),
   printInfo: vi.fn(),
   printSuccess: vi.fn(),
@@ -94,7 +93,11 @@ vi.mock('../../../src/cli/utils/output.js', async (importOriginal) => ({
   setJsonMode: mocks.setJsonMode,
 }));
 
-import { createClusterCommand } from '../../../src/cli/commands/cluster.js';
+import {
+  createApiCreateCommand,
+  createClusterCommand,
+} from '../../../src/cli/commands/cluster.js';
+import { createApiDeleteCommand } from '../../../src/cli/commands/cluster-delete.js';
 import { SeedCreateError } from '../../../src/cli/seed/create.js';
 import { SeedUnavailableError } from '../../../src/cli/seed/types.js';
 
@@ -161,31 +164,15 @@ function printedFields(spy: MockInstance<typeof console.log>): string[] {
   );
 }
 
-const RESTORE = `anycloud cluster create production --credentials <credential> --region us-east-1 --vm-type t3.medium --checkpoint-bucket install-production-1`;
-/** The domain's answer for a reachable delete that keeps the managed bucket. */
-const KEPT = {
-  deleted: [
-    { kind: 'managementVm', id: 'i-0abc123' },
-    { kind: 'dnsRecord', name: 'install-production-1.anycloud.sh' },
-  ],
-  remaining: [
-    {
-      kind: 'checkpointBucket',
-      name: 'install-production-1',
-      managed: true,
-      reason: 'kept',
-      backedUpAt: '2026-11-04T18:12:03Z',
-      finalBackup: 'taken',
-      restoreCommand: RESTORE,
-      deleteCommand:
-        'anycloud cluster delete install-production-1 --delete-buckets',
-    },
-  ],
-};
-
+/** `create` and `delete` (with its aliases) are `api` subcommands; the rest are `cluster`'s. */
 async function runCluster(argv: string[]): Promise<void> {
-  const command = createClusterCommand();
-  command.exitOverride();
+  const command = new Command('anycloud').exitOverride();
+  for (const sub of [
+    createApiCreateCommand(),
+    createApiDeleteCommand(),
+    ...createClusterCommand().commands,
+  ])
+    command.addCommand(sub.exitOverride());
   await command.parseAsync(argv, { from: 'user' });
 }
 
@@ -233,17 +220,11 @@ describe('cluster command', () => {
         create: mocks.createCluster,
         get: mocks.getCluster,
         list: mocks.listClusters,
-        destroy: mocks.destroyCluster,
-        forget: mocks.forgetCluster,
       },
     });
     mocks.createCluster.mockResolvedValue({ cluster: recorded });
     mocks.getCluster.mockResolvedValue({ cluster: ready });
     mocks.listClusters.mockResolvedValue({ clusters: [ready] });
-    mocks.destroyCluster.mockResolvedValue({
-      cluster: { ...ready, state: WorkloadState.Terminated, releasing: true },
-      ...KEPT,
-    });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code) => {
       throw new Error(`process.exit:${code ?? 0}`);
     });
@@ -255,24 +236,15 @@ describe('cluster command', () => {
     logSpy.mockRestore();
   });
 
-  it('offers create, list, status and delete and nothing else (forget is delete --skip-cloud); delete keeps terminate and rm, list keeps ls', async () => {
+  it('offers list and status under cluster, create and delete under api (forget is delete --skip-cloud); delete keeps terminate and rm, list keeps ls', async () => {
     const commands = createClusterCommand().commands;
-    expect(commands.map((command) => command.name()).sort()).toEqual([
-      'create',
-      'delete',
-      'list',
-      'status',
-    ]);
     expect(
       Object.fromEntries(
         commands.map((command) => [command.name(), command.aliases()]),
       ),
-    ).toEqual({
-      create: [],
-      delete: ['terminate', 'rm'],
-      list: ['ls', 'get'],
-      status: ['describe'],
-    });
+    ).toEqual({ list: ['ls', 'get'], status: ['describe'] });
+    expect(createApiCreateCommand().aliases()).toEqual([]);
+    expect(createApiDeleteCommand().aliases()).toEqual(['terminate', 'rm']);
     for (const argv of [
       ['bootstrap', 'production'],
       ['installations'],
@@ -347,7 +319,7 @@ describe('cluster command', () => {
       'Last error: Management Kubernetes did not become ready in time',
     );
     expect(mocks.printInfo).toHaveBeenCalledWith(
-      'Resume with: anycloud cluster create production ..., or remove it with: anycloud cluster delete production',
+      'Resume with: anycloud api create production ..., or remove it with: anycloud api delete production',
     );
 
     // A failed delete is also `failed`; its error says so, and so does the hint.
@@ -360,7 +332,7 @@ describe('cluster command', () => {
     });
     await runCluster(['status', 'production']);
     expect(mocks.printInfo).toHaveBeenLastCalledWith(
-      'Finish it with: anycloud cluster delete production',
+      'Finish it with: anycloud api delete production',
     );
   });
 

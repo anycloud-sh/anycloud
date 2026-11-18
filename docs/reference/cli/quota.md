@@ -62,7 +62,7 @@ filter.
 `anycloud quota status --cloud CLOUD --region REGION` reads current limits
 through the cloud's own CLI (`aws`, `gcloud` or `az`), signed in on this
 machine. It needs no API and no saved credential, so you can check capacity
-before `anycloud cluster create`. It shows current limits only, not request
+before `anycloud api create`. It shows current limits only, not request
 history. It takes no `--credentials` or `--canceled`, and `--spot` or
 `--on-demand` filter it without a prompt.
 
@@ -79,7 +79,7 @@ that fails for a reason other than rights, with the CLI's error. GCP's
 `--spot` and `--on-demand`, since they also limit spot VMs.
 
 Once its flags parse, a failure prints `{"error": {"code", "message"}}` with
-`--json`, using `anycloud cluster create`'s codes:
+`--json`, using `anycloud api create`'s codes:
 
 - `CLOUD_CLI_UNAVAILABLE` (exit 1): the CLI isn't installed or signed in.
 - `CLOUD_RIGHTS_MISSING` (exit 1): the account lacks the right above.

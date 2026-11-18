@@ -450,7 +450,7 @@ describe('api command', () => {
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
   });
 
-  it('api upgrade names a VM-hosted API for what it is and points at cluster create', async () => {
+  it('api upgrade names a VM-hosted API for what it is and points at api create', async () => {
     useHostedActive();
 
     mocks.activeVmHostedApi.mockResolvedValue({
@@ -467,7 +467,7 @@ describe('api command', () => {
     expect(message).toContain(
       'https://api-1.anycloud.sh is a VM-hosted API (the removed anycloud api serve)',
     );
-    expect(message).toContain('anycloud cluster create <name>');
+    expect(message).toContain('anycloud api create <name>');
     expect(message).toContain(
       'anycloud api use https://<cluster-id>.anycloud.sh',
     );
@@ -1133,7 +1133,7 @@ describe('api command', () => {
     expect(mocks.activeVmHostedApi).toHaveBeenCalledWith();
     expect(mocks.printError).toHaveBeenCalledWith(
       expect.stringContaining(
-        'is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud cluster create',
+        'is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud api create',
       ),
     );
   });

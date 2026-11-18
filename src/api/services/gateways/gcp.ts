@@ -854,7 +854,6 @@ export class GCP {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       terminateVMsConcurrency: GCP_TERMINATE_CONCURRENCY,
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.verifyVMPreemption(cloudId),
       },

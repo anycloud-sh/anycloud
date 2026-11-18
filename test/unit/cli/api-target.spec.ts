@@ -281,7 +281,7 @@ describe('api target discovery', () => {
     ).toBe(false);
   });
 
-  it('names an active VM-hosted API for what it is, with the migration to cluster create', async () => {
+  it('names an active VM-hosted API for what it is, with the migration to api create', async () => {
     process.env.API_URL = 'https://api-1.anycloud.sh';
     mocks.inspectLocalApiContainer.mockReturnValue({
       running: true,
@@ -306,7 +306,7 @@ describe('api target discovery', () => {
         'https://api-1.anycloud.sh is a VM-hosted API (the removed anycloud api serve)',
       ),
     ]);
-    expect(discovery.warnings[0]).toContain('anycloud cluster create');
+    expect(discovery.warnings[0]).toContain('anycloud api create');
     expect(discovery.warnings[0]).toContain('anycloud terminate api-1');
     expect(
       fetchMock.mock.calls.some(([input]) =>

@@ -98,21 +98,6 @@ export enum ClusterReleaseState {
   Failed = 'failed',
 }
 
-/**
- * The local API installer's create request: no route takes it since create
- * runs through the user's own cloud CLI; the installer's domain still
- * implements it until lane S6 removes it with the local destroy.
- */
-export interface CreateClusterRequest {
-  name: string;
-  credentialName: string;
-  region: string;
-  zone?: string;
-  vmType: string;
-  /** Retained, user-owned bucket for the hosted API's backups; without it a managed one. */
-  checkpointBucket?: string;
-}
-
 /** The name and tag of a cluster's network resources: `anycloud-cluster-<id>`, at most 63 characters. */
 export function clusterNetworkScope(clusterId: string): string {
   return `anycloud-cluster-${clusterId}`.slice(0, 63);
