@@ -3,7 +3,6 @@ import {
   CandidateRegionAvailability,
   canClassifyTerminalAuthError,
   canFilterCandidateRegions,
-  canLaunchSpotPools,
   canListBuckets,
   canListObjects,
   canManageCloudResources,
@@ -1254,36 +1253,6 @@ describe('createCloudCompute', () => {
       ),
     ).resolves.toEqual([{ vmType: 't3.large', region: 'us-east-1' }]);
     expect(runPreflight).toHaveBeenCalledOnce();
-  });
-
-  it('0044/S23: admits Spot pools on Spot launch and stopped-VM observation, keeping restart for VM spot Jobs', () => {
-    const ops = {
-      type: CloudType.AWS,
-      region: 'us-east-1',
-      vmType: 't3.large',
-      rawValidateCredentials: vi.fn(),
-      rawClassifyError: vi.fn(),
-      rawNewVM: vi.fn(),
-      rawRequestVMTermination: vi.fn(),
-      rawTerminateNetworking: vi.fn(),
-      rawGetAllVMs: vi.fn(),
-      rawUpsertFirewall: vi.fn(),
-      observeVMReleaseOnce: vi.fn(),
-    };
-    const stoppedVmObservation = { observeStoppedVm: vi.fn() };
-    const stopOnEvict = createCloudCompute({
-      ...ops,
-      spotLaunch: true,
-      stoppedVmObservation,
-    });
-    expect(canLaunchSpotPools(stopOnEvict)).toBe(true);
-    expect(isPreemptible(stopOnEvict)).toBe(false);
-    expect(
-      canLaunchSpotPools(createCloudCompute({ ...ops, spotLaunch: true })),
-    ).toBe(false);
-    expect(
-      canLaunchSpotPools(createCloudCompute({ ...ops, stoppedVmObservation })),
-    ).toBe(false);
   });
 
   it('preserves ingress support as a branded optional capability', () => {

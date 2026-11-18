@@ -42,7 +42,6 @@ import {
 } from './optimizer.js';
 import {
   canMintScopedStorageToken,
-  canLaunchSpotPools,
   isPreemptible,
   type CloudCompute,
   type CloudStorage,
@@ -389,7 +388,6 @@ export async function resolveRuntimeBucketStorageRegions(
 export function validateComputeCapabilities(
   config: CloudConfig,
   suppliedGateway?: CloudCompute,
-  supportsSpot: (gateway: CloudCompute) => boolean = isPreemptible,
 ): void {
   if (config.diskTier && !supportsDiskTier(config.cloudProvider)) {
     throw new InvalidAnycloudConfigError(
@@ -401,7 +399,7 @@ export function validateComputeCapabilities(
   // pure request-shape errors above that boundary so they retain HTTP 400
   // semantics instead of surfacing as an internal constructor error.
   const gateway = suppliedGateway ?? createComputeProvider(config);
-  if (config.spot && !supportsSpot(gateway)) {
+  if (config.spot && !isPreemptible(gateway)) {
     throw new InvalidAnycloudConfigError(
       `${config.cloudProvider} does not support spot instances`,
     );
@@ -584,14 +582,6 @@ export function validateStorageCapabilities(cloudConfig: CloudConfig): void {
 
     storage.validateScopedStorageTokenSource();
   }
-}
-
-export function validateComputeCandidateConfig(
-  cloudConfig: CloudConfig,
-  gateway: CloudCompute,
-): void {
-  validateComputeCapabilities(cloudConfig, gateway, canLaunchSpotPools);
-  validateWorkloadStorageRequest(cloudConfig);
 }
 
 /**

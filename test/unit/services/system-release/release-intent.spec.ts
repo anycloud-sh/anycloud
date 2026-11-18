@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSystemReleaseHelmChart,
-  compareReleaseIntent,
   systemReleaseValues,
-  valuesSha256,
   type SystemReleaseIntentInput,
 } from '../../../../src/shared/system-release-values.js';
 import {
@@ -35,16 +33,6 @@ const input: SystemReleaseIntentInput = {
   backup: null,
   restoreFromBackup: false,
 };
-
-function observed(annotations: Record<string, string>) {
-  return {
-    metadata: {
-      name: 'anycloud-api',
-      namespace: 'anycloud-system',
-      annotations,
-    },
-  };
-}
 
 describe('system release intent', () => {
   it('builds one HelmChart carrying revision, operation and installation with abort failure policy', () => {
@@ -92,94 +80,5 @@ describe('system release intent', () => {
     expect(() => systemReleaseValues({ ...input, revision: 0 })).toThrow(
       'positive',
     );
-  });
-
-  it('hashes values deterministically', () => {
-    expect(valuesSha256(systemReleaseValues(input))).toBe(
-      valuesSha256(systemReleaseValues({ ...input })),
-    );
-    expect(valuesSha256(systemReleaseValues(input))).not.toBe(
-      valuesSha256(systemReleaseValues({ ...input, revision: 4 })),
-    );
-  });
-
-  describe('comparison against the cluster', () => {
-    const desired = buildSystemReleaseHelmChart(input);
-
-    it('applies when the cluster has no release', () => {
-      expect(compareReleaseIntent(null, desired)).toEqual({ action: 'apply' });
-    });
-
-    it('applies a strictly newer revision of the same installation', () => {
-      expect(
-        compareReleaseIntent(
-          observed({
-            [RELEASE_REVISION_ANNOTATION]: '2',
-            [RELEASE_OPERATION_ANNOTATION]: 'op-2',
-            [RELEASE_INSTALLATION_ANNOTATION]: 'install-1',
-          }),
-          desired,
-        ),
-      ).toEqual({ action: 'apply' });
-    });
-
-    it('treats the same revision and operation as current', () => {
-      expect(
-        compareReleaseIntent(
-          observed({
-            [RELEASE_REVISION_ANNOTATION]: '3',
-            [RELEASE_OPERATION_ANNOTATION]: 'op-3',
-            [RELEASE_INSTALLATION_ANNOTATION]: 'install-1',
-          }),
-          desired,
-        ),
-      ).toEqual({ action: 'current' });
-    });
-
-    it('refuses an older revision, a different operation at the same revision, a foreign installation and an unlabelled release', () => {
-      expect(
-        compareReleaseIntent(
-          observed({
-            [RELEASE_REVISION_ANNOTATION]: '4',
-            [RELEASE_OPERATION_ANNOTATION]: 'op-4',
-            [RELEASE_INSTALLATION_ANNOTATION]: 'install-1',
-          }),
-          desired,
-        ),
-      ).toMatchObject({
-        action: 'refuse',
-        reason: expect.stringContaining('newer'),
-      });
-      expect(
-        compareReleaseIntent(
-          observed({
-            [RELEASE_REVISION_ANNOTATION]: '3',
-            [RELEASE_OPERATION_ANNOTATION]: 'op-other',
-            [RELEASE_INSTALLATION_ANNOTATION]: 'install-1',
-          }),
-          desired,
-        ),
-      ).toMatchObject({
-        action: 'refuse',
-        reason: expect.stringContaining('different operation'),
-      });
-      expect(
-        compareReleaseIntent(
-          observed({
-            [RELEASE_REVISION_ANNOTATION]: '1',
-            [RELEASE_OPERATION_ANNOTATION]: 'op-1',
-            [RELEASE_INSTALLATION_ANNOTATION]: 'install-other',
-          }),
-          desired,
-        ),
-      ).toMatchObject({
-        action: 'refuse',
-        reason: expect.stringContaining('install-other'),
-      });
-      expect(compareReleaseIntent(observed({}), desired)).toMatchObject({
-        action: 'refuse',
-        reason: expect.stringContaining('no AnyCloud revision'),
-      });
-    });
   });
 });

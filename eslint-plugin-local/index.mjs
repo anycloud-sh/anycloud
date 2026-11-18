@@ -3888,7 +3888,6 @@ const vmComputeBindingOwners = [
   'src/api/services/vm-compute.ts',
   'src/api/services/host-runtime/termination.ts',
   'src/api/services/node-pool-controller.ts',
-  'src/api/services/cluster-installer-runtime.ts',
 ];
 
 // As with literal-module-loads, reserve the capability names in every literal
@@ -3906,7 +3905,7 @@ const exactVmComputeOwnership = {
       lifecycle:
         '{{name}} belongs to VmCompute or a named provider gateway. Consume a bound VM handle here.',
       binding:
-        'bindVmCompute belongs to the named Workload, node pool and cluster installation composition roots.',
+        'bindVmCompute belongs to the named Workload and node pool composition roots.',
     },
   },
   create(context) {

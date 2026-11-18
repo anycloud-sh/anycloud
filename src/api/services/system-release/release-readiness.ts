@@ -29,7 +29,7 @@ export interface ObservedEndpoint {
   servedVersion: string | null;
 }
 
-export type ReleaseReadiness =
+type ReleaseReadiness =
   | { ready: true; pod: string }
   | { ready: false; reason: string };
 

@@ -577,7 +577,7 @@ PY
   ${K3S_BINARY} kubectl -n ${SYSTEM_RELEASE_NAMESPACE} create secret tls ${API_TLS_SECRET} --cert=${STATE}/tls.crt --key=${STATE}/tls.key --dry-run=client -o yaml | ${K3S_BINARY} kubectl apply -f -
   if [ -s ${STATE}/ca.crt ]; then
     ${K3S_BINARY} kubectl -n ${SYSTEM_RELEASE_NAMESPACE} create secret generic ${API_TLS_CA_SECRET} --from-file=ca.crt=${STATE}/ca.crt --dry-run=client -o yaml | ${K3S_BINARY} kubectl apply -f -
-    # Then Traefik requires Cloudflare's client certificate (api-tls.ts).
+    # Then Traefik requires Cloudflare's client certificate.
     until ${K3S_BINARY} kubectl apply -f - <<'OPTION'
 ${JSON.stringify(ORIGIN_PULL_OPTION)}
 OPTION

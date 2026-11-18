@@ -28,7 +28,6 @@ import {
 import type { User } from './entities.js';
 import { apiIngressHelmChart } from '../../shared/api-ingress.js';
 import type { ClusterConnectionDocument } from './kubernetes/cluster-connection.js';
-import type { ClusterReleaseClient } from './clusters-domain.js';
 import type { ClusterReleaseConflictError } from './cluster-errors.js';
 import type { ClusterRecordRepository } from './cluster-store.js';
 import {
@@ -84,16 +83,42 @@ export interface HostedSystemReleaseIdentity {
   installationId: string;
 }
 
+/** Kubernetes operations on the cluster through its stored connection. */
+export interface ClusterReleaseClient {
+  /** Create or merge-patch a namespaced object (Traefik's HelmChart). */
+  applyObject(
+    connection: ClusterConnectionDocument,
+    object: {
+      apiVersion: string;
+      kind: string;
+      metadata: { name: string; namespace: string };
+      spec: unknown;
+    },
+  ): Promise<void>;
+  getHelmChart(
+    connection: ClusterConnectionDocument,
+    name: string,
+    namespace: string,
+  ): Promise<HelmChartObject | null>;
+  /**
+   * Create when `expectedResourceVersion` is null, otherwise patch with that
+   * resourceVersion as a precondition; throws ClusterReleaseConflictError when
+   * the object moved since it was observed.
+   */
+  applyHelmChart(
+    connection: ClusterConnectionDocument,
+    chart: HelmChartObject,
+    expectedResourceVersion: string | null,
+  ): Promise<void>;
+}
+
 export interface SystemReleaseDomainDependencies {
   /** Null on a local or Docker-hosted API: every call is unavailable. */
   identity: HostedSystemReleaseIdentity | null;
   intents: SystemReleaseIntentRepository;
   clusterRecords: Pick<ClusterRecordRepository, 'getConnection'>;
   parseConnection(serialized: string): ClusterConnectionDocument;
-  releases: Pick<
-    ClusterReleaseClient,
-    'getHelmChart' | 'applyHelmChart' | 'applyObject'
-  >;
+  releases: ClusterReleaseClient;
   isConflict(error: unknown): error is ClusterReleaseConflictError;
   /** Version this process serves and the schema version its database reached. */
   servedVersion: string;
