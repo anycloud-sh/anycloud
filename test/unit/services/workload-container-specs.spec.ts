@@ -16,7 +16,6 @@ import {
   WorkloadLifecycleStore,
   type BeginServiceUpgradeInput,
 } from '../../../src/api/services/repositories/workload-lifecycle.js';
-import { createJobChanges } from '../../../src/api/services/job-changes.js';
 import { DockerManager } from '../../../src/api/services/docker.js';
 import { walkToState } from '../../helpers/workload-store.js';
 import {
@@ -99,7 +98,6 @@ describe('workload-owned container specifications', () => {
       );
       expect(spec).toMatchObject({
         workload_id: 'owned-container',
-        deployment_id: null,
         image: 'ghcr.io/example/work:admitted',
       });
       expect(JSON.stringify(spec)).not.toContain('environment-canary');
@@ -160,7 +158,7 @@ describe('workload-owned container specifications', () => {
         'owned-container',
         ownerScope,
       ),
-    ).resolves.toEqual({ submissionRevision: 1, claimDeadlineAt: null });
+    ).resolves.toBe(true);
     expect(await getDB().query('SELECT * FROM container_specs')).toEqual(
       before,
     );
@@ -188,25 +186,22 @@ describe('workload-owned container specifications', () => {
     );
     const db = getDB();
     // Observe both entry points: transaction reads bypass db.query.
-    const writeOnlyStore = new WorkloadLifecycleStore(
-      {
-        read: () => Promise.reject(new Error('unexpected read')),
-        query(sql, params) {
-          expect(sql).toMatch(/^\s*(UPDATE|INSERT)\b/i);
-          return db.query(sql, params);
-        },
-        transaction: (run) =>
-          db.transaction((tx) =>
-            run({
-              query(sql, params) {
-                expect(sql).toMatch(/^\s*(UPDATE|INSERT)\b/i);
-                return tx.query(sql, params);
-              },
-            }),
-          ),
+    const writeOnlyStore = new WorkloadLifecycleStore({
+      read: () => Promise.reject(new Error('unexpected read')),
+      query(sql, params) {
+        expect(sql).toMatch(/^\s*(UPDATE|INSERT)\b/i);
+        return db.query(sql, params);
       },
-      createJobChanges(),
-    );
+      transaction: (run) =>
+        db.transaction((tx) =>
+          run({
+            query(sql, params) {
+              expect(sql).toMatch(/^\s*(UPDATE|INSERT)\b/i);
+              return tx.query(sql, params);
+            },
+          }),
+        ),
+    });
     await expect(writeOnlyStore.beginServiceUpgrade(upgrade())).resolves.toBe(
       true,
     );
@@ -497,7 +492,6 @@ describe('workload-owned container specifications', () => {
     expect(() =>
       DockerManager.getCommand({
         ...workload,
-        deploymentId: 'deployment-id',
         registryUsername: null,
       }),
     ).toThrow('VM-host container configuration is required');

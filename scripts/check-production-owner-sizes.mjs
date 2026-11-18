@@ -38,12 +38,6 @@ export const ownerSizeCeilings = {
       'one Workload read model: every non-spend read of Workload, container spec, VM and provisioning state',
   },
   'src/api/services/repositories/workload-spend.ts': 699, // 686 + 13; SLOT's slot-time rows and session burn share the windowed VM spend SQL beside them
-  'src/api/services/repositories/deployment-executions.ts': {
-    ceiling: 873, // +3: RFC 0049 C15's end reason on expired and unassigned Jobs. 857 + 13; the replica image pull on the replica's first claim event, and the check that keeps later claims from reading kubelet's events. 839 + 18; the discovery offers, which keep concurrent waiters off one Job (ST1a 829 + 10; 897 before an earlier change moved its reports to workload-attempts.ts)
-    whole:
-      "the claim queue: discovery, the claim with a fence that guards it, and the execution reads a replica makes; SLOT's spend gate is in claim-spend-gate.ts",
-  },
-  'src/api/services/repositories/node-pool-services.ts': 95, // 68 + 10; 85 + 10 after the publishedAt, the entry hand-off's cue that every record moved
   'src/api/services/workload-workflows/retry-recovery.ts': {
     ceiling: 809, // 787 + 10 (842 before an earlier change); +3: RFC 0049 C15's reclaimed last attempt; +9: on-demand Jobs share the stopped-VM restart, worded as a cloud stop
     whole:
@@ -63,7 +57,6 @@ export const ownerSizeCeilings = {
   'src/api/services/host-runtime/vm-container-repair.ts': 192, // 182 + 10
   'src/api/services/workload-workflows/workload-pipeline.ts': 504, // 494 + 10; 498 after the outcome port
   'src/api/services/workload-workflows/provisioning-scheduler.ts': 398, // 388 + 10 (390 after an earlier split); 394 after the outcome port
-  'src/api/services/workload-workflows/targeted-job.ts': 113, // 97 + 10 (120 before an earlier change moved the retry budget to its writer) + 6 (deletes a spot pool Job's managed checkpoint bucket before its cleanup completes)
   'src/api/services/credential-auth-failure.ts': 86, // 76 + 10 (85 after an earlier split)
   'src/api/services/workload-admission-checks.ts': 146, // 136 + 10
 };

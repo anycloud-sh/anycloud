@@ -9,7 +9,7 @@ import { PULL_CONTROL_TIMEOUT_MS } from '../config.js';
 // resource disk; the boot unit below re-creates the store directories there
 // before either daemon starts, and the resumed Job re-pulls its image. Node
 // pool Nodes bind kubelet and K3s's containerd the same way.
-export const STORE_UNIT = 'anycloud-image-store.service';
+const STORE_UNIT = 'anycloud-image-store.service';
 /** Each store's directory on the resource disk and the path bound onto it. */
 const VM_HOST_STORES = {
   docker: '/var/lib/docker',
@@ -38,13 +38,8 @@ export function resourceDiskStoreMount(probe: string): string | null {
   return Number(size) >= Number(rootSize) ? mount : null;
 }
 
-/** A node pool Node passes its kubelet and K3s containerd stores and agent. */
-export function resourceDiskStoreUnit(
-  mount: string,
-  stores: Record<string, string> = VM_HOST_STORES,
-  daemons = 'containerd.service docker.service',
-): string {
-  const binds = Object.entries(stores)
+export function resourceDiskStoreUnit(mount: string): string {
+  const binds = Object.entries(VM_HOST_STORES)
     .map(
       ([store, path]) =>
         `install -d -m 0711 ${mount}/anycloud/${store} ${path} && ` +
@@ -62,7 +57,7 @@ export function resourceDiskStoreUnit(
     // stores are bound, that lookup also returns them, and the warning makes
     // /var/lib/docker immutable.
     'After=ephemeral-disk-warning.service',
-    `Before=${daemons}`,
+    'Before=containerd.service docker.service',
     '',
     '[Service]',
     'Type=oneshot',

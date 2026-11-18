@@ -17,8 +17,6 @@ import {
 } from '../../../src/shared/cloud.js';
 import { CloudFailureDiagnosis, CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
-import type { NodePoolSummary } from '../../../src/shared/api-contract/node-pools-schemas.js';
-import type { DeploymentSummary } from '../../../src/shared/api-contract/deployments-schemas.js';
 import type {
   CloudCompute,
   CloudStorage,
@@ -27,9 +25,6 @@ import type {
   CandidateRegionFilter,
   Preemptible,
 } from '../../../src/api/services/gateways/cloud.js';
-import type { ClusterKubernetesClient } from '../../../src/api/services/kubernetes/cluster-client.js';
-import type { ReplicaPolicyDependencies } from '../../../src/api/services/deployment-replicas.js';
-import type { ManagedDemand } from '../../../src/api/services/repositories/replica-demand.js';
 
 // Composed locally: these exist only so unit fixtures can build combined
 // mocks; production composes the primitives itself.
@@ -106,18 +101,6 @@ export const TEST_AZURE_ROLE: RoleConnection<CloudType.Azure> = {
   audience: 'api://AzureADTokenExchange',
 };
 
-type ClusterKubernetesClientFixture = {
-  [Key in keyof ClusterKubernetesClient]?: Partial<
-    ClusterKubernetesClient[Key]
-  >;
-};
-
-export function makeClusterKubernetesClientFixture(
-  fixture: ClusterKubernetesClientFixture,
-): ClusterKubernetesClient {
-  return fixture as unknown as ClusterKubernetesClient;
-}
-
 export function makeContainerSpec(
   overrides: Partial<ContainerSpec> = {},
 ): ContainerSpec {
@@ -139,16 +122,7 @@ export function makeStoredWorkload(
   return {
     id: 'test-deploy',
     userId: 'test-user',
-    registryUsername: overrides.deploymentId
-      ? null
-      : (overrides.userId ?? 'test-user'),
-    deploymentId: null,
-    nodePoolId: null,
-    nodePoolName: null,
-    currentExecutionId: null,
-    submissionRevision: 0,
-    claimDeadlineAt: null,
-    firstClaimedAt: null,
+    registryUsername: overrides.userId ?? 'test-user',
     workloadType: 'job',
     image: 'alpine:latest',
     cloudProvider: CloudType.AWS,
@@ -196,7 +170,6 @@ export function makeStoredWorkload(
     totalCost: null,
     costSource: null,
     dnsRecordId: null,
-    publicEndpoint: null,
     secretNames: null,
     session: null,
     agent: null,
@@ -236,10 +209,6 @@ export function makeStatusWorkloadMetadata(
   return {
     id: 'test-deploy',
     userId: 'test-user',
-    deploymentId: null,
-    submissionRevision: 0,
-    claimDeadlineAt: null,
-    claimed: false,
     workloadType: 'job',
     image: 'alpine:latest',
     cloudProvider: CloudType.AWS,
@@ -276,7 +245,6 @@ export function makeStatusWorkloadMetadata(
     totalCost: null,
     costSource: null,
     dnsRecordId: null,
-    publicEndpoint: null,
     secretNames: null,
     session: null,
     agent: null,
@@ -486,116 +454,4 @@ export function requirePrepareNetwork(
     throw new Error('gateway does not prepare a network');
   }
   return prepareNetwork.bind(compute);
-}
-
-export function makeNodePoolSummary(
-  overrides: Partial<NodePoolSummary> = {},
-): NodePoolSummary {
-  return Object.assign(
-    {
-      id: 'node-pool-a',
-      name: 'training',
-      clusterId: 'cluster-a',
-      state: WorkloadState.Running,
-      releasing: false,
-      cloudProvider: CloudType.AWS,
-      region: 'us-east-1',
-      zone: null,
-      vmTypes: ['g5.xlarge'],
-      minVmCount: 1,
-      maxVmCount: 1,
-      osDiskSizeGb: null,
-      osDiskTier: null,
-      spot: false,
-      allowPrivilegedJobs: false,
-      userNamespaceJobs: false,
-      requireNestedVirtualization: false,
-      capacity: {
-        readyVmCount: 1,
-        startingVmCount: 0,
-        drainingVmCount: 0,
-        locations: [],
-      },
-      liveReferences: 0,
-      ingressEntryIp: null,
-      ingress: { entryIp: null, release: null },
-      lastError: null,
-      createdAt: 1,
-      updatedAt: 1,
-    },
-    overrides,
-  );
-}
-
-export function makeDeploymentSummary(
-  overrides: Partial<DeploymentSummary> = {},
-): DeploymentSummary {
-  return Object.assign(
-    {
-      id: 'deployment-a',
-      name: 'model-deployment',
-      nodePoolId: 'node-pool-a',
-      managed: false,
-      privileged: false,
-      target: { kind: 'nodePool', nodePoolId: 'node-pool-a' },
-      image: 'example/model-deployment:latest',
-      command: null,
-      readinessProbe: null,
-      gracePeriodSeconds: 30,
-      gpuCount: 1,
-      envKeys: [],
-      secretNames: [],
-      maxConcurrentJobsPerReplica: 4,
-      minReplicas: 1,
-      maxReplicas: 1,
-      generation: 1,
-      deletionRequestedAt: null,
-      deletedAt: null,
-      createdAt: 2,
-      updatedAt: 2,
-      usage: null,
-      jobs: {
-        queued: 1,
-        running: 1,
-        retrying: 0,
-        terminal: 2,
-        unreleased: 1,
-      },
-      workload: {
-        observedGeneration: 1,
-        podName: 'model-deployment-abc',
-        podUid: 'pod-uid',
-        containerId: 'containerd://deployment',
-        containerReady: true,
-        pendingReason: null,
-      },
-      status: null,
-    },
-    overrides,
-  );
-}
-
-/** RA's policy dependencies: idle replicas drain, no managed demand, no cap block. */
-export function makeReplicaPolicyDependencies() {
-  return {
-    drainReplica: vi.fn(async (_deploymentId: string, _podUid: string) => true),
-    reopenReplica: vi.fn((_podUid: string) => undefined),
-    listManagedDemand: vi.fn(
-      async (_clusterId: string): Promise<ManagedDemand[]> => [],
-    ),
-    managedRoom: vi.fn(async (_nodePoolId: string) => ({
-      maxVms: 1,
-      reservedGpus: 0,
-      vmPrice: null as number | null,
-    })),
-    capBlocked: vi.fn(async (_nodePoolId: string) => false),
-    demandAdmission: vi.fn(
-      async () =>
-        async (
-          _session: string | null,
-          _hourlyUsd?: number,
-        ): Promise<unknown> =>
-          null,
-    ),
-  } satisfies ReplicaPolicyDependencies;
 }

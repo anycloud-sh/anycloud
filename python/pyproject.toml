@@ -31,7 +31,6 @@ packages = ["generated/anycloud", "extensions/anycloud_workflows"]
 include = [
     "/generated/anycloud",
     "/extensions/anycloud_workflows",
-    "/examples/async_deployment_submission.py",
     "/examples/job_completion.py",
     "/package-data/anycloud/py.typed",
     "/README.md",

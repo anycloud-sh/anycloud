@@ -109,8 +109,6 @@ export interface SeedCreateDependencies {
   publicARecordExists: typeof publicARecordExists;
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   now: () => number;
-  /** `ANYCLOUD_E2E_CAPACITY_FAULT`, test-only. */
-  capacityFaultPool: string | undefined;
   /** `ANYCLOUD_E2E_ACCESS=1`, test-only: the harness's kubeconfig hand-off. */
   e2eAccess: boolean;
   /** Downloads the cloud's catalog on a fresh machine; the seeds read it. */
@@ -126,8 +124,6 @@ export const DEFAULT_DEPENDENCIES: SeedCreateDependencies = {
   publicARecordExists,
   sleep,
   now: () => Date.now(),
-  capacityFaultPool:
-    process.env.ANYCLOUD_E2E_CAPACITY_FAULT?.trim() || undefined,
   e2eAccess: process.env.ANYCLOUD_E2E_ACCESS === '1',
   bootstrapCatalog: async (cloud, progress) => {
     if (!readCatalog(cloud))
@@ -251,9 +247,6 @@ export async function runSeedCreate(
     }),
     backup,
     selfDelete: seed.selfDeleteValues(location, account),
-    ...(dependencies.capacityFaultPool
-      ? { e2e: { capacityFaultPool: dependencies.capacityFaultPool } }
-      : {}),
     // The chart mounts the hand-off directory and the script writes the
     // kubeconfig into it: both or neither.
     ...(dependencies.e2eAccess ? { e2eAccess: true as const } : {}),

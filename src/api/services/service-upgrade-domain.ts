@@ -105,13 +105,6 @@ export function createServiceUpgradeDomain(
             'Not a service workload',
           );
         }
-        if (found.nodePoolId !== null) {
-          throw new ServiceUpgradeError(
-            'Upgrading a Service on a node pool is not available yet; terminate it and create a new Service',
-            409,
-            'Node pool Service upgrades are not available yet',
-          );
-        }
         if (found.state !== WorkloadState.Running) {
           throw new ServiceUpgradeError(
             `Service workload must be running to upgrade; current state is ${found.state}`,

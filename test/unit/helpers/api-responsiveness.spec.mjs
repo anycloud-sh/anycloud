@@ -721,18 +721,24 @@ describe('API responsiveness fixture fingerprint', () => {
       }
     };
 
+    const current = await fingerprintOf(
+      { table: 'workloads', column: 'workload_id' },
+      'workload_id TEXT',
+      'workload_id TEXT',
+    );
     expect(
       await fingerprintOf(
         { table: 'deployments', column: 'deployment_id' },
         'deployment_id TEXT, worker_id TEXT',
         'deployment_id TEXT',
       ),
-    ).toBe(
+    ).toBe(current);
+    expect(
       await fingerprintOf(
         { table: 'workloads', column: 'workload_id' },
         'workload_id TEXT, deployment_id TEXT',
         'workload_id TEXT, node_pool_id TEXT',
       ),
-    );
+    ).toBe(current);
   });
 });

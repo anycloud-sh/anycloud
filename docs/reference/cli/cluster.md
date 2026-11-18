@@ -6,8 +6,8 @@ description: Create, inspect and delete the installation's Kubernetes cluster an
 # `anycloud cluster`
 
 An installation has **one Kubernetes cluster**: a management VM in your cloud
-running a pinned K3s server, the Anycloud API released onto it as a Helm
-chart, and the [node pools](/reference/cli/node-pools) that join it.
+running a pinned K3s server and the Anycloud API released onto it as a Helm
+chart.
 `anycloud cluster create` builds it, `anycloud api use` points the CLI at the
 API it hosts, and `anycloud cluster delete` releases it.
 
@@ -93,7 +93,7 @@ resumes without the flag.
 **The checkpoint bucket** holds the hosted API's backups. The VM's own identity
 reaches it: an AWS instance profile, an Azure user-assigned managed identity or
 a GCP service account attached to the VM, which may write objects but never
-delete object versions. That identity is never attached to node pool VMs.
+delete object versions. That identity is never attached to workload VMs.
 `--checkpoint-bucket` names a bucket you own in the CLI's account, which
 Anycloud never deletes (except the cluster's own managed bucket, named by its
 ID, which stays managed when create is given it back); one holding a backup makes create a
@@ -250,7 +250,7 @@ created before 0.1.74 has no record on its hosted API, which shows only its
 ID, address and API version. No kubeconfig or token is stored for it; the
 API's authority is its chart-bound ServiceAccount (see
 [Cluster authority](#cluster-authority)). It starts with an empty database:
-before creating node pools, add their cloud credentials there
+before launching workloads, add their cloud credentials there
 (`anycloud credentials new` against the hosted API).
 
 ## Inspect and delete
@@ -266,19 +266,18 @@ anycloud cluster delete <id-or-name> [--delete-buckets] [--confirm <cluster-id>]
 `list` shows the clusters this API knows with their location, VM type, age,
 address, installed API version and state; `status` shows one in the Workload
 status layout (state, cloud, VM, address, Kubernetes and API versions, URL,
-node pools, age and last error), and `--watch` refreshes it until the cluster
+age and last error), and `--watch` refreshes it until the cluster
 is `running`, `failed` or fully `terminated`. Against a hosted API, its own
 cluster shows the cloud, account, region and VM type from its record, and the
 address, API version and URL it knows of itself. `list` also accepts `ls` and `get`, and `status`
 accepts `describe`.
 
 `delete` (aliases `terminate`, `rm`) asks the hosted API to delete its
-installation, and the API deletes itself last. **Node pools are never
-deleted from here**: the API refuses (`SELF_DELETE_REFUSED`) while a node pool
-or a running VM Service or VM Job remains, naming each and the commands to
-run against the hosted API first: `anycloud deployment delete <id>` for a
-Deployment, `anycloud terminate <id>` for a VM Workload, and
-`anycloud node-pool delete <name>` for a pool, then `delete` again. Otherwise the API takes a final backup, answers,
+installation, and the API deletes itself last. The API refuses
+(`SELF_DELETE_REFUSED`) while a running VM Service or VM Job remains, naming
+each: run `anycloud terminate <id>` against the hosted API, then `delete`
+again. A hosted API on an older release that still has node pools is refused
+the same way until they are deleted on that release. Otherwise the API takes a final backup, answers,
 waits for its Workloads' cleanups (their VMs and per-Job buckets, through the
 credential that made them), deletes any VM left tagged for the cluster, and
 asks its cloud to delete its own stack (AWS), resource group (Azure) or
@@ -328,7 +327,7 @@ pass:
    holds a VM; delete it with `--delete-vms`.
 3. **Each deletion has its own flag.** Without one, delete only lists what it
    would delete. `--delete-vms` deletes the stack, group or instance and the
-   node pool VMs tagged `anycloud_cluster=<cluster-id>`; `--delete-buckets`
+   VMs tagged `anycloud_cluster=<cluster-id>`; `--delete-buckets`
    also deletes the managed bucket. Each asks for the same confirmation.
 
 What it can't delete is listed in `remaining` with the tag or name to search
@@ -338,7 +337,7 @@ installation gone. Its outcome is `abandoned`.
 
 Clusters created before anycloud 0.1.74 are torn down by hand: delete the
 management VM and its network (tagged `anycloud_resource=anycloud-cluster-<cluster-id>`),
-the node pool VMs, disks and networks (tagged `anycloud_cluster=<cluster-id>`,
+the VMs, disks and networks tagged `anycloud_cluster=<cluster-id>` (
 or `anycloud_owner_api=<identity>`), the checkpoint bucket (named for the
 cluster ID), and the `<cluster-id>.anycloud.sh` DNS record with `cluster
 delete <cluster-id> --skip-cloud`.
@@ -358,7 +357,6 @@ Each command accepts `--json`.
 | `managementVmId`, `networkScope`                        | The management VM's provider ID and the `anycloud-cluster-<id>` name of its network resources        |
 | `k3sVersion`, `apiVersion`, `apiImage`, `chartVersion`  | The pinned control plane, the installed API and its chart                                            |
 | `connected`, `kubernetesIdentity`, `connectionRevision` | Whether the installer can reach the cluster, the observed `kube-system` UID, the connection revision |
-| `activeNodePoolCount`                                   | Node pools the record references; delete asks the hosted API for its pools instead                   |
 | `address`                                               | The management VM's public address                                                                   |
 | `managementApiUrl`                                      | `https://<cluster-id>.anycloud.sh`, the `anycloud api use` target; an installer's once released      |
 | `release`                                               | The installed API release: `apiVersion`, `apiImage`, `chartVersion`; null until it is installed      |
@@ -405,8 +403,7 @@ running Service.
 
 ### Results for scripts
 
-`cluster create`, [`node-pool create` and
-`node-pool delete`](/reference/cli/node-pools#results-for-scripts) and
+`cluster create` and
 [`api upgrade`](#back-up-and-upgrade-the-hosted-api) are the commands an
 embedding product drives, and each is safe to re-run. With `--json`, stdout
 holds one JSON document: the result, or the failure
@@ -416,7 +413,7 @@ holds one JSON document: the result, or the failure
 ```
 
 where `code` is the API's error code (`CLUSTER_EXISTS`, `CLUSTER_BUSY`,
-`NODE_POOL_REFERENCED`, `SYSTEM_RELEASE_REFUSED`, …) or one of the CLI's:
+`SYSTEM_RELEASE_REFUSED`, …) or one of the CLI's:
 `INVALID_ARGUMENT` (a missing or invalid flag), `API_UNREACHABLE` (no answer
 from the API, or it is restarting), `LOCAL_API_STILL_STARTING`,
 `REMOVED_WORKLOADS_REMAIN` (`api upgrade`: node pools, Deployments or node pool
@@ -461,9 +458,8 @@ latest pre-release one. Each backup also uploads the API's cipher key to
 the installation, the backup time, the schema version and the database's
 SHA-256. The manifest also lists where the installation's resources live, with
 no secret: each saved credential's name, cloud and account (AWS account, GCP
-project or Azure subscription; a Lambda key names none), and each node pool's
-name, credential and pinned region or zone. Saving a credential or creating a
-node pool runs a backup too, so the lists don't wait for the hourly one.
+project or Azure subscription; a Lambda key names none). Saving a credential
+runs a backup too, so the list doesn't wait for the hourly one.
 **Anyone who can read the bucket can decrypt every stored cloud
 credential and secret**: keep it private, readable only by you, the installer
 and the API. The compute credential travels in the release values
@@ -498,7 +494,7 @@ in-cluster ServiceAccount, against the cluster record it wrote on start (the
 `HelmChart` must name this cluster, or the upgrade is refused).
 helm-controller applies the change:
 the chart's pre-upgrade guard refuses a revision that is not newer than the
-running one, and the Deployment is recreated with the new image while the API
+running one, and the API's Kubernetes Deployment object is recreated with the new image while the API
 stays `running`. The command returns once the upgrade is recorded, printing the
 verdict as a plain line — `Hosted API upgrade N started: <old> → <version>`,
 `already matches anycloud <version>` or `already runs <image>; nothing to do
@@ -537,8 +533,7 @@ previous release's CLI or any newer one; see
 version window. With a hosted API active, `api upgrade` touches neither the
 local API nor Docker, so it runs on any machine with the CLI.
 
-Once the hosted API's pool Jobs have drained, and before it asks for the
-image upgrade, `api upgrade` has the hosted API bring K3s's server
+Before it asks for the image upgrade, `api upgrade` has the hosted API bring K3s's server
 configuration to the new release's, from any machine and with no SSH
 (`POST /v1/system-release/kubernetes`). The hosted API runs a one-shot Job on
 the management Node with the new release's image. The Job is anycloud's own,
@@ -548,8 +543,7 @@ the management Node `node-restriction.kubernetes.io/anycloud-management=true`,
 writes the configuration with the server token the host already holds, and
 restarts K3s only when the configuration changed. It then waits up to 5
 minutes for the Kubernetes API server to be ready again. Pods keep running
-through the restart, and the command keeps renewing the drain's hold, so no
-pool Job starts while K3s restarts. `api upgrade` prints the result, for
+through the restart. `api upgrade` prints the result, for
 example `K3s step: configuration changed, Kubernetes ready`, and
 `anycloud api status` shows the latest one as `K3s step`. If the step fails,
 the image upgrade is not requested, and running the command again runs the
@@ -587,11 +581,9 @@ refused. Given back the bucket Anycloud made for the cluster
 `delete --delete-buckets` deletes it; any other bucket stays yours and `delete`
 keeps it.
 
-On its first start the restored API adopts the new cluster. It terminates
-the old node pool VMs by their native IDs and provisions replacements, then
-re-applies every Deployment and node pool Service from its database. Jobs
-that were running at the last backup are retried; a Job that finished after it
-runs again. Kubernetes state itself is not backed up.
+On its first start the restored API adopts the new cluster. Jobs that were
+running at the last backup are retried; a Job that finished after it runs
+again. Kubernetes state itself is not backed up.
 
 Up to one backup interval of changes is lost, since backups run hourly and
 before every update. Make sure the old management VM is gone before you
@@ -599,36 +591,25 @@ restore: two APIs must never write the same bucket.
 
 ## Cluster authority
 
-The hosted API manages node pools, Deployments, Services and its own release
-through the `anycloud-api` ServiceAccount the chart binds to a `ClusterRole`
-(`charts/anycloud-api/templates/rbac.yaml`): `get`, `create`, `patch` and
-`delete` Namespaces; `get`, `list`, `watch`, `patch` and `delete` Nodes;
-Pods, with `get` on `pods/log` for `anycloud logs` and `create` on
-`pods/eviction` to drain a Node it replaces; Secrets, Services and
-ServiceAccounts; `apps` Deployments and DaemonSets (the pool loop watches
-Nodes, Pods, Secrets, ServiceAccounts, Deployments and NetworkPolicies);
-`list`, `watch`, `create` and `patch` `networking.k8s.io` NetworkPolicies
-(each node pool namespace's default egress policy, restored if it is deleted
-or edited); `batch` Jobs;
-`node.k8s.io` RuntimeClasses; `admissionregistration.k8s.io`
-ValidatingAdmissionPolicies and their bindings (the policy that limits K3s's
-shared controller identity on Node status); `helm.cattle.io` HelmCharts and
-HelmChartConfigs (cluster add-ons and the API's own release);
-`tokenreviews` and `selfsubjectaccessreviews`. **No credential for this
-authority is stored or exported**: no kubeconfig and no token row. Every connection re-checks the recorded
-`kube-system` UID, verifies each permission the node pool and Service
-controllers need with a `SelfSubjectAccessReview`, and reads the server
-version — at least hourly and always when a node pool is created; a node pool
-is refused with a diagnostic naming the missing permission or the unsupported
-version rather than provisioning against a cluster the API cannot manage.
+The hosted API applies its own release, runs host steps on the management Node
+and observes both through the `anycloud-api` ServiceAccount the chart binds to
+a `ClusterRole` (`charts/anycloud-api/templates/rbac.yaml`): `get`, `create`,
+`patch` and `delete` Namespaces; `get` and `patch` Nodes (the management
+Node's label); Secrets and ServiceAccounts for its release; `get`, `list` and
+`watch` Pods, with `get` on `pods/log` and `list` on events, for diagnostics;
+`get`, `list` and `watch` `apps` Deployments (its own rollout); `batch` Jobs
+(release hooks and host steps); and `helm.cattle.io` HelmCharts and
+HelmChartConfigs (cluster add-ons and the API's own release). A namespaced
+Role lets it mint tokens for itself and the trust probe, which
+[role connections](/reference/cli/credentials) use. **No credential for this
+authority is stored or exported**: no kubeconfig and no token row.
 
 The cluster's management Node carries the standard control-plane taint
 `node-role.kubernetes.io/control-plane=true:NoSchedule` and the label
 `node-restriction.kubernetes.io/anycloud-management=true`, which only the API
 can set, never a Node itself. Create sets both, and `api upgrade` sets the
 label again before it asks the hosted API to upgrade. The API, its hook Jobs
-and its Traefik select that label, so a pool Node that re-registers with the
-control-plane taint attracts none of them. The API moves its Traefik onto the
+and its Traefik select that label. The API moves its Traefik onto the
 label when it starts, so an upgraded cluster's Traefik follows.
 
 There is no command to register an existing Kubernetes control plane: the
@@ -640,10 +621,9 @@ hosted API's record of it is written by the API itself.
 The Workload states: `provisioning`, `initializing` and `starting` while it is
 created, `failed` (a failed create or delete; a failed delete's `Last error:` starts
 with `Delete failed:`), and `terminated` (with the "releasing" label while the management VM
-is still being released). Node pools are accepted only while the cluster is
-`running`. The
+is still being released). The
 record is removed only by `anycloud cluster delete`, which the hosted API
-refuses (`SELF_DELETE_REFUSED`) while a node pool or a running VM Service or
+refuses (`SELF_DELETE_REFUSED`) while a running VM Service or
 Job remains, naming each (see [delete](#inspect-and-delete) above). Each command accepts `--json`.
 
 ## What create makes on AWS
@@ -656,10 +636,10 @@ holds:
 - **The management VM:** Ubuntu 24.04 in the default VPC, whose user-data is
   the startup script that brings up K3s and the API. Its metadata service
   requires IMDSv2 with a hop limit of 2.
-- **A security group:** TCP 6443 from anywhere, for node pool VMs to join, and
+- **A security group:** TCP 6443 (the K3s server) from anywhere, and
   TCP 80 and 443 from Cloudflare's ranges only. No SSH.
-- **The VM's role and instance profile, `anycloud-<cluster-id>-vm`.** Node
-  pools and VM Jobs launch on the connections you add to the API, never on
+- **The VM's role and instance profile, `anycloud-<cluster-id>-vm`.**
+  Workloads launch on the connections you add to the API, never on
   this role. It can only:
   - list the account's regions, then terminate, delete or cancel the
     instances, volumes, network interfaces, security groups and spot requests

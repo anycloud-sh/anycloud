@@ -36,7 +36,7 @@ function parseMount(
 }
 
 /** Whole seconds; a bare number would be days to `parseDurationMs`. */
-export const parseWholeSeconds =
+const parseWholeSeconds =
   (flag: string) =>
   (value: string): number => {
     if (!/^\d+(ms|s|m|h|d)$/.test(value.trim())) {

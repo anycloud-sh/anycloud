@@ -27,10 +27,7 @@ import {
   DeployError,
   ObjectNotFoundError,
 } from '../../../shared/errors.js';
-import {
-  acceleratorRuntimeRejectionMessage,
-  PROVIDER_DATA,
-} from '../../../shared/providers.js';
+import { acceleratorRuntimeRejectionMessage } from '../../../shared/providers.js';
 import type { CandidatePreflightCache } from '../candidate-preflight-cache.js';
 import { log } from '../logger.js';
 import {
@@ -506,48 +503,11 @@ interface ResourceScopedNewVMProps
   scope: CloudResourceScope;
 }
 
-/** The instance-metadata address on AWS, Azure and GCP. */
-export const INSTANCE_METADATA_CIDR = '169.254.169.254/32';
-
-/**
- * Asks the AWS, GCP and Azure metadata services in turn for the VM's public
- * IPv4; each answers only on its own cloud, and none on Lambda.
- */
-const METADATA_EXTERNAL_IP_DISCOVERY = `TOKEN="$(curl -sf -m 2 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)"
-EXTERNAL_IP="$(curl -sf -m 2 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
-[ -n "$EXTERNAL_IP" ] || EXTERNAL_IP="$(curl -sf -m 2 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip || true)"
-[ -n "$EXTERNAL_IP" ] || EXTERNAL_IP="$(curl -sf -m 2 -H 'Metadata: true' 'http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text' || true)"`;
-
-/** What a node pool provider gives the shared join script (RFC 0044 B5, B6). */
-export interface NodePoolBootInputs {
-  /** Host-only addresses: the Node drops Pod traffic to them. */
-  readonly hostOnlyCidrs: readonly [string, ...string[]];
-  /** The Node resolves names through one of them, so their port 53 stays open. */
-  readonly resolvesThroughHostOnly: boolean;
-  /** Bash that sets `EXTERNAL_IP` to the VM's public IPv4, or null for none. */
-  readonly externalIpDiscovery: string | null;
-  /** Sizes without raw NVMe keep kubelet and containerd on Azure's resource disk. */
-  readonly resourceDiskStore: boolean;
-}
-
-/**
- * AWS's and Lambda's boot inputs, which GCP and Azure extend. Both inputs are
- * trusted gateway code that runs as root at first boot, never values from a
- * provider API.
- */
-export const METADATA_NODE_POOL_BOOT: NodePoolBootInputs = {
-  hostOnlyCidrs: [INSTANCE_METADATA_CIDR],
-  resolvesThroughHostOnly: false,
-  externalIpDiscovery: METADATA_EXTERNAL_IP_DISCOVERY,
-  resourceDiskStore: false,
-};
-
 /**
  * Optional compute capability for durable owners that are not workloads.
  * The gateway receives only an opaque naming/tagging scope and network intent.
  */
 interface CloudResourceComputePublic {
-  nodePoolBoot: NodePoolBootInputs;
   prepareResourceNetwork(
     spec: IngressSpec,
     scope: CloudResourceScope,
@@ -565,7 +525,6 @@ interface CloudResourceComputePublic {
 }
 
 interface CloudResourceComputeOps {
-  nodePoolBoot: NodePoolBootInputs;
   prepareResourceNetwork(
     spec: IngressSpec,
     scope: CloudResourceScope,
@@ -578,22 +537,6 @@ interface CloudResourceComputeOps {
   listResourceVMs?(scope: CloudResourceScope): Promise<ResourceVM[]>;
   terminateResourceNetwork(scope: CloudResourceScope): Promise<void>;
   terminateResourceVMLeftovers?(cloudId: string): Promise<void>;
-}
-
-/**
- * Refuse a cluster's management VM scope, `anycloud-cluster-<id>`
- * (clusters-domain.ts), on a provider that can't host one. A node pool id has
- * at most a 9-character name prefix, so it never starts that way.
- */
-export function refuseClusterScope(
-  cloud: CloudType,
-  scope: CloudResourceScope,
-): void {
-  if (scope.id.startsWith('anycloud-cluster-')) {
-    throw new Error(
-      `${cloud} can't host a cluster's management VM; use AWS, GCP or Azure`,
-    );
-  }
 }
 
 const cloudResourceComputeBrand: unique symbol = Symbol('CloudResourceCompute');
@@ -856,8 +799,7 @@ export interface ScopedStorageGrant {
   bucket: string;
   /**
    * Ends in `/`: the grant reads, writes and lists only objects under it.
-   * Azure, AWS and GCP honor it (RFC 0043 O26); R2 ignores it until CF3, so
-   * the pool Job minter refuses R2.
+   * Azure, AWS and GCP honor it (RFC 0043 O26); R2 ignores it until CF3.
    */
   prefix?: string;
   mode: 'read' | 'readwrite';
@@ -1841,25 +1783,6 @@ export interface CloudComputeOps {
   resourceScoped?: CloudResourceComputeOps;
 }
 
-/**
- * The longest a normal VM release takes, from its removal claim to its row
- * ending. AWS confirms in one pass: tagging, the Spot request cancel, the
- * terminate waiter (180 s, which resolves at its cap), then one describe that
- * counts `shutting-down` as released. Lambda's 30 × 10 s confirmation can end
- * before the instance is gone, so its bound is two such passes 30 s apart. GCP
- * and Azure confirm in one pass of no fixed length (GCP's delete operation,
- * Azure's VM, disk, NIC and IP deletes); their bound is a generous ceiling, not
- * a measurement. Cloudflare runs no VMs, and local machines stop in seconds.
- */
-export const USUAL_VM_RELEASE_SECONDS: Record<CloudType, number> = {
-  [CloudType.AWS]: 210,
-  [CloudType.GCP]: 630,
-  [CloudType.Azure]: 630,
-  [CloudType.Lambda]: 630,
-  [CloudType.Cloudflare]: 60,
-  [CloudType.Local]: 60,
-};
-
 const DEFAULT_TERMINATE_VMS_CONCURRENCY = 20;
 const DEFAULT_RELEASE_CONFIRM_MAX_ATTEMPTS = 4;
 const DEFAULT_RELEASE_CONFIRM_WAIT_MS = 2_000;
@@ -2056,25 +1979,16 @@ export function createCloudCompute(ops: CloudComputeOps): CloudCompute {
   }
 
   if (ops.resourceScoped) {
-    compute.nodePoolBoot = ops.resourceScoped.nodePoolBoot;
-    const poolsOnly = PROVIDER_DATA[ops.type].compute?.poolsOnly;
-    const refuse = (scope: CloudResourceScope) => {
-      if (poolsOnly) refuseClusterScope(ops.type, scope);
-    };
-    compute.prepareResourceNetwork = async (spec, scope, version) => {
-      refuse(scope);
-      return ops.resourceScoped!.prepareResourceNetwork(spec, scope, version);
-    };
+    compute.prepareResourceNetwork = async (spec, scope, version) =>
+      ops.resourceScoped!.prepareResourceNetwork(spec, scope, version);
     if (ops.resourceScoped.adoptResourceProvisioningAttempt) {
       compute.adoptResourceProvisioningAttempt = async (attempt) => {
-        refuse(attempt.scope);
         const vm =
           await ops.resourceScoped!.adoptResourceProvisioningAttempt!(attempt);
         return vm ? resolveGatewayVM(vm) : null;
       };
     }
     compute.newResourceVM = async (params) => {
-      refuse(params.scope);
       const rejection = acceleratorRuntimeRejectionMessage(
         ops.type,
         params.gpuRuntime,

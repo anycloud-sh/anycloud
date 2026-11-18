@@ -6,17 +6,8 @@ import {
 } from '../shared/cloud-config.js';
 import type { CloudConfig } from '../shared/cloud.js';
 import { DeployError } from '../shared/errors.js';
-import {
-  getOwnApiChart,
-  getOwnApiImage,
-  getWorkloadApiUrl,
-  isHelmManagedApi,
-} from './config.js';
-import {
-  generateDeploymentId,
-  generateClusterId,
-  generateNodePoolId,
-} from '../shared/id-generator.js';
+import { getOwnApiChart, getOwnApiImage, isHelmManagedApi } from './config.js';
+import { generateClusterId } from '../shared/id-generator.js';
 import { sleep } from '../shared/utils.js';
 import {
   createSelfDelete,
@@ -56,11 +47,6 @@ import {
 import { validateTargetAvailability } from './services/compute-candidates.js';
 import { cloudAccount } from './services/cloud-account.js';
 import {
-  assertNodePoolVmTypes,
-  assertUserNamespaceVmTypes,
-  nestedVirtualizationVmTypes,
-} from './services/node-pool-admission.js';
-import {
   createCredentialsDomain,
   type CredentialsDomainDependencies,
 } from './services/credentials-domain.js';
@@ -72,17 +58,11 @@ import {
   createWorkloadAdmissionDomain,
   type WorkloadAdmissionDomainDependencies,
 } from './services/workload-admission-domain.js';
-import {
-  persistNodePoolServiceWorkload,
-  persistWorkloadCreation,
-  persistPoolJob,
-  persistTargetedWorkload,
-} from './services/workload-admission-persistence.js';
+import { persistWorkloadCreation } from './services/workload-admission-persistence.js';
 import { prepareWorkloadCreation } from './services/workload-admission-plan.js';
 import { resolveWorkloadAdmission } from './services/workload-admission-resolution.js';
 import {
   createWorkloadManagementDomain,
-  WorkloadManagementError,
   type WorkloadManagementDomainDependencies,
 } from './services/workload-management-domain.js';
 import {
@@ -91,19 +71,11 @@ import {
 } from './services/workload-operation-helpers.js';
 import { toWorkloadEvent } from './services/repositories/workload-events.js';
 import { DockerManager } from './services/docker.js';
-import { validateId } from './services/workload-admission-checks.js';
 import Github from './services/gateways/github.js';
-import {
-  canManageCloudResources,
-  type CloudCompute,
-} from './services/gateways/cloud.js';
+import { canManageCloudResources } from './services/gateways/cloud.js';
 import { inspectImage } from '../shared/image-registry.js';
 import { resolveApiImage } from '../shared/api-image.js';
 import { observeClusterIdentity } from './services/kubernetes/cluster-identity.js';
-import {
-  configureDefaultNodePoolRuntime,
-  getDefaultNodePoolRuntime,
-} from './services/node-pool-runtime-default.js';
 import {
   createClustersDomain,
   type ClusterDomainDependencies,
@@ -115,7 +87,7 @@ import {
   createClusterInfrastructure,
   createClusterReleaseClient,
 } from './services/cluster-installer-runtime.js';
-import { isKubernetesNotFoundError } from './services/kubernetes/managed-resources.js';
+import { isKubernetesNotFoundError } from './services/kubernetes/errors.js';
 import { observeHookJob } from './services/system-release/ready-job.js';
 import {
   createHostStepExecutor,
@@ -123,10 +95,6 @@ import {
 } from './services/system-release/host-step.js';
 import { SSHManager } from './services/gateways/ssh.js';
 import { randomBytes } from 'node:crypto';
-import {
-  createNodePoolsDomain,
-  type NodePoolDomainDependencies,
-} from './services/node-pools-domain.js';
 import { getDefaultWorkloadOperations } from './services/job/default-operations.js';
 import { vmSshHost } from './services/job/vm-host-operations.js';
 import { log } from './services/logger.js';
@@ -180,17 +148,6 @@ import {
   getSchemaAppVersion,
   type Persistence,
 } from './services/persistence.js';
-import { submitTargetedJob } from './services/targeted-job-admission.js';
-import { submitNodePoolService } from './services/node-pool-service-admission.js';
-import { submitPoolJob } from './services/pool-job-admission.js';
-import { getDefaultNodePoolServiceRuntime } from './services/node-pool-service-runtime-default.js';
-import { createDeploymentsDomain } from './services/deployments-domain.js';
-import { getDefaultDeploymentControl } from './services/deployment-controller.js';
-import { poolJobWait } from './services/deployment-status.js';
-import { observePoolRunners } from './services/pool-runners.js';
-import { drainPoolJobs } from './services/pool-job-drain.js';
-import { createDeploymentWorkloadDomain } from './services/deployment-workload-domain.js';
-import { getDefaultDeploymentRuntimeResolver } from './services/kubernetes/default-runtime.js';
 import {
   createQuotaDomain,
   type QuotaDomainDependencies,
@@ -228,8 +185,6 @@ import {
 import {
   calendarWindowEndMs,
   calendarWindowStartMs,
-  claimSpendBlock,
-  findReplicaCapBlock,
 } from './services/spend-controls.js';
 import { PERIODS } from './services/spend-controls-store.js';
 import {
@@ -238,27 +193,12 @@ import {
 } from './services/spend-controls-domain.js';
 import { fireAndForget } from './services/task.js';
 import { readWorkloadCheckpointHealth } from './services/workload-storage.js';
-import {
-  admitPoolJobStorage,
-  loadPoolJobConfigs,
-  managesPoolCheckpoint,
-  mintPoolJobStorage,
-} from './services/pool-job-storage.js';
 import { recordEvent, recordStatusEvent } from './services/telemetry.js';
 
 export interface ApiCompositionOptions {
   overrides?: Partial<ApiRpcDomains>;
   /** Present on a Helm-managed API: enables the system release surface. */
   hostedSystemRelease?: HostedSystemReleaseIdentity;
-  /** Narrow qualification seam for node pool VM compute; production omits it. */
-  nodePoolCapacity?: NodePoolCapacityComposition;
-  /** Images a Deployment or a pool Job runs; the local e2e cluster's aren't in a registry. */
-  inspectDeploymentImage?: typeof inspectImage;
-}
-
-export interface NodePoolCapacityComposition {
-  createCompute(config: CloudConfig): CloudCompute;
-  validateTarget: NodePoolDomainDependencies['validateTarget'];
 }
 
 let readOnlyDatabasePromise: Promise<ReadOnlyDatabase> | undefined;
@@ -319,10 +259,9 @@ interface CapacityTargetRequest {
 }
 
 /**
- * Capacity VM admission shared by node pools and clusters: the
- * catalog must know the target, the provider must isolate capacity
- * networking, and the saved credential must authenticate before durable
- * intent is stored.
+ * Management VM admission for clusters: the catalog must know the target,
+ * the provider must isolate capacity networking, and the saved credential
+ * must authenticate before durable intent is stored.
  */
 async function validateCapacityTarget(
   input: CapacityTargetRequest,
@@ -333,7 +272,6 @@ async function validateCapacityTarget(
   const cloudConfig: CloudConfig = {
     cloudProvider: credential.cloudProvider,
     credentials: extractCredentials(decrypted),
-    // An unpinned node pool is checked in its first catalog region.
     region:
       input.region ??
       getRegionsForVMType(input.vmType, credential.cloudProvider)[0],
@@ -354,42 +292,6 @@ async function validateCapacityTarget(
   validateComputeCandidateConfig(cloudConfig, compute);
   await compute.validateCredentials();
 }
-
-const validateNodePoolTarget: NodePoolDomainDependencies['validateTarget'] =
-  async (input, credential) => {
-    await validateCapacityTarget(
-      { region: input.region, vmType: input.vmTypes[0]!, spot: input.spot },
-      credential,
-    );
-    const vmTypes = input.requireNestedVirtualization
-      ? nestedVirtualizationVmTypes(
-          credential.cloudProvider,
-          input.vmTypes,
-          input.region,
-          input.zone,
-        )
-      : input.vmTypes;
-    assertNodePoolVmTypes(
-      credential.cloudProvider,
-      vmTypes,
-      input.region,
-      input.osDiskTier,
-      input.osDiskSizeGb,
-    );
-    if (input.userNamespaceJobs) {
-      assertUserNamespaceVmTypes(credential.cloudProvider, vmTypes);
-    }
-    return {
-      region: input.region ?? null,
-      zone: input.zone ?? null,
-      vmTypes,
-      minVmCount: input.minVmCount,
-      maxVmCount: input.maxVmCount,
-      osDiskSizeGb: input.osDiskSizeGb,
-      osDiskTier: input.osDiskTier,
-      spot: input.spot,
-    };
-  };
 
 /**
  * Cluster creation runs on the API that holds the saved cloud credential. A
@@ -466,7 +368,7 @@ function clusterDependencies(
       activateTls: activateApiTls,
       removeTls: removeApiTls,
     },
-    // Node pools live in the hosted API: destroy asks it at the
+    // An older hosted API may still run node pools: destroy asks it at the
     // installation's hostname with the caller's own bearer.
     hostedPools: createHostedNodePoolInventory({
       clientVersion: config.currVersion,
@@ -512,18 +414,6 @@ function inClusterHostSteps(): HostStepExecutor {
   };
 }
 
-/** Service Workloads and Deployment records holding a node pool in use. */
-async function countLiveNodePoolReferences(
-  persistence: Persistence,
-  nodePoolId: string,
-): Promise<number> {
-  return (
-    (await persistence.nodePoolServices.countLiveNodePoolReferences(
-      nodePoolId,
-    )) + (await persistence.deployments.countHoldingNodePool(nodePoolId))
-  );
-}
-
 /**
  * The hosted API's own delete (RFC 0049 C26, seed design): its account through
  * the VM's identity, its installation from the release values' `selfDelete`.
@@ -557,17 +447,6 @@ function hostedSelfDelete(
       }
     },
     liveDependents: async () => ({
-      pools: await Promise.all(
-        (await persistence.nodePools.listForReconciliation()).map(
-          async (pool) => ({
-            name: pool.name,
-            liveReferences: await countLiveNodePoolReferences(
-              persistence,
-              pool.id,
-            ),
-          }),
-        ),
-      ),
       workloads: await persistence.workloadQueries.listLiveVmHostWorkloadIds(),
     }),
     backup: getDefaultApiDatabaseBackup(identity.installationId),
@@ -611,15 +490,6 @@ function systemReleaseDependencies(
     isConflict: (error): error is ClusterReleaseConflictError =>
       error instanceof ClusterReleaseConflictError,
     servedVersion: config.currVersion,
-    drainPoolJobs: async (force, keep) =>
-      (await drainPoolJobs(force, keep)).map(
-        ({ id, state, nodePool, runnerRelease }) => ({
-          id,
-          state,
-          nodePool,
-          runnerRelease,
-        }),
-      ),
     schemaVersion: getSchemaAppVersion,
     hostSteps: inClusterHostSteps(),
     backup: identity
@@ -713,84 +583,6 @@ function systemReleaseDependencies(
   };
 }
 
-function nodePoolDependencies(
-  persistence: Persistence,
-  capacity?: NodePoolCapacityComposition,
-): NodePoolDomainDependencies {
-  if (capacity) {
-    configureDefaultNodePoolRuntime({ createCompute: capacity.createCompute });
-  }
-  const validateTarget = capacity?.validateTarget ?? validateNodePoolTarget;
-  return {
-    requestBackup: requestApiDatabaseBackup,
-    nodePools: persistence.nodePools,
-    clusterRecords: persistence.clusterRecords,
-    credentials: persistence.credentialSecrets,
-    // Durable records that hold a node pool in use: Service Workloads until
-    // their cleanup confirms native removal, user Deployment records until
-    // deleted, and managed Deployments' live or uncleaned pool Jobs. The
-    // deletion request re-evaluates the same set in its own transaction;
-    // this is the early diagnostic.
-    references: {
-      hasLiveReferences: async (nodePoolId) =>
-        (await persistence.nodePoolServices.hasLiveNodePoolReferences(
-          nodePoolId,
-        )) ||
-        (await persistence.deployments.countHoldingNodePool(nodePoolId)) > 0,
-      countLiveReferences: (nodePoolId) =>
-        countLiveNodePoolReferences(persistence, nodePoolId),
-    },
-    generateId: generateNodePoolId,
-    resolveScope: resolveOwnershipScope,
-    runtime: {
-      // A pool's deletion request also marks its managed Deployments; wake
-      // their owner now rather than at the next resync, best effort: the
-      // pool's own wake never waits on it.
-      schedule: async (nodePoolId) => {
-        const pool =
-          getDefaultNodePoolRuntime().reconciler.schedule(nodePoolId);
-        await persistence.deployments
-          .listDeletingManaged(nodePoolId)
-          .then((ids) => {
-            for (const id of ids) getDefaultDeploymentControl().schedule(id);
-          })
-          .catch((error: unknown) =>
-            log.warn('Managed Deployment wake failed; the resync will run it', {
-              nodePoolId,
-              error: errorMessage(error),
-            }),
-          );
-        await pool;
-      },
-      observeCapacity: (nodePoolId) =>
-        getDefaultNodePoolRuntime().controller.observeCapacity(nodePoolId),
-      runners: (nodePoolId) =>
-        observePoolRunners(
-          {
-            rows: (id) => persistence.poolJobs.runnerRows(id),
-            runtimes: getDefaultDeploymentRuntimeResolver(),
-            capBlock: () => findReplicaCapBlock(nodePoolId),
-          },
-          nodePoolId,
-        ).catch((error: unknown) => {
-          log.warn('Node pool runners could not be read', {
-            nodePoolId,
-            error: errorMessage(error),
-          });
-          return null;
-        }),
-      assertClusterCompatible: (clusterId, signal) =>
-        getDefaultNodePoolRuntime().controller.assertClusterCompatible(
-          clusterId,
-          signal,
-        ),
-      ingress: (nodePoolId) =>
-        getDefaultNodePoolRuntime().controller.ingress(nodePoolId),
-    },
-    validateTarget,
-  };
-}
-
 function credentialsDependencies(
   persistence: Persistence,
 ): CredentialsDomainDependencies {
@@ -809,72 +601,13 @@ function credentialsDependencies(
   };
 }
 
-function admissionDependencies(
-  persistence: Persistence,
-  inspectPoolImage: typeof inspectImage,
-): WorkloadAdmissionDomainDependencies {
+function admissionDependencies(): WorkloadAdmissionDomainDependencies {
   return {
     resolve: resolveWorkloadAdmission,
     prepare: prepareWorkloadCreation,
     persist: persistWorkloadCreation,
-    submitTargeted: (actor, input, signal) =>
-      submitTargetedJob(
-        {
-          deployments: persistence.deployments,
-          persist: persistTargetedWorkload,
-          resolveScope: resolveOwnershipScope,
-          validateId,
-          now: Date.now,
-        },
-        actor,
-        input,
-        signal,
-      ),
-    submitNodePoolService: (actor, input, signal) =>
-      submitNodePoolService(
-        {
-          nodePools: persistence.nodePools,
-          resolveScope: resolveOwnershipScope,
-          observeCapacity: (nodePoolId) =>
-            getDefaultNodePoolRuntime().controller.observeCapacity(nodePoolId),
-          assertClusterCompatible: (clusterId, requestSignal) =>
-            getDefaultNodePoolRuntime().controller.assertClusterCompatible(
-              clusterId,
-              requestSignal,
-            ),
-          inspectImage,
-          preflightSecrets: preflightRuntimeSecrets,
-          validateId,
-          persist: async (workload) => {
-            await persistNodePoolServiceWorkload(workload);
-            void getDefaultNodePoolServiceRuntime().reconciler.schedule(
-              workload.id,
-            );
-          },
-        },
-        actor,
-        input,
-        signal,
-      ),
-    submitPoolJob: (actor, input, signal) =>
-      submitPoolJob(
-        {
-          nodePools: persistence.nodePools,
-          resolveScope: resolveOwnershipScope,
-          inspectImage: inspectPoolImage,
-          preflightSecrets: preflightRuntimeSecrets,
-          validateId,
-          admitStorage: admitPoolJobStorage,
-          persist: persistPoolJob,
-          schedule: (id) => getDefaultDeploymentControl().schedule(id),
-        },
-        actor,
-        input,
-        signal,
-      ),
     recordEvent,
     now: Date.now,
-    workloadApiUrl: getWorkloadApiUrl,
   };
 }
 
@@ -882,48 +615,17 @@ function managementDependencies(
   persistence: Persistence,
 ): WorkloadManagementDomainDependencies {
   return {
-    jobChanges: persistence.jobChanges,
     store: persistence.workloadQueries,
     spend: persistence.workloadSpend,
-    submissions: persistence.deploymentExecutions,
     outcomes: persistence.workloadOutcomes,
     credentials: persistence.credentialSecrets,
     resolveScope: resolveOwnershipScope,
-    validateTargetDeployment: async (deploymentId, scope) => {
-      const target = await persistence.deployments.getForScope(
-        deploymentId,
-        scope,
-      );
-      if (!target || target.deletionRequestedAt !== null) {
-        throw new WorkloadManagementError(
-          target
-            ? 'The target Deployment is draining and cannot accept a resubmission.'
-            : 'The target Deployment no longer exists.',
-          target ? 409 : 404,
-        );
-      }
-    },
     prepareCheckpoint: prepareStoredServiceCheckpoint,
     preflightSecrets: preflightRuntimeSecrets,
     requestCleanup: async (workloadId) => {
       await requestWorkloadCleanup(workloadId);
     },
     getWorkloadOperations: getDefaultWorkloadOperations,
-    poolJobWait: async (workload, latestMessage) => {
-      // The claim names a session cap that skips the Job (SLOT).
-      if (latestMessage?.startsWith('blocked by')) return latestMessage;
-      const deployment = await persistence.deployments.getById(
-        workload.deploymentId!,
-      );
-      if (!deployment?.managed) return null;
-      const [runtime, block] = await Promise.all([
-        getDefaultDeploymentControl().observe(deployment),
-        findReplicaCapBlock(deployment.nodePoolId),
-      ]);
-      return poolJobWait(runtime, block);
-    },
-    poolJobSpot: async (workload) => managesPoolCheckpoint(workload),
-    workloadApiUrl: getWorkloadApiUrl,
     inspectContainerState: async (workload, vm) =>
       (
         await new DockerManager(
@@ -940,18 +642,9 @@ function managementDependencies(
     logWarn: (message, metadata) => log.warn(message, metadata),
     statusHealthCheckTimeoutMs: STATUS_HEALTH_CHECK_TIMEOUT_MS,
     readCheckpointHealth: async (workload) => {
-      // A pool Job's checkpoint is its own prefix of the bucket, or the
-      // whole managed bucket of a spot pool's Job (RFC 0043).
-      const pool = workload.deploymentId !== null;
-      const cloudConfig = await (
-        pool ? loadPoolJobConfigs : loadWorkloadConfigs
-      )(workload);
+      const cloudConfig = await loadWorkloadConfigs(workload);
       if (!cloudConfig) throw new Error('Workload credentials are missing');
-      return readWorkloadCheckpointHealth(
-        cloudConfig,
-        workload.id,
-        pool && workload.checkpointBucket ? `${workload.id}/` : '',
-      );
+      return readWorkloadCheckpointHealth(cloudConfig, workload.id, '');
     },
     now: Date.now,
   };
@@ -1057,48 +750,6 @@ export function createApiRpcDomains(
       createClustersDomain(
         clusterDependencies(persistence, isHelmManagedApi()),
       ),
-    nodePools:
-      overrides.nodePools ??
-      createNodePoolsDomain(
-        nodePoolDependencies(persistence, options.nodePoolCapacity),
-      ),
-    deployments:
-      overrides.deployments ??
-      createDeploymentsDomain({
-        deployments: persistence.deployments,
-        nodePools: persistence.nodePools,
-        observeNodePoolCapacity: (nodePoolId) =>
-          getDefaultNodePoolRuntime().controller.observeCapacity(nodePoolId, {
-            requireObservation: true,
-          }),
-        jobs: {
-          counts: (id) =>
-            persistence.deploymentExecutions.countTargetedJobs(id),
-          statusSnapshot: (id) =>
-            persistence.deploymentExecutions.targetedJobStatusSnapshot(id),
-          terminateUnassigned: (id) =>
-            persistence.deploymentExecutions.terminateUnassignedTargetedJobs(
-              id,
-            ),
-        },
-        runtime: getDefaultDeploymentControl(),
-        resolveScope: resolveOwnershipScope,
-        generateId: generateDeploymentId,
-        inspectImage: options.inspectDeploymentImage ?? inspectImage,
-        preflightSecrets: preflightRuntimeSecrets,
-        workloadApiUrl: getWorkloadApiUrl,
-      }),
-    deploymentWorkload:
-      overrides.deploymentWorkload ??
-      createDeploymentWorkloadDomain({
-        jobChanges: persistence.jobChanges,
-        deployments: persistence.deployments,
-        jobs: persistence.deploymentExecutions,
-        claimSpendBlock,
-        mintStorage: mintPoolJobStorage,
-        runtimes: getDefaultDeploymentRuntimeResolver(),
-        reconcile: (id) => getDefaultDeploymentControl().schedule(id),
-      }),
     apiAccess:
       overrides.apiAccess ?? createApiAccessDomain(apiAccessDependencies()),
     database:
@@ -1113,12 +764,7 @@ export function createApiRpcDomains(
       createWorkloadManagementDomain(managementDependencies(persistence)),
     workloadAdmission:
       overrides.workloadAdmission ??
-      createWorkloadAdmissionDomain(
-        admissionDependencies(
-          persistence,
-          options.inspectDeploymentImage ?? inspectImage,
-        ),
-      ),
+      createWorkloadAdmissionDomain(admissionDependencies()),
     bucketMetadata:
       overrides.bucketMetadata ??
       createBucketMetadataDomain(bucketMetadataDependencies()),

@@ -75,14 +75,3 @@ export function generateJobId(image?: string): string {
 export function generateClusterId(name: string): string {
   return generateTimestampedId(extractImageName(name) || 'install');
 }
-
-/** Generate a provider-safe durable node pool identity from a display name. */
-export function generateNodePoolId(name: string): string {
-  return generateTimestampedId(extractImageName(name) || 'node-pool');
-}
-
-/** Generate a provider-safe durable Deployment identity. */
-export function generateDeploymentId(name: string): string {
-  // Preserve the historical fallback prefix used in durable resource identities.
-  return generateTimestampedId(extractImageName(name) || 'worker');
-}

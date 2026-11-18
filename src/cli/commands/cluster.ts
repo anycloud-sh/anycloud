@@ -37,7 +37,7 @@ import {
   clusterApiVersion,
   formatClusterState,
   printClusterSummary,
-} from '../utils/kubernetes-output.js';
+} from '../utils/cluster-output.js';
 import { formatAge } from '../utils/duration.js';
 import {
   DEFAULT_WATCH_INTERVAL_SECONDS,
@@ -67,22 +67,6 @@ interface CreateOptions extends JsonOptions {
   zone?: string;
   vmType?: string;
   checkpointBucket?: string;
-}
-
-const DEFAULT_DESTROY_TIMEOUT_SECONDS = 900;
-
-interface DestroyOptions extends JsonOptions {
-  wait?: boolean;
-  timeout: number;
-  deleteBuckets?: boolean;
-  confirm?: string;
-}
-function parsePositiveInteger(value: string, option: string): number {
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${option} must be a positive integer`);
-  }
-  return parsed;
 }
 
 /** Done once creation or deletion settles: running, failed, or fully terminated. */

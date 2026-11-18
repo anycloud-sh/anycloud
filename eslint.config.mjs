@@ -67,8 +67,6 @@ const lowerLayerIntegrationTests = [
   'test/integration/credential-lifecycle.spec.ts', // RFC 0034 fake-provider wire lane
   'test/integration/cli-piped-output.spec.ts', // Compiled CLI binary stdio against a fake API; no Workload lifecycle
   'test/integration/cli-seed-smoke.spec.ts', // The compiled seed's cluster create against fake cloud CLIs; no Workload lifecycle
-  'test/integration/runner-rclone-sync.spec.ts', // The runner's input sync with the pinned rclone binary; no Workload lifecycle
-  'test/integration/pool-job-storage.spec.ts', // RFC 0043: pool Job credentials on real Azure, S3 or GCS storage with the pinned rclone; no Workload lifecycle
   'test/integration/agent-onboarding.spec.ts', // Local: coding agents follow SKILL.md with the released CLI in Docker-in-Docker; the agent owns submission
 
   'test/integration/kubernetes-host-step.spec.ts', // RFC 0049 C26 (b): the K3s host step on the pinned K3s server; no Workload lifecycle
@@ -185,21 +183,6 @@ const environmentAccessOptions = {
       // shares with its Docker daemon at the same path.
       file: 'src/api/services/gateways/local-smolvm-contract.ts',
       variables: ['ANYCLOUD_TEST_LOCAL_BUCKET_ROOT'],
-    },
-    {
-      // e2e-cluster-cloud fails a pool's first launch in one region.
-      file: 'src/api/services/node-pool-controller.ts',
-      variables: ['ANYCLOUD_E2E_CAPACITY_FAULT'],
-    },
-    {
-      // S12 measures the in-flight cap at 500 on KWOK.
-      file: 'src/api/services/deployment-replicas.ts',
-      variables: ['IS_TEST', 'ANYCLOUD_E2E_IN_FLIGHT_CAP'],
-    },
-    {
-      // 0.1.71: pool Jobs only in e2e until upgrades drain them.
-      file: 'src/api/services/pool-job-admission.ts',
-      variables: ['ANYCLOUD_E2E_POOL_JOBS'],
     },
     {
       // ANYCLOUD_GITHUB_API_URL: a loopback fake GitHub for hosted-API tests.

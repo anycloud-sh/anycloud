@@ -42,11 +42,9 @@ const mocks = vi.hoisted(() => ({
   activeVmHostedApi: vi.fn(),
   systemReleaseStatus: vi.fn(),
   systemReleaseRequest: vi.fn(),
-  systemReleaseDrain: vi.fn(async () => ({ jobs: [] })),
   systemReleaseKubernetes: vi.fn(),
   clustersList: vi.fn(),
   remainingRemovedWorkloads: vi.fn(async (): Promise<unknown[]> => []),
-  checkApiHealth: vi.fn(async () => true),
   createApiClientOptions: vi.fn(),
   /** `docker inspect --format {{.RestartCount}}`; null when no container. */
   restartCount: vi.fn((): string | null => null),
@@ -123,7 +121,6 @@ vi.mock('../../../src/cli/services/api-target.js', async (importActual) => ({
     >()
   ).vmHostedApiMigrationMessage,
   activeVmHostedApi: mocks.activeVmHostedApi,
-  checkApiHealth: mocks.checkApiHealth,
   describeApiUrlSource: vi.fn(() => 'default local API'),
   discoverApiTargetRows: mocks.discoverApiTargetRows,
   getActiveApiTargetInfo: mocks.getActiveApiTargetInfo,
@@ -160,7 +157,6 @@ vi.mock('../../../src/shared/services/api-client/rpc.js', async (actual) => ({
     systemRelease: {
       status: mocks.systemReleaseStatus,
       request: mocks.systemReleaseRequest,
-      drain: mocks.systemReleaseDrain,
       kubernetes: mocks.systemReleaseKubernetes,
     },
     clusters: {
@@ -420,33 +416,12 @@ describe('api command', () => {
     await runApi(['upgrade']);
 
     expect(mocks.reconcileLocalApi).toHaveBeenCalledWith(packageJson.version, {
-      beforeRestart: expect.any(Function),
       startIfStopped: true,
     });
     expect(mocks.apiBearer).not.toHaveBeenCalled();
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
     expect(mocks.printSuccess).toHaveBeenCalledWith(
       `Local API matches anycloud ${packageJson.version}.`,
-    );
-  });
-
-  it('drains the local API before its restart, unless it does not answer', async () => {
-    await runApi(['upgrade', '--force']);
-    const [, options] = mocks.reconcileLocalApi.mock.calls[0] as [
-      string,
-      { beforeRestart: (apiUrl: string) => Promise<void> },
-    ];
-    await options.beforeRestart('http://localhost:8080');
-    expect(mocks.checkApiHealth).toHaveBeenCalledWith('http://localhost:8080');
-    // The first poll lists before anything stops (RFC 0049 C27).
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledExactlyOnceWith({
-      force: false,
-    });
-    mocks.checkApiHealth.mockResolvedValueOnce(false);
-    await options.beforeRestart('http://localhost:8080');
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledOnce();
-    expect(mocks.printWarning).toHaveBeenCalledWith(
-      'Skipped draining pool Jobs: the local API did not answer /health. Pool Jobs it claimed before keep running until the new API replaces their replicas, then retry.',
     );
   });
 
@@ -468,7 +443,6 @@ describe('api command', () => {
     await runApi(['upgrade']);
 
     expect(mocks.reconcileLocalApi).toHaveBeenCalledWith(packageJson.version, {
-      beforeRestart: expect.any(Function),
       startIfStopped: true,
       startPort: 9000,
     });
@@ -533,14 +507,6 @@ describe('api command', () => {
       image: `${packageJson.apiImage}:${packageJson.version}`,
     });
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
-    // Decision 30: the pool Jobs drain before the release is requested.
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledWith({
-      force: false,
-      image: `${packageJson.apiImage}:${packageJson.version}`,
-    });
-    expect(mocks.systemReleaseDrain.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.systemReleaseRequest.mock.invocationCallOrder[0]!,
-    );
     // The verdict is a plain line with the upgrade number, not a spinner
     // message (a non-TTY run prints none).
     expect(mocks.printSuccess).toHaveBeenCalledWith(
@@ -663,7 +629,7 @@ describe('api command', () => {
       });
     });
 
-    it('runs after the drain and before the hosted upgrade, from any machine, and reports its result', async () => {
+    it('runs before the hosted upgrade, from any machine, and reports its result', async () => {
       mocks.systemReleaseKubernetes.mockResolvedValue({ step });
       await runApi(['upgrade']);
 
@@ -674,9 +640,6 @@ describe('api command', () => {
       });
       const order = (mock: { mock: { invocationCallOrder: number[] } }) =>
         mock.mock.invocationCallOrder[0]!;
-      expect(order(mocks.systemReleaseDrain)).toBeLessThan(
-        order(mocks.systemReleaseKubernetes),
-      );
       expect(order(mocks.systemReleaseKubernetes)).toBeLessThan(
         order(mocks.systemReleaseRequest),
       );
@@ -726,29 +689,6 @@ describe('api command', () => {
     );
   });
 
-  it('api upgrade prints a refusal from the pool Job drain as the same verdict, before stopping anything', async () => {
-    useHostedActive();
-    mocks.systemReleaseStatus.mockResolvedValue({
-      servedVersion: '0.0.1',
-      schemaVersion: '0.0.1',
-      upgrade: null,
-      rollout: null,
-    });
-    mocks.systemReleaseDrain.mockRejectedValueOnce(
-      new ORPCError('SYSTEM_RELEASE_REFUSED', {
-        status: 400,
-        message: 'Release refused: no published API image for version 9.9.9',
-      }),
-    );
-    await expect(runApi(['upgrade', '--force'])).rejects.toThrow(
-      /process\.exit:1/,
-    );
-    expect(mocks.printError).toHaveBeenCalledWith(
-      'Hosted API upgrade refused: Release refused: no published API image for version 9.9.9',
-    );
-    expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
-  });
-
   it('api upgrade refuses, naming them, while the hosted API runs node pools, Deployments or node pool Services', async () => {
     useHostedActive();
     mocks.systemReleaseStatus.mockResolvedValue({
@@ -764,7 +704,7 @@ describe('api command', () => {
     await expect(runApi(['upgrade', '--json'])).rejects.toThrow(
       /process\.exit:1/,
     );
-    // Read with the served version, before the drain or anything else.
+    // Read with the served version, before anything else.
     expect(mocks.remainingRemovedWorkloads).toHaveBeenCalledWith(
       'https://api-1.anycloud.sh',
       '0.0.1',
@@ -780,7 +720,6 @@ describe('api command', () => {
     expect(document!.error.message).toContain(
       '  node pool Service svc-1\n  node pool gpu (np-1)\n',
     );
-    expect(mocks.systemReleaseDrain).not.toHaveBeenCalled();
     expect(mocks.systemReleaseKubernetes).not.toHaveBeenCalled();
     expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
   });

@@ -50,7 +50,7 @@ grants() {
   return 1
 }
 
-# One timed rclone run with the pool runner's flags (src/runner/transfer.ts),
+# One timed rclone run with the removed pool runner's flags,
 # then the local side's file count and bytes.
 transfer() {
   local storage=$1 step=$2 role=$3 verb=$4 from=$5 to=$6 local=$7 start code

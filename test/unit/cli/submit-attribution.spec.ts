@@ -78,7 +78,6 @@ vi.mock('../../../src/cli/session/detect.js', () => ({
 
 import { createSubmitCommand } from '../../../src/cli/commands/submit.js';
 import { detectSession } from '../../../src/cli/session/detect.js';
-import { printError } from '../../../src/cli/utils/output.js';
 
 const createWorkload = api.createWorkload;
 
@@ -151,112 +150,37 @@ describe('submit attribution stamping', () => {
   });
 });
 
-describe('job --node-pool', () => {
+describe('job VM options', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createWorkload).mockResolvedValue({ id: 'job-1' });
   });
 
-  it("sends the Job's buckets and storage options with the pool", async () => {
-    await runSubmit([
-      'ghcr.io/acme/train:1',
-      '--node-pool',
-      'gpu',
-      '--input-bucket',
-      'dataset',
-      '--output-bucket',
-      'results',
-      '--checkpoint-bucket',
-      'state',
-      '--checkpoint-storage-region',
-      'eastus',
-      '--output-storage-credentials',
-      'azure-storage',
-      '--checkpoint-storage-credentials',
-      'azure-storage',
-    ]);
-    expect(lastRequest()).toMatchObject({
-      nodePool: 'gpu',
-      cloudConfig: {
-        inputBucket: 'dataset',
-        outputBucket: 'results',
-        checkpointBucket: 'state',
-        checkpointStorageRegion: 'eastus',
-      },
-      outputStorageCredentialName: 'azure-storage',
-      checkpointStorageCredentialName: 'azure-storage',
-    });
-    expect(lastRequest()).not.toHaveProperty(
-      'cloudConfig.outputStorageCredentials',
-    );
-  });
-
-  it.each([
-    [['--node-pool', 'gpu', 'ghcr.io/acme/train:1']],
-    [['--deployment', 'model']],
-  ])('sends --max-retries 0 with %j', async (target) => {
-    await runSubmit([...target, '--max-retries', '0']);
+  it('sends --max-retries 0', async () => {
+    await runSubmit(['ghcr.io/acme/train:1', '--max-retries', '0']);
     expect(lastRequest()).toMatchObject({ maxRetries: 0 });
   });
 
   it.each(['-1', '1.5', 'two'])('refuses --max-retries %s', async (value) => {
     await expect(
-      runSubmit([
-        'ghcr.io/acme/train:1',
-        '--node-pool',
-        'gpu',
-        '--max-retries',
-        value,
-      ]),
+      runSubmit(['ghcr.io/acme/train:1', '--max-retries', value]),
     ).rejects.toThrow();
     expect(createWorkload).not.toHaveBeenCalled();
   });
 
-  it('sends --require-nested-virtualization for a Job on a VM only', async () => {
+  it('sends --require-nested-virtualization and --host-docker', async () => {
     await runSubmit(['ghcr.io/acme/ci:1', '--require-nested-virtualization']);
     expect(lastRequest()).toMatchObject({ requireNestedVirtualization: true });
-    vi.mocked(createWorkload).mockClear();
-    for (const target of [
-      ['--node-pool', 'ci'],
-      ['--deployment', 'runners'],
-    ])
-      await expect(
-        runSubmit([
-          'ghcr.io/acme/ci:1',
-          ...target,
-          '--require-nested-virtualization',
-        ]),
-      ).rejects.toThrow(/process\.exit/);
-    expect(createWorkload).not.toHaveBeenCalled();
-  });
-
-  it('sends --host-docker for a Job on a VM only', async () => {
     await runSubmit(['ghcr.io/acme/ci:1', '--host-docker']);
     expect(lastRequest()).toMatchObject({ hostDocker: true });
-    vi.mocked(createWorkload).mockClear();
-    for (const target of [
-      ['--node-pool', 'ci'],
-      ['--deployment', 'runners'],
-    ])
-      await expect(
-        runSubmit(['ghcr.io/acme/ci:1', ...target, '--host-docker']),
-      ).rejects.toThrow(/process\.exit/);
-    expect(createWorkload).not.toHaveBeenCalled();
   });
 
-  it('sends --regions in the cloud config for a Job on a VM only', async () => {
+  it('sends --regions in the cloud config, never an empty list', async () => {
     await runSubmit(['ghcr.io/acme/ci:1', '--regions', 'us-east-1, us-west-2']);
     expect(lastRequest()?.cloudConfig).toMatchObject({
       regions: ['us-east-1', 'us-west-2'],
     });
     vi.mocked(createWorkload).mockClear();
-    for (const target of [
-      ['--node-pool', 'ci'],
-      ['--deployment', 'runners'],
-    ])
-      await expect(
-        runSubmit(['ghcr.io/acme/ci:1', ...target, '--regions', 'us-east-1']),
-      ).rejects.toThrow(/process\.exit/);
     // An empty list is refused, never dropped into an unpinned Job.
     await expect(
       runSubmit(['ghcr.io/acme/ci:1', '--regions', ' , ']),
@@ -264,7 +188,7 @@ describe('job --node-pool', () => {
     expect(createWorkload).not.toHaveBeenCalled();
   });
 
-  it('sends --disk-iops and --disk-throughput in the cloud config for a Job on a VM only', async () => {
+  it('sends --disk-iops and --disk-throughput in the cloud config', async () => {
     await runSubmit([
       'ghcr.io/acme/ci:1',
       '--disk-throughput',
@@ -277,42 +201,22 @@ describe('job --node-pool', () => {
       diskThroughputMibps: 500,
     });
     vi.mocked(createWorkload).mockClear();
-    for (const target of [
-      ['--node-pool', 'ci'],
-      ['--deployment', 'runners'],
-    ])
-      await expect(
-        runSubmit(['ghcr.io/acme/ci:1', ...target, '--disk-iops', '3000']),
-      ).rejects.toThrow(/process\.exit/);
     await expect(
       runSubmit(['ghcr.io/acme/ci:1', '--disk-iops', '3k']),
     ).rejects.toThrow();
     expect(createWorkload).not.toHaveBeenCalled();
   });
 
-  it('sends --no-checkpoint for a Job on a pool or a VM', async () => {
-    await runSubmit(['ghcr.io/acme/train:1', '--node-pool', 'gpu']);
+  it('sends --no-checkpoint only when given', async () => {
+    await runSubmit(['ghcr.io/acme/train:1']);
     expect(lastRequest()?.noCheckpoint).toBeUndefined();
-    await runSubmit([
-      'ghcr.io/acme/train:1',
-      '--node-pool',
-      'gpu',
-      '--no-checkpoint',
-    ]);
-    expect(lastRequest()).toMatchObject({
-      nodePool: 'gpu',
-      noCheckpoint: true,
-    });
     await runSubmit(['ghcr.io/acme/train:1', '--no-checkpoint']);
     expect(lastRequest()).toMatchObject({ noCheckpoint: true });
-    expect(lastRequest()?.nodePool).toBeUndefined();
   });
 
-  it('sends --privileged and each --bind for the pool to admit', async () => {
+  it('sends --privileged and each --bind', async () => {
     // `--bind` takes one path, so the image after it stays the image.
     await runSubmit([
-      '--node-pool',
-      'ci',
       '--privileged',
       '--bind',
       '/var/lib/docker',
@@ -321,7 +225,6 @@ describe('job --node-pool', () => {
       'ghcr.io/acme/ci:1',
     ]);
     expect(lastRequest()).toMatchObject({
-      nodePool: 'ci',
       image: 'ghcr.io/acme/ci:1',
       dockerOptions: {
         privileged: true,
@@ -331,19 +234,4 @@ describe('job --node-pool', () => {
     // Deprecated (RFC 0049 C32): it warns, and still sends it.
     expect(mocks.warnPrivilegedDeprecated).toHaveBeenCalledWith('--privileged');
   });
-
-  it.each([[['--zone', 'a'], '--zone']])(
-    'still refuses what the pool owns: %j',
-    async (flags, refused) => {
-      await expect(
-        runSubmit(['ghcr.io/acme/train:1', '--node-pool', 'gpu', ...flags]),
-      ).rejects.toThrow(/process\.exit/);
-      expect(printError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          `A Job on node pool "gpu" does not accept ${refused}`,
-        ),
-      );
-      expect(createWorkload).not.toHaveBeenCalled();
-    },
-  );
 });

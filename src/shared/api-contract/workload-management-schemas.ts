@@ -63,7 +63,6 @@ export const workloadListRequestSchema = z.object({
       stateClass: z.enum(['terminatable', 'resubmittable']).optional(),
       status: z.string().optional(),
       workloadType: z.enum(['job', 'service', 'vm']).optional(),
-      deploymentId: workloadIdSchema.optional(),
       credentialName: credentialNameSchema.optional(),
       filter: z.string().optional(),
     })
@@ -110,12 +109,6 @@ export const workloadSshAccessRequestSchema = z
 export const workloadResubmitBodySchema = z
   .object({
     session: attributionSchema.optional(),
-    timeout: z
-      .number()
-      .finite()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER / 1000)
-      .optional(),
   })
   .strict();
 
@@ -126,41 +119,7 @@ export const workloadResubmitRequestSchema = z
   })
   .transform(({ params, body }) => ({ ...params, ...body }));
 
-export const jobSubmissionObservationBodySchema = z
-  .object({
-    submissionRevision: z.number().int().safe().nonnegative(),
-    waitMs: z.number().int().min(0).max(20_000).optional(),
-  })
-  .strict();
-
-export const jobSubmissionObservationRequestSchema = z
-  .object({
-    params: workloadPathParametersSchema,
-    body: jobSubmissionObservationBodySchema,
-  })
-  .transform(({ params, body }) => ({ ...params, ...body }));
-
-export const jobSubmissionOutcomeSchema = z.enum([
-  'pending',
-  'claimed',
-  'expired',
-  'terminated',
-  'changed',
-]);
-
-export const jobSubmissionObservationSchema = z
-  .object({
-    submissionRevision: z.number().int().safe().nonnegative(),
-    claimDeadlineAt: z.number().nullable(),
-    claimed: z.boolean(),
-    outcome: jobSubmissionOutcomeSchema,
-  })
-  .strict();
-
-export const workloadResubmitResponseSchema = messageResponseSchema.extend({
-  submissionRevision: z.number().int().safe().nonnegative().optional(),
-  claimDeadlineAt: z.number().nullable().optional(),
-});
+export const workloadResubmitResponseSchema = messageResponseSchema;
 
 const stringOrStringsSchema = z.union([z.string(), z.array(z.string())]);
 
@@ -183,12 +142,6 @@ const storedWorkloadSchema = z
   .object({
     id: z.string(),
     userId: z.string(),
-    deploymentId: z.string().nullable(),
-    nodePoolId: z.string().nullable().optional(),
-    nodePoolName: z.string().nullable().optional(),
-    submissionRevision: z.number().int().safe().nonnegative(),
-    claimDeadlineAt: z.number().nullable(),
-    claimed: z.boolean(),
     workloadType: z.enum(['job', 'service', 'vm']),
     image: z.string().nullable(),
     cloudProvider: z.enum(CloudType).nullable(),
@@ -236,15 +189,6 @@ const storedWorkloadSchema = z
     totalCost: z.number().nullable(),
     costSource: z.enum(['actual', 'estimated']).nullable(),
     dnsRecordId: z.string().nullable(),
-    /** Node pool Services: where `<id>.anycloud.sh` points and whether that is current; null otherwise. */
-    publicEndpoint: z
-      .object({
-        ip: z.string().nullable(),
-        state: z.enum(['published', 'repointing', 'stale']),
-        error: z.string().nullable(),
-      })
-      .strict()
-      .nullable(),
     secretNames: z.array(z.string()).nullable(),
     session: z.string().nullable(),
     agent: z.string().nullable(),
@@ -253,25 +197,9 @@ const storedWorkloadSchema = z
   })
   .strict();
 
-function hasContainerConfigurationForTarget(
-  workload: Pick<
-    z.output<typeof storedWorkloadSchema>,
-    | 'deploymentId'
-    | 'workloadType'
-    | 'image'
-    | 'imageDigest'
-    | 'command'
-    | 'dockerOptions'
-  >,
-): boolean {
-  if (workload.deploymentId === null) return workload.image !== null;
-  // A pool Job (on a managed Deployment) has its own image and command.
-  return (
-    workload.workloadType === 'job' &&
-    (workload.image !== null ||
-      (workload.imageDigest === null && workload.command === null)) &&
-    workload.dockerOptions === null
-  );
+/** Every Workload runs on a VM host from its own container image. */
+function hasContainerImage(workload: { image: string | null }): boolean {
+  return workload.image !== null;
 }
 
 const workloadListRowSchema = storedWorkloadSchema
@@ -281,9 +209,7 @@ const workloadListRowSchema = storedWorkloadSchema
     isOwnedByCaller: z.boolean(),
   })
   .strict()
-  .refine(hasContainerConfigurationForTarget, {
-    message: 'Container configuration must match the workload target',
-  });
+  .refine(hasContainerImage, { message: 'A Workload has a container image' });
 
 export const workloadListResponseSchema = z.array(workloadListRowSchema);
 
@@ -309,9 +235,7 @@ const workloadCostRowSchema = z
     agent: z.string().nullable(),
   })
   .strict()
-  .refine((row) => row.image !== null || row.workloadType === 'job', {
-    message: 'Only Deployment Jobs can omit a container image',
-  });
+  .refine(hasContainerImage, { message: 'A Workload has a container image' });
 
 const providerCostSummarySchema = z
   .object({
@@ -359,9 +283,7 @@ const statusWorkloadMetadataSchema = storedWorkloadSchema
     imageRuntime: true,
     latestMessage: true,
   })
-  .refine(hasContainerConfigurationForTarget, {
-    message: 'Container configuration must match the workload target',
-  });
+  .refine(hasContainerImage, { message: 'A Workload has a container image' });
 
 const workloadEventSchema = z
   .object({
@@ -471,13 +393,8 @@ export const workloadStatusResponseSchema = z
     events: z.array(workloadEventSchema),
     /** Every event the workload has; greater than `events.length` when truncated. */
     eventsTotal: z.number().int().nonnegative().optional(),
-    jobsAhead: z.number().int().safe().nonnegative().nullable().optional(),
     status: z.enum(WorkloadHealthStatus),
     vms: z.array(statusVmSchema).optional(),
-    /** A targeted Job's latest attempt number, once it has been claimed. */
-    attempt: z.number().int().positive().optional(),
-    /** Why a queued pool Job waits: no replica yet, its pool reason, a cap. */
-    waiting: z.string().optional(),
     /** While Retrying: the attempt and the window the next one is due in. */
     retry: z
       .object({
@@ -514,12 +431,6 @@ export const workloadSshAccessResponseSchema = z
 
 export const workloadActionResponseSchema = messageResponseSchema;
 
-export type JobSubmissionObservationInput = z.output<
-  typeof jobSubmissionObservationRequestSchema
->;
-export type JobSubmissionObservation = z.output<
-  typeof jobSubmissionObservationSchema
->;
 export type WorkloadResubmitResponse = z.output<
   typeof workloadResubmitResponseSchema
 >;

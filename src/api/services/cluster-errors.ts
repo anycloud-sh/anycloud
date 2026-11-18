@@ -125,9 +125,10 @@ export class ClusterReleaseConflictError extends Error {
   }
 }
 
-/** What still holds a cluster: its node pools, and Workloads on no pool. */
+/** What still holds a cluster: an older hosted API's node pools, and Workloads. */
 export interface ClusterDependents {
-  readonly pools: ReadonlyArray<{ name: string; liveReferences: number }>;
+  /** An older hosted API's node pools; this release runs none. */
+  readonly pools?: ReadonlyArray<{ name: string; liveReferences: number }>;
   /** VM Services and Jobs not yet ended, by ID. */
   readonly workloads: readonly string[];
 }
@@ -141,11 +142,17 @@ const plural = (count: number, one: string, many: string) =>
  * run against when the refusal comes from elsewhere.
  */
 export function dependentsRefusal(
-  { pools, workloads }: ClusterDependents,
+  { pools = [], workloads }: ClusterDependents,
   clusterName: string,
   apiUrl?: string,
 ): string | null {
-  const run = apiUrl ? ` Against the hosted API (${apiUrl}): run` : ' Run';
+  // Only an older release still runs node pools, so its own CLI removes them.
+  const cli = pools.length > 0 ? ' with the CLI of its release' : '';
+  const run = apiUrl
+    ? ` Against the hosted API (${apiUrl})${cli}: run`
+    : pools.length > 0
+      ? ` With the CLI of the hosted API's release, run`
+      : ' Run';
   const again = `then anycloud cluster delete ${clusterName} again.`;
   const names = (list: ReadonlyArray<{ name: string }>) =>
     list.map((pool) => pool.name).join(', ');
@@ -160,7 +167,6 @@ export function dependentsRefusal(
       idle.length > 0 &&
         `Node pool${plural(idle.length, '', 's')} ${names(idle)} also exist${plural(idle.length, 's', '')}.`,
     ].filter(Boolean);
-    // Deployment records live only on node pools; VM Workloads terminate.
     const release =
       referenced.length > 0
         ? 'anycloud deployment delete <id> / anycloud terminate <id>'

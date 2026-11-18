@@ -276,315 +276,6 @@
         }
       ]
     },
-    "get /node-pools": {
-      "operationId": "listNodePools",
-      "tags": [
-        "Node pools"
-      ],
-      "parameters": [
-        {
-          "name": "cluster",
-          "in": "query",
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          },
-          "allowEmptyValue": true,
-          "allowReserved": true
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ListNodePoolsResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClusterNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLUSTER_NOT_FOUND": "#/components/schemas/ClusterNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
-    "get /node-pools/{id}": {
-      "operationId": "getNodePool",
-      "tags": [
-        "Node pools"
-      ],
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NodePoolResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/NodePoolNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "NODE_POOL_NOT_FOUND": "#/components/schemas/NodePoolNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
     "get /system-release/self-delete": {
       "operationId": "getSelfDelete",
       "tags": [
@@ -1161,147 +852,6 @@
         }
       ]
     },
-    "post /system-release/drain": {
-      "operationId": "drainPoolJobs",
-      "tags": [
-        "System Release"
-      ],
-      "requestBody": {
-        "required": true,
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/DrainPoolJobsInput"
-            }
-          }
-        }
-      },
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DrainPoolJobsResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/SystemReleaseRefusedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "SYSTEM_RELEASE_REFUSED": "#/components/schemas/SystemReleaseRefusedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/SystemReleaseUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "SYSTEM_RELEASE_UNAVAILABLE": "#/components/schemas/SystemReleaseUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ],
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ]
-    },
     "post /system-release/kubernetes": {
       "operationId": "runKubernetesStep",
       "tags": [
@@ -1567,890 +1117,6 @@
       "parameters": [
         {
           "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ]
-    },
-    "get /deployments": {
-      "operationId": "listDeployments",
-      "tags": [
-        "Deployments"
-      ],
-      "parameters": [
-        {
-          "name": "nodePool",
-          "in": "query",
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          },
-          "allowEmptyValue": true,
-          "allowReserved": true
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ListDeploymentsResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "DEPLOYMENT_INVALID": "#/components/schemas/DeploymentInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
-    "post /deployments": {
-      "operationId": "createDeployment",
-      "tags": [
-        "Deployments"
-      ],
-      "requestBody": {
-        "required": true,
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/CreateDeploymentInput"
-            }
-          }
-        }
-      },
-      "responses": {
-        "202": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeploymentResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "DEPLOYMENT_INVALID": "#/components/schemas/DeploymentInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_NOT_FOUND": "#/components/schemas/DeploymentNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "409": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentConflictApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_CONFLICT": "#/components/schemas/DeploymentConflictApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "DEPLOYMENT_UNAVAILABLE": "#/components/schemas/DeploymentUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ],
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ]
-    },
-    "get /deployments/{id}": {
-      "operationId": "getDeployment",
-      "tags": [
-        "Deployments"
-      ],
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeploymentResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "DEPLOYMENT_INVALID": "#/components/schemas/DeploymentInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_NOT_FOUND": "#/components/schemas/DeploymentNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "409": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentConflictApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_CONFLICT": "#/components/schemas/DeploymentConflictApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "DEPLOYMENT_UNAVAILABLE": "#/components/schemas/DeploymentUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
-    "delete /deployments/{id}": {
-      "operationId": "deleteDeployment",
-      "tags": [
-        "Deployments"
-      ],
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "responses": {
-        "202": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeploymentResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "DEPLOYMENT_INVALID": "#/components/schemas/DeploymentInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_NOT_FOUND": "#/components/schemas/DeploymentNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "409": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentConflictApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_CONFLICT": "#/components/schemas/DeploymentConflictApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "DEPLOYMENT_UNAVAILABLE": "#/components/schemas/DeploymentUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
-    "patch /deployments/{id}": {
-      "operationId": "updateDeployment",
-      "tags": [
-        "Deployments"
-      ],
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "requestBody": {
-        "required": true,
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/UpdateDeploymentBody"
-            }
-          }
-        }
-      },
-      "responses": {
-        "202": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeploymentResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "DEPLOYMENT_INVALID": "#/components/schemas/DeploymentInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_NOT_FOUND": "#/components/schemas/DeploymentNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "409": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DeploymentConflictApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "DEPLOYMENT_CONFLICT": "#/components/schemas/DeploymentConflictApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DeploymentUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "DEPLOYMENT_UNAVAILABLE": "#/components/schemas/DeploymentUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
         }
       ]
     },
@@ -3260,17 +1926,6 @@
           "allowReserved": true
         },
         {
-          "name": "deploymentId",
-          "in": "query",
-          "schema": {
-            "$ref": "#/components/schemas/WorkloadId"
-          },
-          "style": "deepObject",
-          "explode": true,
-          "allowEmptyValue": true,
-          "allowReserved": true
-        },
-        {
           "name": "credentialName",
           "in": "query",
           "schema": {
@@ -3870,7 +2525,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MessageResponse"
+                "$ref": "#/components/schemas/WorkloadResubmitResponse"
               }
             }
           }
@@ -4262,199 +2917,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/WorkloadResubmitResponse"
-              }
-            }
-          }
-        },
-        "400": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ClientVersionMismatchApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/WorkloadManagementRequestInvalidApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError",
-                    "WORKLOAD_MANAGEMENT_REQUEST_INVALID": "#/components/schemas/WorkloadManagementRequestInvalidApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "401": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/UnauthorizedApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "403": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ForbiddenApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GithubSignInRequiredApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
-                    "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "404": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/WorkloadManagementNotFoundApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "WORKLOAD_MANAGEMENT_NOT_FOUND": "#/components/schemas/WorkloadManagementNotFoundApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "409": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/WorkloadManagementConflictApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "WORKLOAD_MANAGEMENT_CONFLICT": "#/components/schemas/WorkloadManagementConflictApiError"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "503": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/ApiRestartingApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/WorkloadManagementUnavailableApiError"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UndefinedApiError"
-                  }
-                ],
-                "discriminator": {
-                  "propertyName": "code",
-                  "mapping": {
-                    "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
-                    "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError",
-                    "WORKLOAD_MANAGEMENT_UNAVAILABLE": "#/components/schemas/WorkloadManagementUnavailableApiError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "security": [
-        {
-          "userBearer": []
-        }
-      ]
-    },
-    "post /workloads/{id}/claim-observation": {
-      "operationId": "observeJobSubmission",
-      "tags": [
-        "Workloads"
-      ],
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "$ref": "#/components/schemas/WorkloadId"
-          }
-        },
-        {
-          "$ref": "#/components/parameters/AnyCloudClientVersion"
-        }
-      ],
-      "requestBody": {
-        "required": true,
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/JobSubmissionObservationBody"
-            }
-          }
-        }
-      },
-      "responses": {
-        "200": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/JobSubmissionObservation"
               }
             }
           }
@@ -5724,89 +4186,12 @@
         "message"
       ]
     },
-    "#/components/schemas/JobSubmissionObservation": {
-      "type": "object",
-      "properties": {
-        "submissionRevision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "claimDeadlineAt": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "claimed": {
-          "type": "boolean"
-        },
-        "outcome": {
-          "$ref": "#/components/schemas/JobSubmissionOutcome"
-        }
-      },
-      "required": [
-        "submissionRevision",
-        "claimDeadlineAt",
-        "claimed",
-        "outcome"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/JobSubmissionOutcome": {
-      "enum": [
-        "pending",
-        "claimed",
-        "expired",
-        "terminated",
-        "changed"
-      ],
-      "type": "string"
-    },
-    "#/components/schemas/JobSubmissionObservationBody": {
-      "type": "object",
-      "properties": {
-        "submissionRevision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "waitMs": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 20000
-        }
-      },
-      "required": [
-        "submissionRevision"
-      ],
-      "additionalProperties": false
-    },
     "#/components/schemas/WorkloadResubmitResponse": {
       "type": "object",
       "properties": {
         "message": {
           "type": "string",
           "minLength": 1
-        },
-        "submissionRevision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "claimDeadlineAt": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "required": [
@@ -5819,11 +4204,6 @@
       "properties": {
         "session": {
           "type": "string"
-        },
-        "timeout": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 9007199254740.99
         }
       },
       "additionalProperties": false
@@ -5857,19 +4237,6 @@
       ],
       "additionalProperties": false
     },
-    "#/components/schemas/MessageResponse": {
-      "type": "object",
-      "properties": {
-        "message": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "additionalProperties": false
-    },
     "#/components/schemas/WorkloadStatusResponse": {
       "type": "object",
       "properties": {
@@ -5881,54 +4248,6 @@
             },
             "userId": {
               "type": "string"
-            },
-            "deploymentId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "nodePoolId": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "nodePoolName": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "submissionRevision": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "claimDeadlineAt": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "claimed": {
-              "type": "boolean"
             },
             "workloadType": {
               "enum": [
@@ -6347,52 +4666,6 @@
                 }
               ]
             },
-            "publicEndpoint": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "ip": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "state": {
-                      "enum": [
-                        "published",
-                        "repointing",
-                        "stale"
-                      ],
-                      "type": "string"
-                    },
-                    "error": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "ip",
-                    "state",
-                    "error"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "secretNames": {
               "anyOf": [
                 {
@@ -6440,10 +4713,6 @@
           "required": [
             "id",
             "userId",
-            "deploymentId",
-            "submissionRevision",
-            "claimDeadlineAt",
-            "claimed",
             "workloadType",
             "image",
             "cloudProvider",
@@ -6479,7 +4748,6 @@
             "totalCost",
             "costSource",
             "dnsRecordId",
-            "publicEndpoint",
             "secretNames",
             "session",
             "agent",
@@ -6562,18 +4830,6 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
-        },
-        "jobsAhead": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "status": {
           "enum": [
@@ -6830,15 +5086,6 @@
             "additionalProperties": false
           }
         },
-        "attempt": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "waiting": {
-          "type": "string"
-        },
         "retry": {
           "type": "object",
           "properties": {
@@ -7081,21 +5328,6 @@
         },
         "url": {
           "type": "string"
-        },
-        "submissionRevision": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "claimDeadlineAt": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "required": [
@@ -7104,332 +5336,19 @@
       "additionalProperties": false
     },
     "#/components/schemas/WorkloadAdmissionInput": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "deployment": {
-              "type": "string",
-              "minLength": 1
-            },
-            "timeout": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 9007199254740.99
-            },
-            "maxRetries": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "id": {
-              "type": "string",
-              "minLength": 1
-            },
-            "workloadType": {
-              "type": "string",
-              "enum": [
-                "job"
-              ]
-            },
-            "session": {
-              "type": "string"
-            },
-            "agent": {
-              "type": "string"
-            },
-            "sessionLabel": {
-              "type": "string"
-            },
-            "nodes": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            "gpusPerNode": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            "launch": {
-              "enum": [
-                "single",
-                "distributed"
-              ],
-              "type": "string"
-            },
-            "mounts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^(state|\\/.*)$"
-                  },
-                  "path": {
-                    "type": "string",
-                    "pattern": "^\\/"
-                  },
-                  "ro": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "name",
-                  "path"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "timeLimit": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            "resumable": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "deployment"
-          ],
-          "additionalProperties": false
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
         },
-        {
+        "cloudConfig": {
           "type": "object",
           "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1
+            "region": {
+              "type": "string"
             },
-            "cloudConfig": {
-              "type": "object",
-              "properties": {
-                "region": {
-                  "type": "string"
-                },
-                "vmType": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    {
-                      "type": "array",
-                      "minItems": 1,
-                      "items": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    }
-                  ]
-                },
-                "cloudProvider": {
-                  "enum": [
-                    "AWS",
-                    "GCP",
-                    "Azure",
-                    "Lambda",
-                    "Cloudflare",
-                    "Local"
-                  ],
-                  "type": "string"
-                },
-                "credentials": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "cloudProvider": {
-                          "type": "string",
-                          "enum": [
-                            "AWS"
-                          ]
-                        },
-                        "accessKeyId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "secretAccessKey": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "sessionToken": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "accessKeyId",
-                        "secretAccessKey"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "cloudProvider": {
-                          "type": "string",
-                          "enum": [
-                            "GCP"
-                          ]
-                        },
-                        "projectId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "clientEmail": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "privateKey": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "billingExportDataset": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "projectId",
-                        "clientEmail",
-                        "privateKey"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "cloudProvider": {
-                          "type": "string",
-                          "enum": [
-                            "Azure"
-                          ]
-                        },
-                        "applicationId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "secret": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "subscriptionId": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "directoryId": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "applicationId",
-                        "secret",
-                        "subscriptionId",
-                        "directoryId"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "cloudProvider": {
-                          "type": "string",
-                          "enum": [
-                            "Lambda"
-                          ]
-                        },
-                        "apiKey": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "apiKey"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                "inputStorageCredentials": {
-                  "$ref": "#/components/schemas/CloudCredential"
-                },
-                "inputStorageRegion": {
-                  "type": "string"
-                },
-                "outputStorageCredentials": {
-                  "$ref": "#/components/schemas/CloudCredential"
-                },
-                "outputStorageRegion": {
-                  "type": "string"
-                },
-                "checkpointStorageCredentials": {
-                  "$ref": "#/components/schemas/CloudCredential"
-                },
-                "checkpointStorageRegion": {
-                  "type": "string"
-                },
-                "spot": {
-                  "type": "boolean"
-                },
-                "inputBucket": {
-                  "type": "string"
-                },
-                "outputBucket": {
-                  "type": "string"
-                },
-                "checkpointBucket": {
-                  "type": "string"
-                },
-                "diskSizeGb": {
-                  "type": "number",
-                  "exclusiveMinimum": 0
-                },
-                "diskTier": {
-                  "enum": [
-                    "medium",
-                    "high",
-                    "ultra"
-                  ],
-                  "type": "string"
-                },
-                "diskIops": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "diskThroughputMibps": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "regions": {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "availabilityZone": {
-                  "type": "string"
-                },
-                "minVmCount": {
-                  "type": "number"
-                },
-                "maxVmCount": {
-                  "type": "number"
-                }
-              },
-              "additionalProperties": false
-            },
-            "gpuType": {
+            "vmType": {
               "anyOf": [
                 {
                   "type": "string",
@@ -7445,152 +5364,352 @@
                 }
               ]
             },
-            "id": {
-              "type": "string",
-              "minLength": 1
-            },
-            "workloadType": {
+            "cloudProvider": {
               "enum": [
-                "job",
-                "service",
-                "vm"
+                "AWS",
+                "GCP",
+                "Azure",
+                "Lambda",
+                "Cloudflare",
+                "Local"
               ],
               "type": "string"
             },
-            "nodePool": {
-              "type": "string",
-              "minLength": 1
+            "credentials": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "cloudProvider": {
+                      "type": "string",
+                      "enum": [
+                        "AWS"
+                      ]
+                    },
+                    "accessKeyId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "secretAccessKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sessionToken": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "accessKeyId",
+                    "secretAccessKey"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "cloudProvider": {
+                      "type": "string",
+                      "enum": [
+                        "GCP"
+                      ]
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clientEmail": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "privateKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "billingExportDataset": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "clientEmail",
+                    "privateKey"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "cloudProvider": {
+                      "type": "string",
+                      "enum": [
+                        "Azure"
+                      ]
+                    },
+                    "applicationId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "secret": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "subscriptionId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "directoryId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "applicationId",
+                    "secret",
+                    "subscriptionId",
+                    "directoryId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "cloudProvider": {
+                      "type": "string",
+                      "enum": [
+                        "Lambda"
+                      ]
+                    },
+                    "apiKey": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "apiKey"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
             },
-            "timeout": {
+            "inputStorageCredentials": {
+              "$ref": "#/components/schemas/CloudCredential"
+            },
+            "inputStorageRegion": {
+              "type": "string"
+            },
+            "outputStorageCredentials": {
+              "$ref": "#/components/schemas/CloudCredential"
+            },
+            "outputStorageRegion": {
+              "type": "string"
+            },
+            "checkpointStorageCredentials": {
+              "$ref": "#/components/schemas/CloudCredential"
+            },
+            "checkpointStorageRegion": {
+              "type": "string"
+            },
+            "spot": {
+              "type": "boolean"
+            },
+            "inputBucket": {
+              "type": "string"
+            },
+            "outputBucket": {
+              "type": "string"
+            },
+            "checkpointBucket": {
+              "type": "string"
+            },
+            "diskSizeGb": {
               "type": "number",
-              "minimum": 0,
-              "maximum": 9007199254740.99
+              "exclusiveMinimum": 0
             },
-            "maxRetries": {
+            "diskTier": {
+              "enum": [
+                "medium",
+                "high",
+                "ultra"
+              ],
+              "type": "string"
+            },
+            "diskIops": {
               "type": "integer",
-              "minimum": 0,
+              "minimum": -9007199254740991,
               "maximum": 9007199254740991
             },
-            "noCheckpoint": {
-              "type": "boolean"
-            },
-            "requireNestedVirtualization": {
-              "type": "boolean"
-            },
-            "hostDocker": {
-              "type": "boolean"
-            },
-            "caches": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "env": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
-            "dockerOptions": {
-              "$ref": "#/components/schemas/DockerOptions"
-            },
-            "command": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "credentialName": {
-              "$ref": "#/components/schemas/CredentialName"
-            },
-            "inputStorageCredentialName": {
-              "$ref": "#/components/schemas/CredentialName"
-            },
-            "outputStorageCredentialName": {
-              "$ref": "#/components/schemas/CredentialName"
-            },
-            "checkpointStorageCredentialName": {
-              "$ref": "#/components/schemas/CredentialName"
-            },
-            "secrets": {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/SecretName"
-              }
-            },
-            "session": {
-              "type": "string"
-            },
-            "agent": {
-              "type": "string"
-            },
-            "sessionLabel": {
-              "type": "string"
-            },
-            "nodes": {
+            "diskThroughputMibps": {
               "type": "integer",
               "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
+              "maximum": 9007199254740991
             },
-            "gpusPerNode": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            "launch": {
-              "enum": [
-                "single",
-                "distributed"
-              ],
-              "type": "string"
-            },
-            "mounts": {
+            "regions": {
               "type": "array",
+              "minItems": 1,
               "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^(state|\\/.*)$"
-                  },
-                  "path": {
-                    "type": "string",
-                    "pattern": "^\\/"
-                  },
-                  "ro": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "name",
-                  "path"
-                ],
-                "additionalProperties": false
+                "type": "string",
+                "minLength": 1
               }
             },
-            "timeLimit": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
+            "availabilityZone": {
+              "type": "string"
             },
-            "resumable": {
-              "type": "boolean"
+            "minVmCount": {
+              "type": "number"
+            },
+            "maxVmCount": {
+              "type": "number"
             }
           },
-          "required": [
-            "image",
-            "cloudConfig"
-          ],
           "additionalProperties": false
+        },
+        "gpuType": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workloadType": {
+          "enum": [
+            "job",
+            "service",
+            "vm"
+          ],
+          "type": "string"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "noCheckpoint": {
+          "type": "boolean"
+        },
+        "requireNestedVirtualization": {
+          "type": "boolean"
+        },
+        "hostDocker": {
+          "type": "boolean"
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "dockerOptions": {
+          "$ref": "#/components/schemas/DockerOptions"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "credentialName": {
+          "$ref": "#/components/schemas/CredentialName"
+        },
+        "inputStorageCredentialName": {
+          "$ref": "#/components/schemas/CredentialName"
+        },
+        "outputStorageCredentialName": {
+          "$ref": "#/components/schemas/CredentialName"
+        },
+        "checkpointStorageCredentialName": {
+          "$ref": "#/components/schemas/CredentialName"
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SecretName"
+          }
+        },
+        "session": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "sessionLabel": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "exclusiveMinimum": 0
+        },
+        "gpusPerNode": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "exclusiveMinimum": 0
+        },
+        "launch": {
+          "enum": [
+            "single",
+            "distributed"
+          ],
+          "type": "string"
+        },
+        "mounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^(state|\\/.*)$"
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^\\/"
+              },
+              "ro": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "timeLimit": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "exclusiveMinimum": 0
+        },
+        "resumable": {
+          "type": "boolean"
         }
-      ]
+      },
+      "required": [
+        "image",
+        "cloudConfig"
+      ],
+      "additionalProperties": false
     },
     "#/components/schemas/SecretName": {
       "type": "string",
@@ -7773,54 +5892,6 @@
           },
           "userId": {
             "type": "string"
-          },
-          "deploymentId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "nodePoolId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "nodePoolName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "submissionRevision": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "claimDeadlineAt": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "claimed": {
-            "type": "boolean"
           },
           "workloadType": {
             "enum": [
@@ -8294,52 +6365,6 @@
               }
             ]
           },
-          "publicEndpoint": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "ip": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "state": {
-                    "enum": [
-                      "published",
-                      "repointing",
-                      "stale"
-                    ],
-                    "type": "string"
-                  },
-                  "error": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "ip",
-                  "state",
-                  "error"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "secretNames": {
             "anyOf": [
               {
@@ -8400,10 +6425,6 @@
         "required": [
           "id",
           "userId",
-          "deploymentId",
-          "submissionRevision",
-          "claimDeadlineAt",
-          "claimed",
           "workloadType",
           "image",
           "cloudProvider",
@@ -8444,7 +6465,6 @@
           "totalCost",
           "costSource",
           "dnsRecordId",
-          "publicEndpoint",
           "secretNames",
           "session",
           "agent",
@@ -8827,1113 +6847,6 @@
       ],
       "additionalProperties": false
     },
-    "#/components/schemas/DeploymentUnavailableApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "DEPLOYMENT_UNAVAILABLE"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            503
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Deployment runtime unavailable"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/DeploymentConflictApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "DEPLOYMENT_CONFLICT"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            409
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Deployment conflict"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/DeploymentNotFoundApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "DEPLOYMENT_NOT_FOUND"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            404
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Deployment not found"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/DeploymentInvalidApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "DEPLOYMENT_INVALID"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            400
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Invalid Deployment request"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/DeploymentResponse": {
-      "type": "object",
-      "properties": {
-        "deployment": {
-          "$ref": "#/components/schemas/DeploymentSummary"
-        }
-      },
-      "required": [
-        "deployment"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/DeploymentSummary": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "nodePoolId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "managed": {
-          "type": "boolean"
-        },
-        "privileged": {
-          "type": "boolean"
-        },
-        "target": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "nodePool"
-                  ]
-                },
-                "nodePoolId": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "kind",
-                "nodePoolId"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        },
-        "image": {
-          "type": "string",
-          "minLength": 1
-        },
-        "command": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "readinessProbe": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/DeploymentReadinessProbe"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "gracePeriodSeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 3600
-        },
-        "gpuCount": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
-        },
-        "envKeys": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "secretNames": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "maxConcurrentJobsPerReplica": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "minReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
-        },
-        "maxReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "generation": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "deletionRequestedAt": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "deletedAt": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "createdAt": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "updatedAt": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "jobs": {
-          "type": "object",
-          "properties": {
-            "queued": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "running": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "retrying": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "terminal": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "unreleased": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "queued",
-            "running",
-            "retrying",
-            "terminal",
-            "unreleased"
-          ],
-          "additionalProperties": false
-        },
-        "workload": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "observedGeneration": {
-                  "anyOf": [
-                    {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991,
-                      "exclusiveMinimum": 0
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "podName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "podUid": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "containerId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "containerReady": {
-                  "type": "boolean"
-                },
-                "pendingReason": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "observedGeneration",
-                "podName",
-                "podUid",
-                "containerId",
-                "containerReady",
-                "pendingReason"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "status": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/DeploymentStatus"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "usage": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "replicaHours": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "busyHours": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "costUsd": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "busyCostUsd": {
-                  "type": "number",
-                  "minimum": 0
-                }
-              },
-              "required": [
-                "replicaHours",
-                "busyHours",
-                "costUsd",
-                "busyCostUsd"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "nodePoolId",
-        "managed",
-        "privileged",
-        "target",
-        "image",
-        "command",
-        "readinessProbe",
-        "gracePeriodSeconds",
-        "gpuCount",
-        "envKeys",
-        "secretNames",
-        "maxConcurrentJobsPerReplica",
-        "minReplicas",
-        "maxReplicas",
-        "generation",
-        "deletionRequestedAt",
-        "deletedAt",
-        "createdAt",
-        "updatedAt",
-        "jobs",
-        "workload",
-        "status",
-        "usage"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/DeploymentStatus": {
-      "type": "object",
-      "properties": {
-        "state": {
-          "enum": [
-            "starting",
-            "running",
-            "failed",
-            "terminated",
-            "unknown"
-          ],
-          "type": "string"
-        },
-        "releasing": {
-          "type": "boolean"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "upgrade": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "number": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991,
-                  "exclusiveMinimum": 0
-                },
-                "state": {
-                  "enum": [
-                    "starting",
-                    "running",
-                    "failed"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "number",
-                "state"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "reason": {
-          "type": "string"
-        },
-        "requestedGeneration": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "appliedGeneration": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "podGeneration": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "podName": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "podUid": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "containerId": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "containerReady": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "readyReplicas": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "applicationReady": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "probeConfigured": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "observation": {
-          "enum": [
-            "observed",
-            "unavailable",
-            "not-requested"
-          ],
-          "type": "string"
-        },
-        "observedAt": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "observationError": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "blockingJobs": {
-          "type": "object",
-          "properties": {
-            "total": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            },
-            "jobs": {
-              "type": "array",
-              "maxItems": 10,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "executionId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "generation": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991,
-                        "exclusiveMinimum": 0
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "state": {
-                    "enum": [
-                      "queued",
-                      "provisioning",
-                      "initializing",
-                      "downloading",
-                      "starting",
-                      "syncing",
-                      "retrying",
-                      "recovering",
-                      "running",
-                      "finalizing",
-                      "completed",
-                      "failed",
-                      "errored",
-                      "invalid",
-                      "terminated"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "executionId",
-                  "generation",
-                  "state"
-                ],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": [
-            "total",
-            "jobs"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "state",
-        "releasing",
-        "ready",
-        "upgrade",
-        "reason",
-        "requestedGeneration",
-        "appliedGeneration",
-        "podGeneration",
-        "podName",
-        "podUid",
-        "containerId",
-        "containerReady",
-        "readyReplicas",
-        "applicationReady",
-        "probeConfigured",
-        "observation",
-        "observedAt",
-        "observationError",
-        "blockingJobs"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/DeploymentReadinessProbe": {
-      "type": "object",
-      "properties": {
-        "exec": {
-          "type": "object",
-          "properties": {
-            "command": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 128,
-              "items": {
-                "type": "string",
-                "maxLength": 4096
-              }
-            }
-          },
-          "required": [
-            "command"
-          ],
-          "additionalProperties": false
-        },
-        "initialDelaySeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 86400
-        },
-        "periodSeconds": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 3600
-        },
-        "timeoutSeconds": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 3600
-        },
-        "successThreshold": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        },
-        "failureThreshold": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        }
-      },
-      "required": [
-        "exec"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/UpdateDeploymentBody": {
-      "type": "object",
-      "properties": {
-        "image": {
-          "type": "string",
-          "minLength": 1
-        },
-        "command": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "env": {
-          "anyOf": [
-            {
-              "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "pattern": "^[\\x20-\\x3c\\x3e-\\x7e]+$"
-              },
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "secrets": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/SecretName"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "dockerOptions": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/DeploymentDockerOptionsUpdate"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "maxConcurrentJobsPerReplica": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "minReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "maxReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "readinessProbe": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/DeploymentReadinessProbe"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "gracePeriodSeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 3600
-        }
-      },
-      "additionalProperties": false
-    },
-    "#/components/schemas/DeploymentDockerOptionsUpdate": {
-      "type": "object",
-      "properties": {
-        "privileged": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "shmSize": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "gpus": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "memory": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "cpus": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "runtime": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "binds": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "#/components/schemas/CreateDeploymentInput": {
-      "type": "object",
-      "properties": {
-        "image": {
-          "type": "string",
-          "minLength": 1
-        },
-        "command": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "env": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string",
-            "pattern": "^[\\x20-\\x3c\\x3e-\\x7e]+$"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "secrets": {
-          "type": "array",
-          "items": {
-            "$ref": "#/components/schemas/SecretName"
-          }
-        },
-        "dockerOptions": {
-          "$ref": "#/components/schemas/DockerOptions"
-        },
-        "readinessProbe": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/DeploymentReadinessProbe"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "gracePeriodSeconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 3600
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64
-        },
-        "nodePool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxConcurrentJobsPerReplica": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0,
-          "default": 1
-        },
-        "minReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        },
-        "maxReplicas": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991,
-          "exclusiveMinimum": 0
-        }
-      },
-      "required": [
-        "image",
-        "name",
-        "nodePool"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/ListDeploymentsResponse": {
-      "type": "object",
-      "properties": {
-        "deployments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/components/schemas/DeploymentSummary"
-          }
-        }
-      },
-      "required": [
-        "deployments"
-      ],
-      "additionalProperties": false
-    },
     "#/components/schemas/SystemReleaseUnavailableApiError": {
       "type": "object",
       "additionalProperties": false,
@@ -10122,78 +7035,6 @@
       "required": [
         "id",
         "image"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/DrainPoolJobsResponse": {
-      "type": "object",
-      "properties": {
-        "jobs": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "state": {
-                "type": "string",
-                "minLength": 1
-              },
-              "nodePool": {
-                "type": "string",
-                "minLength": 1
-              },
-              "runnerRelease": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "id",
-              "state",
-              "nodePool",
-              "runnerRelease"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      "required": [
-        "jobs"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/DrainPoolJobsInput": {
-      "type": "object",
-      "properties": {
-        "force": {
-          "type": "boolean"
-        },
-        "image": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
-        },
-        "keep": {
-          "type": "array",
-          "maxItems": 2,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "required": [
-        "force"
       ],
       "additionalProperties": false
     },
@@ -10557,7 +7398,7 @@
         },
         "message": {
           "type": "string",
-          "default": "The installation still has node pools or running workloads"
+          "default": "The installation still has running workloads"
         },
         "data": {}
       },
@@ -10762,572 +7603,6 @@
       "required": [
         "clusterId",
         "deleteBuckets"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/NodePoolNotFoundApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "NODE_POOL_NOT_FOUND"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            404
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Node pool not found"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/NodePoolResponse": {
-      "type": "object",
-      "properties": {
-        "nodePool": {
-          "$ref": "#/components/schemas/NodePoolSummary"
-        }
-      },
-      "required": [
-        "nodePool"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/NodePoolSummary": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "clusterId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "state": {
-          "enum": [
-            "provisioning",
-            "running",
-            "failed",
-            "terminated"
-          ],
-          "type": "string"
-        },
-        "releasing": {
-          "type": "boolean"
-        },
-        "cloudProvider": {
-          "enum": [
-            "AWS",
-            "GCP",
-            "Azure",
-            "Lambda",
-            "Cloudflare",
-            "Local"
-          ],
-          "type": "string"
-        },
-        "region": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "zone": {
-          "anyOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "vmTypes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "minVmCount": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "maxVmCount": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "osDiskSizeGb": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991,
-              "exclusiveMinimum": 0
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "osDiskTier": {
-          "anyOf": [
-            {
-              "enum": [
-                "medium",
-                "high",
-                "ultra"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "spot": {
-          "type": "boolean"
-        },
-        "allowPrivilegedJobs": {
-          "type": "boolean"
-        },
-        "userNamespaceJobs": {
-          "type": "boolean"
-        },
-        "requireNestedVirtualization": {
-          "type": "boolean"
-        },
-        "capacity": {
-          "type": "object",
-          "properties": {
-            "readyVmCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "startingVmCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "drainingVmCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "locations": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "region": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "zone": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "vmType": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "releasing": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "since": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "usuallyUnderSeconds": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991,
-                            "exclusiveMinimum": 0
-                          }
-                        },
-                        "required": [
-                          "since",
-                          "usuallyUnderSeconds"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "region",
-                  "zone",
-                  "vmType",
-                  "releasing"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "lastScaleOut": {
-              "type": "object",
-              "properties": {
-                "at": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "pendingPods": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "lostVms": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "vms": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991,
-                  "exclusiveMinimum": 0
-                }
-              },
-              "required": [
-                "at",
-                "pendingPods",
-                "lostVms",
-                "vms"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "readyVmCount",
-            "startingVmCount",
-            "drainingVmCount",
-            "locations"
-          ],
-          "additionalProperties": false
-        },
-        "runners": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "busy": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "idle": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "pending": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "reasons": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "busy",
-                "idle",
-                "pending",
-                "reasons"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "liveReferences": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "ingressEntryIp": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "ingress": {
-          "type": "object",
-          "properties": {
-            "entryIp": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "release": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "state": {
-                      "enum": [
-                        "absent",
-                        "installing",
-                        "installed",
-                        "failed"
-                      ],
-                      "type": "string"
-                    },
-                    "helmJob": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "phase": {
-                              "type": "string"
-                            },
-                            "message": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "phase",
-                            "message"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "daemonSet": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "desired": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "ready": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "entryNodeReady": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "desired",
-                            "ready",
-                            "entryNodeReady"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "lastEvent": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "routes": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  },
-                  "required": [
-                    "state",
-                    "helmJob",
-                    "daemonSet",
-                    "lastEvent",
-                    "routes"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "entryIp",
-            "release"
-          ],
-          "additionalProperties": false
-        },
-        "lastError": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "createdAt": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "updatedAt": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "clusterId",
-        "state",
-        "releasing",
-        "cloudProvider",
-        "region",
-        "zone",
-        "vmTypes",
-        "minVmCount",
-        "maxVmCount",
-        "osDiskSizeGb",
-        "osDiskTier",
-        "spot",
-        "allowPrivilegedJobs",
-        "userNamespaceJobs",
-        "requireNestedVirtualization",
-        "capacity",
-        "liveReferences",
-        "ingressEntryIp",
-        "ingress",
-        "lastError",
-        "createdAt",
-        "updatedAt"
-      ],
-      "additionalProperties": false
-    },
-    "#/components/schemas/ClusterNotFoundApiError": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defined": {
-          "type": "boolean",
-          "enum": [
-            true
-          ]
-        },
-        "code": {
-          "type": "string",
-          "enum": [
-            "CLUSTER_NOT_FOUND"
-          ]
-        },
-        "status": {
-          "type": "integer",
-          "enum": [
-            404
-          ]
-        },
-        "message": {
-          "type": "string",
-          "default": "Cluster not found"
-        },
-        "data": {}
-      },
-      "required": [
-        "defined",
-        "code",
-        "status",
-        "message"
-      ]
-    },
-    "#/components/schemas/ListNodePoolsResponse": {
-      "type": "object",
-      "properties": {
-        "nodePools": {
-          "type": "array",
-          "items": {
-            "$ref": "#/components/schemas/NodePoolSummary"
-          }
-        }
-      },
-      "required": [
-        "nodePools"
       ],
       "additionalProperties": false
     },

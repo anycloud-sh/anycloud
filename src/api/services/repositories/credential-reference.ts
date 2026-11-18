@@ -7,27 +7,11 @@ export function scalarCredentialSql(sqlExpression: string): string {
   END`;
 }
 
-/**
- * A Service on a node pool runs on that node pool's VMs, so its cloud is the
- * node pool credential's cloud; Kubernetes is the execution substrate, not
- * the provider.
- */
-function nodePoolCloudProviderSql(workloadAlias: string): string {
-  return `(
-    SELECT c.cloud_provider
-    FROM node_pools p
-    JOIN credentials c ON c.id = p.compute_credential_id
-    WHERE p.id = ${workloadAlias}.node_pool_id
-    LIMIT 1
-  )`;
-}
-
 export function computedWorkloadCloudProviderSql(
   workloadAlias: string,
 ): string {
   return `COALESCE(
     ${workloadAlias}.requested_compute_provider,
-    ${nodePoolCloudProviderSql(workloadAlias)},
     (
       SELECT c.cloud_provider
       FROM vms v

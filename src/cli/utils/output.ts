@@ -197,16 +197,6 @@ export function formatImageName(image: string): string {
   return parts[parts.length - 1];
 }
 
-/** `name (id)` when the name is known, otherwise the id alone. */
-function formatNodePoolTarget(
-  workload: Pick<StatusWorkloadMetadata, 'nodePoolId' | 'nodePoolName'>,
-): string {
-  if (!workload.nodePoolId) return workload.nodePoolName ?? '';
-  return workload.nodePoolName && workload.nodePoolName !== workload.nodePoolId
-    ? `${workload.nodePoolName} (${workload.nodePoolId})`
-    : workload.nodePoolId;
-}
-
 /** `AWS / us-east-1 (zone us-east-1a)`: one location format for every resource. */
 export function formatLocation(
   cloud: string,
@@ -269,8 +259,6 @@ export function printWorkloadHeader(
   options?: {
     verbose?: boolean;
     checkpoint?: WorkloadStatusResponse['checkpoint'];
-    attempt?: number;
-    waiting?: string;
   },
 ): void {
   printStateHeader(workload.state, isReleasingResources(workload));
@@ -278,9 +266,6 @@ export function printWorkloadHeader(
   // Build info lines (skip ID - already shown in selection)
   const lines: Array<[string, string]> = [];
 
-  if (workload.deploymentId !== null) {
-    lines.push(['Deployment', workload.deploymentId]);
-  }
   if (workload.image !== null) {
     lines.push(['Image', formatImageName(workload.image)]);
   }
@@ -295,9 +280,6 @@ export function printWorkloadHeader(
       ),
     ]);
   }
-  if (workload.nodePoolId || workload.nodePoolName) {
-    lines.push(['Node pool', formatNodePoolTarget(workload)]);
-  }
   if (workload.endReason) {
     lines.push([
       'End reason',
@@ -306,8 +288,6 @@ export function printWorkloadHeader(
         : workload.endReason,
     ]);
   }
-  if (options?.attempt) lines.push(['Attempt', String(options.attempt)]);
-  if (options?.waiting) lines.push(['Waiting', options.waiting]);
 
   if (workload.gpuType || workload.vmType) {
     const rawType = workload.gpuType || workload.vmType;
@@ -346,15 +326,6 @@ export function printWorkloadHeader(
     workload.dnsRecordId
   ) {
     lines.push(['URL', `https://${workload.id}.anycloud.sh`]);
-  }
-  const endpoint = workload.publicEndpoint;
-  if (endpoint) {
-    lines.push([
-      'Public endpoint',
-      endpoint.state === 'published'
-        ? `published at ${endpoint.ip}`
-        : `${endpoint.state === 'stale' ? 'stale' : 're-pointing'}${endpoint.ip ? ` (record at ${endpoint.ip})` : ''}${endpoint.error ? `: ${endpoint.error}` : ''}`,
-    ]);
   }
 
   const sessionDisplay = formatSessionDisplay(workload);
@@ -466,8 +437,6 @@ export function formatWorkloadChoice(
 }
 
 function workloadChoiceTarget(workload: StoredWorkload): string {
-  if (workload.deploymentId !== null)
-    return `Deployment ${workload.deploymentId}`;
   const parts = workload.image?.split('/') ?? [];
   return parts[parts.length - 1]?.split(':')[0] ?? '';
 }

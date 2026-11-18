@@ -44,6 +44,13 @@ describe('release ready Job', () => {
     expect(hooks).toContain(
       'name: anycloud-api-guard-{{ .Values.release.revision }}',
     );
+    // The guard reads the running API's database (refuseRemovedWorkloadsIn).
+    const guard = hooks.slice(
+      hooks.indexOf('anycloud-api-guard-'),
+      hooks.indexOf('anycloud-api-ready-'),
+    );
+    expect(guard).toContain('claimName: anycloud-api-state');
+    expect(guard).toContain('value: /mnt/checkpoint');
   });
 
   it.each<[V1Job, HookJobObservation]>([

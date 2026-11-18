@@ -742,7 +742,6 @@ describe('WorkloadOutcomeStore', () => {
             jobs: { initialSubmissions: 0, resubmissions: 1 },
             services: { initialSubmissions: 0, resubmissions: 0 },
             vms: { initialSubmissions: 0, resubmissions: 0 },
-            deploymentJobs: [],
           },
         ],
       });
@@ -757,7 +756,6 @@ describe('WorkloadOutcomeStore', () => {
             jobs: { initialSubmissions: 1, resubmissions: 0 },
             services: { initialSubmissions: 0, resubmissions: 0 },
             vms: { initialSubmissions: 0, resubmissions: 0 },
-            deploymentJobs: [],
           },
         ],
       });
@@ -799,28 +797,9 @@ describe('WorkloadOutcomeStore', () => {
             jobs: { initialSubmissions: 1, resubmissions: 2 },
             services: { initialSubmissions: 0, resubmissions: 0 },
             vms: { initialSubmissions: 0, resubmissions: 0 },
-            deploymentJobs: [],
           },
         ],
       });
-    });
-
-    it('fences only Deployment Jobs with a claim deadline on resubmission', async () => {
-      await createWorkload(getDB(), { ...baseWorkload, id: 'resub-scope' });
-      await walkToState('resub-scope', WorkloadState.Failed);
-      await markClean('resub-scope');
-
-      await expect(
-        outcomes().resubmitWorkloadForScope(
-          'resub-scope',
-          scope(baseWorkload.userId),
-          null,
-          { claimDeadlineAt: 123 },
-        ),
-      ).resolves.toEqual({ submissionRevision: 1, claimDeadlineAt: null });
-      expect((await queries().getWorkload('resub-scope'))?.state).toBe(
-        WorkloadState.Queued,
-      );
     });
 
     it('rejects resubmit for a completed workload', async () => {

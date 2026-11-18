@@ -22,15 +22,16 @@ describe('workload management status events paging', () => {
   };
   const getWorkloadStatusForScope = vi.fn<Store['getWorkloadStatusForScope']>(
     async (_id, _scope, limit) => ({
-      workload: makeStoredWorkload({ deploymentId: 'target', image: null }),
+      workload: makeStoredWorkload(),
       events: Array.from({ length: limit ?? 5_000 }, () => row),
       eventsTotal: 5_000,
-      jobsAhead: null,
       retry: null,
-      attempt: null,
     }),
   );
-  // Only the members a Deployment Job's status read touches are stubbed.
+  // Only the members a status read touches are stubbed.
+  const operations: Partial<JobOperations> = {
+    observeHealth: async () => ({ status: WorkloadHealthStatus.Up }),
+  };
   const store: Partial<Store> = {
     getWorkloadStatusForScope,
     listVms: async () => [],
@@ -41,7 +42,8 @@ describe('workload management status events paging', () => {
     toWorkloadEvent: () =>
       makeWorkloadEvent({ metadata: { pad: 'x'.repeat(200) } }),
     recordStatusEvent: () => undefined,
-    poolJobSpot: async () => false,
+    getWorkloadOperations: () => operations as JobOperations,
+    statusHealthCheckTimeoutMs: 1_000,
     now: () => 0,
   };
   const domain = createWorkloadManagementDomain(
@@ -76,16 +78,13 @@ describe('workload management status retry and checkpoint facts', () => {
     snapshot: Partial<Awaited<ReturnType<Store['getWorkloadStatusForScope']>>>,
     readCheckpointHealth: WorkloadManagementDomainDependencies['readCheckpointHealth'] = vi.fn(),
     now = { value: 100_000 },
-    poolJobSpot = false,
   ) => {
     const store: Partial<Store> = {
       getWorkloadStatusForScope: async () => ({
-        workload: makeStoredWorkload({ deploymentId: 'target' }),
+        workload: makeStoredWorkload(),
         events: [],
         eventsTotal: 0,
-        jobsAhead: null,
         retry: null,
-        attempt: null,
         ...snapshot,
       }),
       listVms: async () => [],
@@ -102,7 +101,6 @@ describe('workload management status retry and checkpoint facts', () => {
       toWorkloadEvent: () => makeWorkloadEvent(),
       recordStatusEvent: () => undefined,
       readCheckpointHealth,
-      poolJobSpot: async () => poolJobSpot,
       getWorkloadOperations: () => operations as JobOperations,
       statusHealthCheckTimeoutMs: 1_000,
       logDebug: () => undefined,
@@ -116,7 +114,6 @@ describe('workload management status retry and checkpoint facts', () => {
   it('reports the retry attempt and the window the next attempt is sampled from', async () => {
     const domain = build({
       workload: makeStoredWorkload({
-        deploymentId: 'target',
         state: WorkloadState.Retrying,
       }),
       retry: {
@@ -139,7 +136,6 @@ describe('workload management status retry and checkpoint facts', () => {
   it('0047 reports an immediate retry after a regional denial', async () => {
     const domain = build({
       workload: makeStoredWorkload({
-        deploymentId: 'target',
         state: WorkloadState.Retrying,
       }),
       retry: {
@@ -161,7 +157,6 @@ describe('workload management status retry and checkpoint facts', () => {
   it('0047 sizes the window from attempts that were not region denials', async () => {
     const domain = build({
       workload: makeStoredWorkload({
-        deploymentId: 'target',
         state: WorkloadState.Retrying,
       }),
       retry: {
@@ -199,7 +194,6 @@ describe('workload management status retry and checkpoint facts', () => {
       {
         workload: makeStoredWorkload({
           id: 'spot-job',
-          deploymentId: null,
           spot: true,
           checkpointBucket: null,
           state: WorkloadState.Running,
@@ -223,37 +217,6 @@ describe('workload management status retry and checkpoint facts', () => {
     expect(readCheckpointHealth).toHaveBeenCalledTimes(2);
   });
 
-  it.each([
-    [true, null, { bucket: 'pool-job', retained: false }],
-    [true, 'ckpt', { bucket: 'ckpt', retained: true }],
-    [false, null, undefined],
-  ])(
-    'reports a pool Job on a spot pool (%s) with checkpoint bucket %s as its target',
-    async (spot, checkpointBucket, target) => {
-      const domain = build(
-        {
-          workload: makeStoredWorkload({
-            id: 'pool-job',
-            deploymentId: 'managed',
-            checkpointBucket,
-            state: WorkloadState.Completed,
-          }),
-        },
-        vi.fn(),
-        { value: 100_000 },
-        spot,
-      );
-      const { checkpoint } = await domain.status(
-        actor,
-        { id: 'pool-job' },
-        '0',
-      );
-      expect(checkpoint).toEqual(
-        target && { ...target, mount: '/mnt/checkpoint' },
-      );
-    },
-  );
-
   it('keeps the checkpoint target without health once terminal or when the listing fails', async () => {
     const failing = vi.fn(async () => {
       throw new Error('AccessDenied');
@@ -261,7 +224,6 @@ describe('workload management status retry and checkpoint facts', () => {
     const live = await build(
       {
         workload: makeStoredWorkload({
-          deploymentId: null,
           checkpointBucket: 'my-ckpt',
           state: WorkloadState.Running,
         }),
@@ -278,7 +240,6 @@ describe('workload management status retry and checkpoint facts', () => {
     const done = await build(
       {
         workload: makeStoredWorkload({
-          deploymentId: null,
           spot: true,
           state: WorkloadState.Completed,
         }),
@@ -296,7 +257,6 @@ describe('workload management status retry and checkpoint facts', () => {
       const domain = build(
         {
           workload: makeStoredWorkload({
-            deploymentId: null,
             spot: true,
             state: WorkloadState.Running,
           }),

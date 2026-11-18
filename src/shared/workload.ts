@@ -125,12 +125,7 @@ export const VALID_TRANSITIONS: Record<WorkloadState, WorkloadState[]> = {
     WorkloadState.Initializing,
     WorkloadState.Starting, // resumeOnExistingVM re-pulls after spot recovery
   ],
-  // Queued → Syncing: a runner claims a pool Job (RFC 0044).
-  [WorkloadState.Syncing]: [
-    WorkloadState.Queued,
-    WorkloadState.Downloading,
-    WorkloadState.Starting,
-  ],
+  [WorkloadState.Syncing]: [WorkloadState.Downloading, WorkloadState.Starting],
   [WorkloadState.Starting]: [
     WorkloadState.Downloading,
     WorkloadState.Syncing,
@@ -198,16 +193,6 @@ export const VALID_TRANSITIONS: Record<WorkloadState, WorkloadState[]> = {
     WorkloadState.Recovering,
   ],
 };
-
-/**
- * A targeted execution holds its replica's slot in these states: a runner's
- * Job stages, runs and uploads (RFC 0044); an SDK handler's Job only runs.
- */
-export const LIVE_EXECUTION_STATES: WorkloadState[] = [
-  WorkloadState.Syncing,
-  WorkloadState.Running,
-  WorkloadState.Finalizing,
-];
 
 // States where a spot VM can be preempted and reconciliation should act.
 // Excludes states with no completed VM yet (Queued, Provisioning) and states

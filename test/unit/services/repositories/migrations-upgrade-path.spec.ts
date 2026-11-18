@@ -105,15 +105,6 @@ describe('migrations upgrade path', () => {
     ).rejects.toThrow(/refusing to start older API 1\.2\.3/);
   });
 
-  it('0139 installs fresh with an optional node pool region', async () => {
-    await runMigrations(migrationDb);
-    await expect(
-      db.query(
-        `SELECT "notnull" FROM pragma_table_info('node_pools') WHERE name = 'region'`,
-      ),
-    ).resolves.toEqual([{ notnull: 0 }]);
-  });
-
   it('0165 rebuilds clusters keeping its rows and children, and takes the new creation steps', async () => {
     await runMigrations(migrationDb, 164);
     sqlite.exec(`
@@ -203,16 +194,6 @@ describe('migrations upgrade path', () => {
         .prepare(`UPDATE clusters SET checkpoint_bucket = 'c1' WHERE id = 'c1'`)
         .run(),
     ).toThrow(/Cluster identity is immutable/);
-    expect(() =>
-      sqlite
-        .prepare(
-          `INSERT INTO node_pools (id, cluster_id, owner_user_id, name, state,
-             compute_credential_id, vm_type, min_vm_count, max_vm_count,
-             created_at, updated_at)
-           VALUES ('p1', 'missing', 'u1', 'p', 'creating', 'cred-1', '["t3"]', 0, 1, 1, 1)`,
-        )
-        .run(),
-    ).toThrow(/Cluster does not accept node pools/);
   });
 
   it('0029/S13 keeps performance-critical indexes in the final migrated schema', async () => {
@@ -225,8 +206,6 @@ describe('migrations upgrade path', () => {
          WHERE type = 'index'
            AND name IN (
              'idx_vms_active',
-             'idx_vms_node_pool_active',
-             'idx_vms_node_pool_attempt',
              'idx_vms_cluster_active',
              'idx_vms_cluster_attempt',
              'idx_vms_pending_cost_group',
@@ -234,10 +213,6 @@ describe('migrations upgrade path', () => {
              'idx_vms_spend_window',
              'idx_vms_needing_cost',
              'idx_vms_cloud_id',
-             'idx_node_pools_active_name',
-             'idx_deployments_active_name',
-             'idx_deployments_node_pool',
-             'idx_workloads_deployment',
              'idx_workloads_state_started',
              'idx_workloads_state_completed',
              'idx_workloads_pending_cleanup',
@@ -251,41 +226,29 @@ describe('migrations upgrade path', () => {
       )
       .all() as Array<{ name: string; tbl_name: string; sql: string | null }>;
     const byName = new Map(indexes.map((row) => [row.name, row]));
-    const deploymentIndexColumns = sqlite
-      .prepare(`PRAGMA index_info('idx_workloads_deployment')`)
-      .all() as Array<{ name: string }>;
 
     expect([...byName.keys()].sort()).toEqual(
       [
-        'idx_node_pools_active_name',
         'idx_workloads_pending_cleanup',
         'idx_workloads_state_completed',
         'idx_workloads_state_started',
         'idx_workloads_submitted_at',
-        'idx_workloads_deployment',
         'idx_events_workload_id',
         'idx_events_resubmit',
         'idx_events_resubmit_created_at',
         'idx_events_state_workload',
         'idx_vms_active',
         'idx_vms_cloud_id',
-        'idx_vms_node_pool_active',
-        'idx_vms_node_pool_attempt',
         'idx_vms_cluster_active',
         'idx_vms_cluster_attempt',
         'idx_vms_pending_cost_group',
         'idx_vms_workload_attempt',
         'idx_vms_needing_cost',
         'idx_vms_spend_window',
-        'idx_deployments_active_name',
-        'idx_deployments_node_pool',
       ].sort(),
     );
-    expect(byName.get('idx_vms_node_pool_attempt')?.sql).toContain(
-      'WHERE node_pool_id IS NOT NULL',
-    );
     expect(byName.get('idx_vms_pending_cost_group')?.sql).toContain(
-      'COALESCE(node_pool_id, cluster_id, workload_id)',
+      'COALESCE(cluster_id, workload_id)',
     );
 
     // Regression for the live-VM index lost during the 0015 vms rebuild: the
@@ -296,25 +259,6 @@ describe('migrations upgrade path', () => {
       'WHERE ended_at IS NULL',
     );
     expect(byName.get('idx_vms_needing_cost')?.sql).toContain('cost IS NULL');
-    expect(byName.get('idx_vms_node_pool_active')?.sql).toContain(
-      'node_pool_id IS NOT NULL AND ended_at IS NULL',
-    );
-    expect(byName.get('idx_node_pools_active_name')?.sql).toContain(
-      "WHERE state <> 'deleted'",
-    );
-    expect(byName.get('idx_workloads_deployment')?.sql).toContain(
-      'WHERE deployment_id IS NOT NULL',
-    );
-    expect(deploymentIndexColumns.map(({ name }) => name)).toEqual([
-      'deployment_id',
-      'state',
-      'submitted_at',
-      'id',
-      'first_claimed_at',
-      'claim_deadline_at',
-      'submission_revision',
-      'current_execution_id',
-    ]);
     expect(byName.get('idx_workloads_state_completed')?.sql).toContain(
       'WHERE completed_at IS NOT NULL',
     );

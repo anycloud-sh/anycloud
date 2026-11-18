@@ -16,13 +16,13 @@ describe('cliArgs', () => {
     expect(
       cliArgs(
         'service',
-        { 'node-pool': 'p-1', id: 'd-1', env: ['PORT=80', 'A=b'] },
+        { 'vm-type': 't3.small', id: 'd-1', env: ['PORT=80', 'A=b'] },
         ['nginx'],
       ),
     ).toEqual([
       'service',
-      '--node-pool',
-      'p-1',
+      '--vm-type',
+      't3.small',
       '--id',
       'd-1',
       '--env',
@@ -52,17 +52,13 @@ describe('cliArgs', () => {
     expect(() => cliArgs('service', { json: true }, ['nginx'])).toThrow(
       'has no --json option',
     );
-    // @ts-expect-error `node-pool create` requires --credentials, --region and --vm-type.
-    expect(() => cliArgs('node-pool create', { json: true }, ['name'])).toThrow(
-      'requires --credentials',
-    );
     // @ts-expect-error a switch takes a boolean, not a string.
-    expect(() => cliArgs('node-pool list', { json: 'yes' })).toThrow(
+    expect(() => cliArgs('cluster list', { json: 'yes' })).toThrow(
       'is a switch',
     );
     // Positional arity is a runtime check: the type does not count them.
-    expect(() => cliArgs('node-pool status', { json: false }, [])).toThrow(
-      'takes <id-or-name>',
+    expect(() => cliArgs('service upgrade', {}, [])).toThrow(
+      'takes <id> <image>',
     );
     // @ts-expect-error no such command path.
     expect(() => cliArgs('cluster creates', {})).toThrow();

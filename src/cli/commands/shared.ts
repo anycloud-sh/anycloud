@@ -104,7 +104,7 @@ const VM_PICKER_QUOTA_STATUS_WAIT_MS = 3_000;
 /** RFC 0049 C32: the privileged options go in the next release. */
 export function warnPrivilegedDeprecated(flag: string): void {
   printWarning(
-    `${flag} is deprecated and removed in the next release; use node-pool create --user-namespace-jobs`,
+    `${flag} is deprecated and removed in the next release; use --host-docker`,
     true,
   );
 }

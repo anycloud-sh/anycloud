@@ -17,7 +17,6 @@ import {
   isCloudStorage,
   isPreemptible,
   isTransientTransportError,
-  METADATA_NODE_POOL_BOOT,
   VM_PRESENT,
   VM_RELEASE_CANDIDATE,
   VM_RELEASE_CONFIRMING,
@@ -27,10 +26,7 @@ import {
 import { CandidatePreflightCache } from '../../../../src/api/services/candidate-preflight-cache';
 import { resetStorageCoordinatorForTests } from '../../../../src/api/services/gateways/storage-coordinator';
 import { CloudType, GpuRuntime } from '../../../../src/shared/cloud.js';
-import {
-  NEURON_RUNTIME_UNSUPPORTED_MESSAGE,
-  PROVIDER_DATA,
-} from '../../../../src/shared/providers';
+import { NEURON_RUNTIME_UNSUPPORTED_MESSAGE } from '../../../../src/shared/providers';
 import {
   BucketNotFoundError,
   ObjectNotFoundError,
@@ -1121,7 +1117,6 @@ describe('createCloudCompute', () => {
       rawUpsertFirewall: vi.fn(),
       observeVMReleaseOnce: vi.fn(),
       resourceScoped: {
-        nodePoolBoot: METADATA_NODE_POOL_BOOT,
         prepareResourceNetwork: vi.fn(),
         adoptResourceProvisioningAttempt: vi.fn().mockResolvedValue({
           cloudId: 'adopted-resource-vm',
@@ -1289,75 +1284,6 @@ describe('createCloudCompute', () => {
     expect(
       canLaunchSpotPools(createCloudCompute({ ...ops, stoppedVmObservation })),
     ).toBe(false);
-  });
-
-  it('0044/S24: a pools-only gateway refuses the cluster scope before any provider call', async () => {
-    const resourceScoped = {
-      nodePoolBoot: METADATA_NODE_POOL_BOOT,
-      prepareResourceNetwork: vi.fn(),
-      adoptResourceProvisioningAttempt: vi.fn().mockResolvedValue(null),
-      newResourceVM: vi.fn().mockResolvedValue({
-        cloudId: 'pool-vm',
-        ip: '203.0.113.21',
-      }),
-      terminateResourceNetwork: vi.fn(),
-    };
-    const data = PROVIDER_DATA[CloudType.AWS].compute as {
-      poolsOnly?: boolean;
-    };
-    data.poolsOnly = true;
-    try {
-      const compute = createCloudCompute({
-        type: CloudType.AWS,
-        region: 'us-east-1',
-        vmType: 't3.large',
-        rawValidateCredentials: vi.fn(),
-        rawClassifyError: vi.fn(),
-        rawNewVM: vi.fn(),
-        rawRequestVMTermination: vi.fn(),
-        rawTerminateNetworking: vi.fn(),
-        rawGetAllVMs: vi.fn(),
-        rawUpsertFirewall: vi.fn(),
-        observeVMReleaseOnce: vi.fn(),
-        resourceScoped,
-      });
-      if (!canManageCloudResources(compute)) {
-        throw new Error('expected resource-scoped compute capability');
-      }
-      const cluster = { id: 'anycloud-cluster-inst-1', tags: {} };
-      const launch = {
-        vmId: 'vm-1',
-        ipWhitelist: [],
-        startupScript: '#!/bin/bash',
-        version: '1.0.0',
-      };
-      await expect(
-        compute.prepareResourceNetwork({ ingress: [] }, cluster, '1.0.0'),
-      ).rejects.toThrow("can't host a cluster's management VM");
-      await expect(
-        compute.adoptResourceProvisioningAttempt!({
-          scope: cluster,
-          vmId: 'vm-1',
-        }),
-      ).rejects.toThrow("can't host a cluster's management VM");
-      await expect(
-        compute.newResourceVM({ ...launch, scope: cluster }),
-      ).rejects.toThrow("can't host a cluster's management VM");
-      expect(resourceScoped.prepareResourceNetwork).not.toHaveBeenCalled();
-      expect(
-        resourceScoped.adoptResourceProvisioningAttempt,
-      ).not.toHaveBeenCalled();
-      expect(resourceScoped.newResourceVM).not.toHaveBeenCalled();
-
-      await expect(
-        compute.newResourceVM({
-          ...launch,
-          scope: { id: 'gpu-a1b2c3', tags: {} },
-        }),
-      ).resolves.toMatchObject({ cloudId: 'pool-vm' });
-    } finally {
-      delete data.poolsOnly;
-    }
   });
 
   it('preserves ingress support as a branded optional capability', () => {

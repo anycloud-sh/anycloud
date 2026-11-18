@@ -205,7 +205,7 @@ describe('kubernetes cluster persistence', () => {
     await store().record(intent);
     await expect(
       getDB().query(
-        `INSERT INTO vms (cluster_id, node_pool_id, cloud_id, created_at) VALUES ('install-a', 'node-pool-x', 'x', 1)`,
+        `INSERT INTO vms (cluster_id, workload_id, cloud_id, created_at) VALUES ('install-a', 'workload-x', 'x', 1)`,
       ),
     ).rejects.toThrow('CHECK constraint failed');
     await expect(

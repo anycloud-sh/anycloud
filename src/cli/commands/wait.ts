@@ -20,7 +20,7 @@ import {
 import { formatWaitRecord } from '../renderers/workload-wait.js';
 
 /**
- * Wait on Workloads, Deployments, node pools or clusters that already exist,
+ * Wait on Workloads or clusters that already exist,
  * as `wait` and as `--wait` after a create or upgrade. Returns the exit code.
  */
 export async function runWait(
@@ -53,17 +53,6 @@ export async function runWait(
               { signal },
             ),
           };
-        case 'deployment':
-          return {
-            kind: target.kind,
-            deployment: (await api.deployments.get(params, { signal }))
-              .deployment,
-          };
-        case 'node-pool':
-          return {
-            kind: target.kind,
-            nodePool: (await api.nodePools.get(params, { signal })).nodePool,
-          };
         case 'cluster':
           return {
             kind: target.kind,
@@ -94,13 +83,8 @@ export async function runWait(
 export function createWaitCommand(): Command {
   return (
     new Command('wait')
-      .description(
-        '⏳ Wait until Workloads, Deployments, node pools or clusters are ready',
-      )
-      .argument(
-        '<id...>',
-        'Workload IDs, or deployment/<id>, node-pool/<id>, cluster/<id>',
-      )
+      .description('⏳ Wait until Workloads or clusters are ready')
+      .argument('<id...>', 'Workload IDs, or cluster/<id>')
       // A usage error is not a failed Workload: exit 2, keeping 1 for failures.
       .exitOverride((error) =>
         process.exit(error.exitCode === 0 ? 0 : WAIT_EXIT['observer-error']),
@@ -117,11 +101,9 @@ Examples:
   $ anycloud wait train-a                       # until the Job completes
   $ anycloud wait screen-1 screen-2 --json      # NDJSON, one record per change
   $ anycloud wait analysis-vm --timeout 30m     # until the VM is running
-  $ anycloud wait node-pool/gpu deployment/inference   # until both are ready
 
-A Job succeeds when it completes; a Service, VM, node pool or cluster when it
-runs; a Deployment when the Pod on its latest revision is ready. Any other
-final state is a failure. Prints a line when something changes state or
+A Job succeeds when it completes; a Service, VM or cluster when it runs. Any
+other final state is a failure. Prints a line when something changes state or
 reports why it waits, and a heartbeat after 30 minutes without one.
 Exit codes: 0 every target succeeded, 1 one failed, 2 the wait could not
 observe one, 4 the timeout elapsed, 130 Ctrl-C. Waiting never changes what it

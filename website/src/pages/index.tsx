@@ -24,7 +24,7 @@ const STRUCTURED_DATA = {
       operatingSystem: 'macOS, Linux',
       applicationCategory: 'DeveloperApplication',
       description:
-        'The CLI for people and AI agents to run jobs, Kubernetes Deployments, and VMs across connected cloud accounts.',
+        'The CLI for people and AI agents to run jobs, services, and VMs across connected cloud accounts.',
       url: 'https://anycloud.sh',
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       publisher: { '@id': 'https://anycloud.sh/#org' },
@@ -78,14 +78,13 @@ const WORKLOAD_MODES: readonly WorkloadMode[] = [
     docsHref: '/platform/jobs',
   },
   {
-    id: 'deployment',
-    label: 'Deployment',
+    id: 'service',
+    label: 'Service',
     icon: '🌐',
-    command: 'anycloud deployment',
-    summary: 'Keep an application running on Kubernetes for Jobs to target.',
-    goodFor:
-      'Warm model servers and inference workers that run many short Jobs.',
-    docsHref: '/reference/cli/deployments',
+    command: 'anycloud service',
+    summary: 'Keep an HTTP endpoint online at a stable URL.',
+    goodFor: 'Model servers, inference APIs, and demos.',
+    docsHref: '/platform/services',
   },
   {
     id: 'vm',
@@ -179,8 +178,8 @@ function Hero() {
         </h1>
 
         <p className={styles.lede}>
-          Guardrails let agents safely run jobs, create Kubernetes Deployments,
-          and launch VMs on CPU and GPU infrastructure.
+          Guardrails let agents safely run jobs, start services, and launch VMs
+          on CPU and GPU infrastructure.
         </p>
 
         <HeroTerminal />
@@ -499,9 +498,9 @@ function WorkloadModes() {
           Choose the right primitive for any workload
         </h2>
         <p className={styles.sectionSub}>
-          Run AI research as finite jobs, turn results into long-lived
-          Kubernetes Deployments, or drop down to a VM for direct compute
-          access—all behind the same cloud-account workflow.
+          Run AI research as finite jobs, serve results as long-lived services,
+          or drop down to a VM for direct compute access—all behind the same
+          cloud-account workflow.
         </p>
 
         <div className={styles.workloadGrid}>
@@ -526,8 +525,8 @@ function WorkloadModes() {
           ))}
         </div>
         <p className={styles.workloadSdkNote}>
-          Prefer Python? Jobs and Kubernetes Deployments are also available
-          through the <Link to="/reference/python-sdk">Python SDK</Link>.
+          Prefer Python? Jobs are also available through the{' '}
+          <Link to="/reference/python-sdk">Python SDK</Link>.
         </p>
       </div>
     </section>
@@ -1190,7 +1189,7 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title="CLI for any AI workload in any cloud account"
-      description="Give your team and AI agents one CLI to run jobs, Kubernetes Deployments, and VMs across the cloud accounts you connect."
+      description="Give your team and AI agents one CLI to run jobs, services, and VMs across the cloud accounts you connect."
     >
       <Head>
         <script type="application/ld+json">

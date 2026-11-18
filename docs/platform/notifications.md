@@ -76,15 +76,11 @@ These Workload types are reported separately with that user's compute spend,
 provisioned VM hours, and distinct VMs:
 
 - Jobs report initial submissions, resubmissions, terminal results,
-  preemptions, and median duration. **By Kubernetes Deployment — included above**
-  breaks down targeted Job activity by Deployment and node pool within those totals.
+  preemptions, and median duration.
 - Services use service-specific launch wording and omit median duration because
   they are long-running.
 - VMs use creation wording, report terminal outcomes directly without a
   separate ended total, and omit median duration because they are long-running.
-- Kubernetes Deployments report inventory present at day end, creations, and
-  completed deletions under their owner. Jobs remain under the person who
-  submitted them, including when someone else owns the target Deployment.
 
 Users are sorted by username. Inactive user sections and lines with a zero count
 are omitted. Activity rows and their outcome details use Slack's structured
@@ -97,45 +93,6 @@ resubmitted another, and finish later.
 Terminal outcomes are counted on the day a workload reached its outcome. VM
 usage and spend are independent: each VM contributes its own lifetime, up to its
 `endedAt` spend cutoff, clipped to the digest day.
-
-### Kubernetes Deployments
-
-An owner's Deployment section appears when their Deployments had lifecycle
-changes, targeted Job submissions, resubmissions or outcomes, or backing node
-pool VM usage during the reported day. Lifecycle changes and Job activity are
-reported even without a VM. Otherwise, idle inventory qualifies only when a
-Deployment existed alongside a provisioned VM in its backing node pool during
-that day. Capacity still provisioning and unrelated API-host VMs do not qualify.
-A VM awaiting removal counts until its recorded end time. Scaling to zero
-today therefore preserves yesterday's usage; dormant Deployment records alone
-do not cause a digest.
-
-Day-end inventory is reconstructed from creation and completed-deletion times.
-A deletion request continues to count as present until deletion completes.
-Inventory describes recorded existence; use `anycloud deployment status` for
-live readiness. Owner names come from locally stored GitHub account metadata,
-with `GitHub user <id>` as the fallback.
-
-Each submitter's Job breakdown shows the five busiest targets by combined
-submissions, resubmissions, and terminal results, with name and ID breaking ties.
-The remaining targets share an **N other Deployments** row. Targets are grouped
-by ID, so a deleted Deployment and a replacement with the same name stay
-separate; matching name-and-node-pool labels include their IDs.
-
-```text
-👤 alice
-📦 Jobs
-  12 initial submissions
-  10 ended · 9 completed · 1 failed
-  By Kubernetes Deployment — included above
-    inference / gpu-pool: 8 submitted · 7 completed · 1 failed
-☸️ Kubernetes Deployments
-  3 present at day end · 1 created · 1 deleted
-```
-
-These rows add context to existing Job totals. Node pool and per-Deployment
-cost reporting are separate work; the digest's compute-spend totals continue
-to cover VMs owned by Jobs, Services, and VM workloads.
 
 ### Spend alerts
 

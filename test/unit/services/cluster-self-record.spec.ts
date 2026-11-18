@@ -15,7 +15,6 @@ import {
 import { getDB } from '../../../src/api/services/repositories/db.js';
 import { CloudType } from '../../../src/shared/cloud.js';
 import { ClusterState } from '../../../src/shared/clusters.js';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
 
 const CA = Buffer.from('ca').toString('base64');
 const env = {
@@ -203,40 +202,32 @@ describe('hosted API cluster self-record', () => {
     ).rejects.toThrow(HostedClusterRefusedError);
   });
 
-  it('adopts the new cluster when a restored database records another identity, and replaces the old node pool VMs', async () => {
+  it('adopts the new cluster when a restored database records another identity', async () => {
     const installations = getPersistence().clusters;
-    const other = await seedReadyNodePool({
-      clusterId: 'install-other',
-      nodePoolId: 'other-pool',
-    });
-    await getDB().query(
-      `UPDATE node_pools SET state = 'deleted' WHERE id = 'other-pool'`,
-    );
+    const record = (id: string) =>
+      installations.recordSelf({
+        id,
+        ownerUserId: '42',
+        name: `${id}-root`,
+        kubernetesIdentity: `uid-${id}`,
+        connection: '{"stored":true}',
+      });
+    await record('install-other');
     await getDB().query(
       `UPDATE clusters SET state = 'destroyed', encrypted_connection = NULL WHERE id = 'install-other'`,
     );
-    const { nodePoolId, credentialId } = await seedReadyNodePool({
-      clusterId: 'install-1',
-    });
+    await record('install-1');
+    await getDB().query(
+      `INSERT INTO credentials (id, encrypted_data, cloud_provider) VALUES ('cred-a', 'x', 'AWS')`,
+    );
     await getDB().query(
       `INSERT INTO workloads (id, user_id, workload_type, state, started_at,
          submitted_at, docker_command, ssh_private_key)
        VALUES ('workload-1', '42', 'vm', 'running', 1, 1, 'cmd', '')`,
     );
     await getDB().query(
-      `INSERT INTO vms (node_pool_id, workload_id, cloud_id, created_at, credential_id, ended_at)
-       VALUES (?, NULL, 'i-old-cluster', 1, ?, NULL), (?, NULL, 'i-ended', 1, ?, 2),
-              (?, NULL, 'i-other-cluster', 1, ?, NULL),
-              (NULL, 'workload-1', 'i-workload', 1, ?, NULL)`,
-      [
-        nodePoolId,
-        credentialId,
-        nodePoolId,
-        credentialId,
-        other.nodePoolId,
-        credentialId,
-        credentialId,
-      ],
+      `INSERT INTO vms (workload_id, cloud_id, created_at, credential_id, ended_at)
+       VALUES ('workload-1', 'i-workload', 1, 'cred-a', NULL)`,
     );
     const input = {
       clusterId: 'install-1',
@@ -252,16 +243,12 @@ describe('hosted API cluster self-record', () => {
       kubernetesIdentity: 'uid-production',
       connectionRevision: 2,
     });
-    const [vm] = await getDB().query<{ removal_requested_at: number | null }>(
-      `SELECT removal_requested_at FROM vms WHERE cloud_id = 'i-old-cluster'`,
-    );
-    expect(vm.removal_requested_at).not.toBeNull();
-    // Another cluster's pool VM, an ended VM and a Workload VM stay unclaimed.
+    // A Workload VM stays unclaimed.
     await expect(
       getDB().query(
         `SELECT cloud_id FROM vms WHERE removal_requested_at IS NOT NULL`,
       ),
-    ).resolves.toEqual([{ cloud_id: 'i-old-cluster' }]);
+    ).resolves.toEqual([]);
     await expect(recordHostedCluster(input)).resolves.toBe('exists');
     // Only adoption moves the identity, by exactly one generation, to a
     // non-NULL new identity.

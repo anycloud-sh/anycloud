@@ -412,12 +412,12 @@ describe('loadBillingIdentity', () => {
     },
   );
 
-  it('uses the deleted node pool attempt identity without re-reading the node pool', async () => {
+  it('uses a destroyed installation attempt identity without re-reading the owner', async () => {
     await expect(
       loadBillingIdentity({
         ...firstVm,
         workload_id: null,
-        node_pool_id: 'no-longer-retained-node-pool',
+        cluster_id: 'destroyed-installation',
       }),
     ).resolves.toEqual({
       cloudProvider: CloudType.AWS,
@@ -426,32 +426,17 @@ describe('loadBillingIdentity', () => {
   });
 
   it.each([
-    { node_pool_id: 'deleted-node-pool' },
-    { cluster_id: 'destroyed-installation' },
-  ])(
-    'uses the resource-scoped attempt identity for %j without re-reading the owner',
-    async (owner) => {
-      await expect(
-        loadBillingIdentity({ ...firstVm, workload_id: null, ...owner }),
-      ).resolves.toEqual({
-        cloudProvider: CloudType.AWS,
-        credentials: credentials[0].expected,
-      });
-    },
-  );
-
-  it.each([
     { region: null },
     { vm_type: null },
     { credential_id: null },
     { credential_id: 'missing-account' },
-    { node_pool_id: null },
-  ])('preserves node pool guards for %j', async (missing) => {
+    { cluster_id: null },
+  ])('preserves installation guards for %j', async (missing) => {
     await expect(
       loadBillingIdentity({
         ...firstVm,
         workload_id: null,
-        node_pool_id: 'deleted-node-pool',
+        cluster_id: 'destroyed-installation',
         ...missing,
       }),
     ).resolves.toBeNull();
@@ -631,7 +616,7 @@ describe('validateStorageCapabilities', () => {
     ).toThrow('requires credentials that can mint scoped bucket-sync tokens');
   });
 
-  it('rejects a non-AWS (GCP) cross-cloud checkpoint storage credential for a VM Job, and accepts it on the pool path (RFC 0043 D-s3gcs)', () => {
+  it('rejects a non-AWS (GCP) cross-cloud checkpoint storage credential for a VM Job', () => {
     const config = {
       ...awsCompute,
       checkpointStorageCredentials: TEST_GCP_CRED,
@@ -640,7 +625,6 @@ describe('validateStorageCapabilities', () => {
     expect(() => validateStorageCapabilities(config)).toThrow(
       'requires credentials that can mint scoped bucket-sync tokens',
     );
-    expect(() => validateStorageCapabilities(config, false)).not.toThrow();
   });
 });
 

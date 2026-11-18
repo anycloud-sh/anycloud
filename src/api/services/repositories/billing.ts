@@ -1,6 +1,5 @@
 import type { CloudType } from '../../../shared/cloud.js';
 import { ClusterState } from '../../../shared/clusters.js';
-import { NodePoolState } from '../../../shared/node-pools.js';
 import { TERMINAL_STATES } from '../../../shared/workload.js';
 import { getDB, type DB } from './db.js';
 import { scalarCredentialSql } from './credential-reference.js';
@@ -9,7 +8,6 @@ import { scalarCredentialSql } from './credential-reference.js';
 export interface VmNeedingCost {
   cloud_id: string;
   workload_id: string | null;
-  node_pool_id: string | null;
   cluster_id: string | null;
   resource_id: string;
   resource_tag: 'anycloud_deployment' | 'anycloud_resource';
@@ -56,10 +54,10 @@ export interface VmCostSettlement {
 }
 
 const GROUP_INDEX = 'idx_vms_pending_cost_group';
-// Must match the idx_vms_pending_cost_group expressions exactly (0126).
+// Must match the idx_vms_pending_cost_group expressions exactly (0172).
 const KEY_EXPRESSIONS = [
   "CASE WHEN v.workload_id IS NOT NULL THEN 'anycloud_deployment' ELSE 'anycloud_resource' END",
-  'COALESCE(v.node_pool_id, v.cluster_id, v.workload_id)',
+  'COALESCE(v.cluster_id, v.workload_id)',
   '(v.credential_id IS NOT NULL)',
   "COALESCE(v.credential_id, '')",
 ];
@@ -71,8 +69,7 @@ const KEY_NAMES: (keyof VmCostGroupCursor)[] = [
 ];
 const PENDING_GROUP_PREDICATE = `v.cost IS NULL
   AND v.ended_at IS NOT NULL
-  AND (v.workload_id IS NOT NULL OR v.node_pool_id IS NOT NULL
-       OR v.cluster_id IS NOT NULL)`;
+  AND (v.workload_id IS NOT NULL OR v.cluster_id IS NOT NULL)`;
 const KEY_PROJECTION = KEY_EXPRESSIONS.map(
   (expression, index) => `${expression} AS ${KEY_NAMES[index]}`,
 ).join(', ');
@@ -101,16 +98,14 @@ const NEXT_GROUP_SEEKS = KEY_EXPRESSIONS.map((_, suffix) => ({
     LIMIT 1`,
 })).reverse();
 
-const VM_COLUMNS = `v.cloud_id, v.workload_id, v.node_pool_id,
-  v.cluster_id,
-  COALESCE(v.node_pool_id, v.cluster_id, v.workload_id) AS resource_id,
+const VM_COLUMNS = `v.cloud_id, v.workload_id, v.cluster_id,
+  COALESCE(v.cluster_id, v.workload_id) AS resource_id,
   CASE WHEN v.workload_id IS NOT NULL
     THEN 'anycloud_deployment' ELSE 'anycloud_resource'
   END AS resource_tag,
   v.credential_id, v.created_at, v.ended_at,
   v.region, v.vm_type, c.cloud_provider`;
 const OWNER_AND_CREDENTIAL_JOINS = `LEFT JOIN workloads d ON d.id = v.workload_id
-  LEFT JOIN node_pools p ON p.id = v.node_pool_id
   LEFT JOIN clusters r ON r.id = v.cluster_id
   JOIN credentials c
     ON c.id = COALESCE(v.credential_id, ${scalarCredentialSql('d.credential_id')})`;
@@ -118,19 +113,14 @@ const OWNER_AND_CREDENTIAL_JOINS = `LEFT JOIN workloads d ON d.id = v.workload_i
 // scope tag covers a complete group; Workload VMs settle on terminal state.
 const OWNER_ELIGIBILITY = `(
   (v.workload_id IS NOT NULL AND d.state IN (${TERMINAL_STATES.map(() => '?').join(', ')}))
-  OR (v.node_pool_id IS NOT NULL AND p.state = ?)
   OR (v.cluster_id IS NOT NULL AND r.state = ?)
 )`;
-const OWNER_ELIGIBILITY_PARAMS = [
-  ...TERMINAL_STATES,
-  NodePoolState.Deleted,
-  ClusterState.Destroyed,
-];
+const OWNER_ELIGIBILITY_PARAMS = [...TERMINAL_STATES, ClusterState.Destroyed];
 // Deleted/Destroyed transitions stamp updated_at; terminal Workloads stamp
 // completed_at.
 const LOAD_GROUP_SQL = `SELECT v.id, ${VM_COLUMNS},
   CASE WHEN v.workload_id IS NOT NULL THEN d.completed_at
-    WHEN v.node_pool_id IS NOT NULL THEN p.updated_at ELSE r.updated_at
+    ELSE r.updated_at
   END AS billable_at
   FROM vms v INDEXED BY ${GROUP_INDEX}
   ${OWNER_AND_CREDENTIAL_JOINS}

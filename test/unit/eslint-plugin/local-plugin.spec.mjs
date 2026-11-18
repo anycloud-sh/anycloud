@@ -121,10 +121,6 @@ ruleTester.run(
         code: 'export async function insertContainerSpec(db) { return db.transaction(tx => tx.query(`INSERT INTO container_specs (id) VALUES (?)`)); }',
       },
       {
-        filename: 'src/api/services/deployment-store.ts',
-        code: 'export class DeploymentStore { update() { return db.transaction(tx => tx.query("UPDATE container_specs SET image = ?")); } }',
-      },
-      {
         code: 'db.query("SELECT * FROM container_specs")',
       },
       ...[
@@ -143,10 +139,6 @@ ruleTester.run(
         'log.error(`Unable; DELETE FROM ${name}`)',
         'log.error(`Failed; UPDATE ${name} after retry`)',
       ].map((code) => ({ code })),
-      {
-        filename: 'src/api/services/deployment-store.ts',
-        code: 'export class DeploymentStore { update() { db.query(`UPDATE ${"container_" + "specs"} SET ${assignments} WHERE ${predicate}`); } }',
-      },
     ],
     invalid: [
       ...[
@@ -377,17 +369,6 @@ describe('container-spec write ownership ESLint configuration', () => {
       ).toHaveLength(extension === 'ts' ? 0 : 1);
     },
   );
-
-  it('rejects container-spec writes from targeted Job creation', async () => {
-    const [result] = await eslint.lintText(
-      'export function createTargetedWorkload() { db.query(`INSERT INTO container_specs (id) VALUES (?)`); }',
-      { filePath: 'src/api/services/repositories/targeted-job-creation.ts' },
-    );
-
-    expect(result.messages.map(({ ruleId }) => ruleId)).toContain(
-      'local/container-spec-write-ownership',
-    );
-  });
 });
 
 const unapprovedProviderRuntimeImports = [
@@ -1396,30 +1377,6 @@ ruleTester.run(
           '/repo/test/integration/e2e/internal/targets/public-cloud-serve.ts',
       },
       {
-        code: 'import type { NodePoolCreateTransport, NodePoolDeleteAttemptTransport, NodePoolDeleteTransport } from "../node-pool-mutations.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { DeploymentCreateInput, DeploymentCreateTransport, DeploymentDeleteTransport, DeploymentReadTransport, DeploymentUpdateInput, DeploymentUpdateTransport } from "../deployment-mutations.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { DeploymentKernel, TrackedDeploymentRef } from "../deployments.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import type { NodePoolKernel, TrackedNodePoolRef } from "../node-pools.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import { NodePoolState } from "../../../../../src/shared/node-pools.js";',
-        filename: '/repo/test/integration/e2e/internal/contracts/node-pool.ts',
-      },
-      {
         code: 'import type { VmProvider } from "../profiles.js";',
         filename:
           '/repo/test/integration/e2e/internal/targets/persistent-vm.ts',
@@ -1483,30 +1440,6 @@ ruleTester.run(
         errors: [{ messageId: 'kernel' }],
         filename:
           '/repo/test/integration/e2e/internal/targets/persistent-vm.ts',
-      },
-      {
-        code: 'import { DeploymentMutationTransport } from "../deployment-mutations.js";',
-        errors: [{ messageId: 'raw' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import { TrackedDeploymentKernel } from "../deployments.js";',
-        errors: [{ messageId: 'kernel' }],
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import { TrackedNodePoolKernel } from "../node-pools.js";',
-        errors: [{ messageId: 'kernel' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { NodePoolMutationTransport } from "../node-pool-mutations.js";',
-        errors: [{ messageId: 'raw' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
       },
       {
         code: 'import { HostIdentityHarness } from "../host-identity.js";',
@@ -3207,62 +3140,19 @@ describe('module graph boundary coverage', () => {
   it('keeps the substrate-neutral core out of kubernetes/ (RFC 0044 invariant 17)', async () => {
     expect(
       await cruiseFixture({
-        'src/api/services/job-outcome.ts':
-          "import type { Pod } from './kubernetes/pod-termination.js';\nexport type T = Pod;\n",
         'src/api/rpc/jobs.ts': "import '../services/kubernetes/client.js';\n",
         'src/api/services/repositories/workloads.ts':
           "import '../kubernetes/client.js';\n",
         'src/api/services/spend-controls-store.ts':
           "import './kubernetes/client.js';\n",
-        'src/api/services/deployment-store.ts':
+        'src/api/services/cluster-store.ts':
           "import './kubernetes/client.js';\n",
-        'src/api/services/deployment-controller.ts':
-          "import './kubernetes/pod-termination.js';\nimport './job-outcome.js';\n",
-        'src/api/services/kubernetes/pod-termination.ts':
-          'export type Pod = 1;\n',
         'src/api/services/kubernetes/client.ts': 'export {};\n',
       }),
     ).toEqual([
       'substrate-neutral-core: src/api/rpc/jobs.ts -> src/api/services/kubernetes/client.ts',
-      'substrate-neutral-core: src/api/services/deployment-store.ts -> src/api/services/kubernetes/client.ts',
-      'substrate-neutral-core: src/api/services/job-outcome.ts -> src/api/services/kubernetes/pod-termination.ts',
       'substrate-neutral-core: src/api/services/repositories/workloads.ts -> src/api/services/kubernetes/client.ts',
       'substrate-neutral-core: src/api/services/spend-controls-store.ts -> src/api/services/kubernetes/client.ts',
-    ]);
-  });
-
-  it('keeps the new Pod modules free of product records and policy (RFC 0044 invariant 1)', async () => {
-    expect(
-      await cruiseFixture({
-        'src/api/services/kubernetes/pod-termination.ts': [
-          "import type { Cause } from '../job-outcome.js';",
-          "import { BATCH_POLICY } from '../job-outcome.js';",
-          "import type { Cluster } from '../cluster-store.js';",
-          "import '../logger.js';",
-          "import '../../../shared/workload.js';",
-          "import './managed-resources.js';",
-          "import './deployment-runtime.js';",
-          "import '../deployment-store.js';",
-          "import '../repositories/workloads.js';",
-          'export type T = [Cause, Cluster];',
-          'console.log(BATCH_POLICY);',
-          '',
-        ].join('\n'),
-        'src/api/services/job-outcome.ts':
-          'export type Cause = 1;\nexport const BATCH_POLICY = 1;\n',
-        'src/api/services/cluster-store.ts': 'export type Cluster = 1;\n',
-        'src/api/services/logger.ts': 'export {};\n',
-        'src/shared/workload.ts': 'export {};\n',
-        'src/api/services/kubernetes/managed-resources.ts': 'export {};\n',
-        'src/api/services/kubernetes/deployment-runtime.ts': 'export {};\n',
-        'src/api/services/deployment-store.ts': 'export {};\n',
-        'src/api/services/repositories/workloads.ts': 'export {};\n',
-      }),
-    ).toEqual([
-      'pool-substrate-boundary: src/api/services/kubernetes/pod-termination.ts -> src/api/services/deployment-store.ts',
-      'pool-substrate-boundary: src/api/services/kubernetes/pod-termination.ts -> src/api/services/kubernetes/deployment-runtime.ts',
-      'pool-substrate-boundary: src/api/services/kubernetes/pod-termination.ts -> src/api/services/repositories/workloads.ts',
-      'pool-substrate-boundary:types: src/api/services/kubernetes/pod-termination.ts -> src/api/services/job-outcome.ts',
     ]);
   });
 
@@ -3534,8 +3424,6 @@ describe('module graph boundary coverage', () => {
         'src/api/services/repositories/workload-lifecycle.ts': 'export {};\n',
         'src/api/services/persistence.ts':
           "import './repositories/workload-lifecycle.js';\n",
-        'src/api/services/repositories/deployment-executions.ts':
-          "import './workload-lifecycle.js';\n",
         'src/api/services/repositories/workload-outcomes.ts':
           "import './workload-lifecycle.js';\n",
         'src/api/services/repositories/workload-queries.ts':
@@ -3568,8 +3456,6 @@ describe('module graph boundary coverage', () => {
         'src/api/services/repositories/workload-outcomes.ts': 'export {};\n',
         'src/api/services/persistence.ts':
           "import './repositories/workload-outcomes.js';\n",
-        'src/api/services/repositories/deployment-executions.ts':
-          "import './workload-outcomes.js';\n",
         'src/api/services/repositories/workload-queries.ts':
           "import './workload-outcomes.js';\n",
         'src/api/services/workload-cleanup.ts':
@@ -3659,8 +3545,6 @@ describe('module graph boundary coverage', () => {
       await cruiseFixture({
         'src/api/services/repositories/workload-queries.ts': 'export {};\n',
         'src/api/services/persistence.ts': importOwner,
-        'src/api/services/repositories/deployment-executions.ts':
-          "import type { T } from './workload-queries.js';\n",
         'src/api/services/repositories/workload-spend.ts':
           "import './workload-queries.js';\n",
         'src/api/services/notifications-digest.ts': importOwner,
@@ -3695,26 +3579,6 @@ describe('module graph boundary coverage', () => {
     ]);
   });
 
-  it('keeps Deployment executions behind persistence and the admission writer, and their consumers on types', async () => {
-    const importOwner = "import './repositories/deployment-executions.js';\n";
-    const importTypes =
-      "import type { T } from './repositories/deployment-executions.js';\n";
-    expect(
-      await cruiseFixture({
-        'src/api/services/repositories/deployment-executions.ts':
-          'export {};\n',
-        'src/api/services/persistence.ts': importOwner,
-        'src/api/services/workload-admission-writer.ts': importOwner,
-        'src/api/services/deployment-controller.ts': importTypes,
-        'src/api/services/deployment-workload-domain.ts': importOwner,
-        'src/api/services/monitor.ts': importTypes,
-      }),
-    ).toEqual([
-      'module-ownership:repositories.deployment-executions.ts: src/api/services/monitor.ts -> src/api/services/repositories/deployment-executions.ts',
-      'module-ownership:repositories.deployment-executions.ts:types: src/api/services/deployment-workload-domain.ts -> src/api/services/repositories/deployment-executions.ts',
-    ]);
-  });
-
   it('keeps Workload creation behind the admission writer, and its consumers on types', async () => {
     const importOwner = "import './repositories/workload-creation.js';\n";
     const importTypes =
@@ -3724,7 +3588,6 @@ describe('module graph boundary coverage', () => {
         'src/api/services/repositories/workload-creation.ts': 'export {};\n',
         'src/api/services/workload-admission-writer.ts': importOwner,
         'src/api/services/workload-admission-plan.ts': importTypes,
-        'src/api/services/node-pool-service-admission.ts': importTypes,
         'src/api/services/workload-admission-persistence.ts': importOwner,
         'src/api/services/persistence.ts': importOwner,
         'src/api/services/repositories/workload-lifecycle.ts':
@@ -3734,22 +3597,6 @@ describe('module graph boundary coverage', () => {
       'module-ownership:repositories.workload-creation.ts: src/api/services/persistence.ts -> src/api/services/repositories/workload-creation.ts',
       'module-ownership:repositories.workload-creation.ts: src/api/services/repositories/workload-lifecycle.ts -> src/api/services/repositories/workload-creation.ts',
       'module-ownership:repositories.workload-creation.ts:types: src/api/services/workload-admission-persistence.ts -> src/api/services/repositories/workload-creation.ts',
-    ]);
-  });
-
-  it('keeps node pool Service reads behind persistence and their type consumer', async () => {
-    expect(
-      await cruiseFixture({
-        'src/api/services/repositories/node-pool-services.ts': 'export {};\n',
-        'src/api/services/persistence.ts':
-          "import './repositories/node-pool-services.js';\n",
-        'src/api/services/node-pool-service-reconciler.ts':
-          "import type { T } from './repositories/node-pool-services.js';\n",
-        'src/api/services/node-pool-service-controller.ts':
-          "import './repositories/node-pool-services.js';\n",
-      }),
-    ).toEqual([
-      'module-ownership:repositories.node-pool-services.ts: src/api/services/node-pool-service-controller.ts -> src/api/services/repositories/node-pool-services.ts',
     ]);
   });
 
@@ -3840,10 +3687,8 @@ describe('module graph boundary coverage', () => {
           "import './workload-workflows/persistent-vm-repair.js';",
           "import './workload-workflows/workload-pipeline.js';",
           "import './workload-workflows/provisioning-scheduler.js';",
-          "import './workload-workflows/targeted-job.js';",
           '',
         ].join('\n'),
-        'src/api/services/workload-workflows/targeted-job.ts': 'export {};\n',
         'src/api/services/credential-auth-failure.ts': 'export {};\n',
         'src/api/services/launch-targets.ts':
           "import './credential-auth-failure.js';\n",
@@ -3859,7 +3704,6 @@ describe('module graph boundary coverage', () => {
           "import './persistent-vm-repair.js';",
           "import './workload-pipeline.js';",
           "import './provisioning-scheduler.js';",
-          "import './targeted-job.js';",
           "import '../credential-auth-failure.js';",
           "import '../workload-admission-checks.js';",
           '',
@@ -3871,7 +3715,6 @@ describe('module graph boundary coverage', () => {
       'module-ownership:services.workload-admission-checks.ts: src/api/services/workload-workflows/retry-recovery.ts -> src/api/services/workload-admission-checks.ts',
       'module-ownership:workload-workflows.persistent-vm-repair.ts: src/api/services/workload-workflows/retry-recovery.ts -> src/api/services/workload-workflows/persistent-vm-repair.ts',
       'module-ownership:workload-workflows.provisioning-scheduler.ts: src/api/services/workload-workflows/retry-recovery.ts -> src/api/services/workload-workflows/provisioning-scheduler.ts',
-      'module-ownership:workload-workflows.targeted-job.ts: src/api/services/workload-workflows/retry-recovery.ts -> src/api/services/workload-workflows/targeted-job.ts',
       'module-ownership:workload-workflows.workload-pipeline.ts: src/api/services/workload-workflows/retry-recovery.ts -> src/api/services/workload-workflows/workload-pipeline.ts',
     ]);
   });

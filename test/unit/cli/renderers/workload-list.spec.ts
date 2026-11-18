@@ -1,16 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildNodePoolDeploymentWatchLines,
   buildWorkloadListOutput,
   listViewChoices,
-  nodePoolChoices,
 } from '../../../../src/cli/renderers/workload-list.js';
 import { WorkloadState } from '../../../../src/shared/workload.js';
-import {
-  makeDeploymentSummary,
-  makeNodePoolSummary,
-  makeWorkloadListRow,
-} from '../../helpers/fixtures.js';
+import { makeWorkloadListRow } from '../../helpers/fixtures.js';
 
 describe('listViewChoices', () => {
   it('offers the user and session views only once the listing has them', () => {
@@ -21,10 +15,7 @@ describe('listViewChoices', () => {
         stateCounts: new Map(),
         total: 0,
       }),
-    ).toEqual([
-      { title: '☸️ by node pool', value: '__node_pools__' },
-      { title: '📋 all (0)', value: '__all__' },
-    ]);
+    ).toEqual([{ title: '📋 all (0)', value: '__all__' }]);
     const two = ['a', 'b'].map((k) => ({
       username: k,
       session: k,
@@ -43,28 +34,6 @@ describe('listViewChoices', () => {
       { title: '👤 by user (2)', value: '__users__' },
       { title: '🤖 by session (2)', value: '__sessions__' },
     ]);
-  });
-});
-
-describe('node pool state in list pickers and watch', () => {
-  it('marks a terminated pool that is still releasing its VMs', () => {
-    const nodePool = makeNodePoolSummary({
-      state: WorkloadState.Terminated,
-      releasing: true,
-    });
-    expect(nodePoolChoices([nodePool])[0]?.title).toContain(
-      'terminated · releasing',
-    );
-    const lines = buildNodePoolDeploymentWatchLines(
-      {
-        nodePool,
-        deployment: makeDeploymentSummary(),
-        workloads: [],
-      },
-      { rows: 24, columns: 100 },
-    );
-    expect(lines[0]).toContain('Node pool: terminated · releasing,');
-    expect(lines[1]).toBe('Deployment: unknown, Jobs 1/4 | model-deployment');
   });
 });
 

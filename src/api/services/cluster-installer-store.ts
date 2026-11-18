@@ -610,10 +610,7 @@ export class ClusterInstallerStore implements ClusterInstallerRepository {
 
   /**
    * A database restored into a new cluster takes it over: the record moves to
-   * the new identity and connection (migration 0132 allows exactly this), and
-   * every live node pool VM is claimed for removal. Those VMs cannot join the
-   * new control plane; the node pool controller terminates them by native id
-   * and provisions replacements.
+   * the new identity and connection (migration 0132 allows exactly this).
    */
   async adoptSelf(input: {
     id: string;
@@ -642,14 +639,7 @@ export class ClusterInstallerStore implements ClusterInstallerRepository {
           input.kubernetesIdentity,
         ],
       );
-      if (updated[0]?.rowsAffected !== 1) return false;
-      tx.query(
-        `UPDATE vms SET removal_requested_at = COALESCE(removal_requested_at, ?)
-         WHERE ended_at IS NULL
-           AND node_pool_id IN (SELECT id FROM node_pools WHERE cluster_id = ?)`,
-        [now, input.id],
-      );
-      return true;
+      return updated[0]?.rowsAffected === 1;
     });
   }
 

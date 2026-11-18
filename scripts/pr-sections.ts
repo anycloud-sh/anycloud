@@ -22,7 +22,7 @@ export const LAYERS = [
   '7 Execution',
   '8 Capacity',
 ];
-const SUBSTRATES = ['shared', 'pool', 'vm', 'slurm'];
+const SUBSTRATES = ['shared', 'vm', 'slurm'];
 
 /** Parses `<columns> <regex>` lines, where `S/` abbreviates `src/api/services/`. */
 const table = (text: string) =>
@@ -43,8 +43,7 @@ const table = (text: string) =>
 export const LAYER_MAP = table(String.raw`
   0  -          src/api/((composition|server|config|restore-state|system-release-hook|host-step|runtime-artifacts)\.ts$|middleware/)
   0  -          src/shared/api-contract/openapi\.generated\.json$
-  0  -          S/(api-|first-backup|e2e-access-handoff|notif|telemetry|update-notifications|system-release|cluster-(installer|self)|cloud-account|credential|role-connection|secret|database-domain|bucket-|storage-token-|catalog|logger|redact|test-identity|vm-release-notifications|http-shutdown|persistence|monitor\.|supervisor|task\.|entities|codes)
-  4  pool       S/kubernetes/(pod-termination|pod-logs)\.ts$
+  0  -          S/(api-|first-backup|e2e-access-handoff|notif|telemetry|update-notifications|system-release|cluster-(installer|self|store|hosted-pools)|kubernetes/|cloud-account|credential|role-connection|secret|database-domain|bucket-|storage-token-|catalog|logger|redact|test-identity|vm-release-notifications|http-shutdown|persistence|monitor\.|supervisor|task\.|entities|codes)
   4  slurm      S/slurm/classify
   5  slurm      S/slurm/(.*admission|preflight)
   7  slurm      S/slurm/
@@ -52,32 +51,24 @@ export const LAYER_MAP = table(String.raw`
   2  slurm      S/repositories/slurm-clusters\.ts$
   2  shared     src/shared/workload\.ts$
   7  vm         src/shared/(ssh-runtime|docker-)
-  7  pool       src/runner/
   1  shared     src/(cli|shared)/|src/api/(rpc|routes)/|python/
-  1  shared     S/(clusters-domain|cluster-delete-report|(cluster|node-pool)-errors|workload-management-domain|spend-controls-domain|quota-domain)\.ts$
-  3  shared     S/(job-outcome|job-changes|retry-backoff|repositories/workload-outcomes)\.ts$
+  1  shared     S/(clusters-domain|cluster-delete-report|cluster-errors|workload-management-domain|service-upgrade-domain|spend-controls-domain|quota-domain)\.ts$
+  3  shared     S/(retry-backoff|repositories/workload-outcomes)\.ts$
   4  shared     S/(spend-controls|spend-controls-store|request-budget)\.ts$
   5  shared     S/job-spec-admission\.ts$
-  4  pool,vm    S/cost-calculation/
-  2  pool,vm    S/repositories/(billing|workload-spend)\.ts$
+  4  vm         S/cost-calculation/
+  2  vm         S/repositories/(billing|workload-spend)\.ts$
   8  vm         S/repositories/provisioning-attempts\.ts$
-  1  pool       S/deployment-errors\.ts$
-  2  pool       S/(repositories/(deployment-executions|node-pool-services|replica-demand)|cluster-store)\.ts$
-  2  shared     S/(repositories/|(workload-record|deployment-store|workload-event-metadata|container-spec)\.ts$)|migrations/
-  5  pool       S/(node-pool-service-admission|node-pool-admission|targeted-job-admission|pool-job-admission|deployments-domain|service-upgrade-domain|workload-api-url)\.ts$
-  5  pool,vm    S/container-image\.ts$
-  6  pool       S/((pool-reconciler|node-pool-service-reconciler|deployment-workload-domain)\.ts$|workload-workflows/targeted-job)
-  8  pool       S/(pool-(fit|scaling)\.ts$|kubernetes/node-pool-scheduling)
-  8  pool       S/(node-pool-controller|node-pool-reconciler|node-pools-domain|cluster-hosted-pools|node-detachment|kubernetes/(node-pool-(join|nodes|ingress|namespace)|nvidia-device-plugin|cluster-))
-  7  pool       S/(kubernetes/|(deployment-controller|deployment-objects|deployment-replicas|deployment-status|pool-job-storage|node-pool-service-controller|node-pool-(service-)?runtime-default|pool-job-drain|pool-runners)\.ts$|job/(node-pool|pool-job)-logs)
-  7  pool,vm    S/(runtime-secrets|dns-publication|gpu-fabric)\.ts$
+  2  shared     S/(repositories/|(workload-record|workload-event-metadata|container-spec)\.ts$)|migrations/
+  5  vm         S/container-image\.ts$
+  7  vm         S/(runtime-secrets|dns-publication|gpu-fabric)\.ts$
   5  vm         S/(workload-admission-|quota/|workload-bucket-validation|compute-validation)
   7  vm         S/(workload-workflows/vm-host-startup|job/|serve/|serve\.ts|host-runtime/|vm-(exec|initializer|startup-script|runtime-storage)|job-host|docker|containerd-transfer|resource-disk-store|image-manifest|container-health|rclone-config|workload-storage|service-storage-renewal|live-secret-files)
   6  vm         S/(workload-workflows/|reconciliation/|workload-reconciler|workload-work-registry|workload-cleanup|workload-operation-helpers)
-  8  pool,vm    S/launch-targets
+  8  vm         S/launch-targets
   8  vm         S/(compute-candidates|optimizer|runtime-placement|candidate-preflight-cache)
-  8  pool,vm    S/(gateways/|installation-sweep|self-delete|provider-clients/|network|firewall-plan|cloud-(config|endpoints|resource-scope)|cloudflare-ips|azure-client-options)
-  8  pool,vm    S/provisioning-failure
+  8  vm         S/(gateways/|installation-sweep|self-delete|provider-clients/|network|firewall-plan|cloud-(config|endpoints|resource-scope)|cloudflare-ips|azure-client-options)
+  8  vm         S/provisioning-failure
   8  vm         S/(vm-provisioner|vm-compute|status-vm)
 `).map(([pattern, layer, substrates]) => ({
   pattern,
@@ -128,8 +119,8 @@ export function renderLayers(changes: FileChange[]): string {
   return [
     '### Runtime layers',
     '',
-    '| Layer | Shared | Pool runtime | VM host | Slurm |',
-    '| --- | --- | --- | --- | --- |',
+    '| Layer | Shared | VM host | Slurm |',
+    '| --- | --- | --- | --- |',
     ...LAYERS.map(
       (name, i) =>
         `| ${name} | ${SUBSTRATES.map((s) => cell(cells.get(`${i + 1}:${s}`))).join(' | ')} |`,
@@ -154,7 +145,6 @@ const E2E_FILE =
 /** Members exercising each substrate column; layer reach requires only the free ones. */
 const SUBSTRATE_MEMBERS: Record<string, RegExp> = {
   shared: /./,
-  pool: /^e2e-(cluster|pool-scaling)-/,
   vm: /^(local|aws|gcp|azure|lambda)-/,
   slurm: /^slurm-/,
 };
@@ -189,12 +179,8 @@ const ROOTS = new Set([
 ]);
 /** Harness modules the composition root injects → members, matched against `<family>/<member>`. */
 const HARNESS_MEMBERS = table(String.raw`
-  /e2e-cluster-local$                          test/integration/e2e/internal/contracts/cluster-local
-  /e2e-(cluster|claim-burst|pool-scaling)-local$ test/integration/e2e/internal/substrates/local-cluster/
-  /e2e-claim-burst-local$                      test/integration/e2e/internal/contracts/claim-burst
-  /e2e-pool-scaling-local$                     test/integration/e2e/internal/contracts/pool-scaling-local
+  /e2e-cluster-local$                          test/integration/e2e/internal/(contracts/cluster-local|substrates/local-cluster/)
   /e2e-cluster-cloud$                          test/integration/e2e/internal/(contracts/cluster-cloud|substrates/cloud-cluster/)
-  /e2e-(cluster-|claim-burst|pool-scaling)     test/integration/e2e/internal/(targets/cluster-node-pool|transports/node-pool-service|node-pool|deployment)
   /hosted-api-access-policy$                   test/integration/e2e/internal/api-auth\.ts$
   -bucket-access-denied$                       test/integration/e2e/internal/bucket-access-denied\.ts$
   ^storage-tokens/                             test/integration/e2e/internal/(contracts|transports)/storage-tokens\.ts$
@@ -209,7 +195,7 @@ const HARNESS_MEMBERS = table(String.raw`
   ^dedicated-job/                              test/integration/e2e/internal/contracts/dedicated-job\.ts$
   ^(serve|gpu-serve|serve-upgrade|serve-local-recovery)/ test/integration/e2e/internal/service-cleanup\.ts$
   -mace-full-pull$                             test/docker/(Dockerfile\.mace|requirements\.mace)
-  /e2e-cluster-                                 test/integration/e2e/internal/(fixtures/deployment\.py|kubernetes-constants\.ts)$
+  /e2e-cluster-cloud$                          test/integration/e2e/internal/kubernetes-constants\.ts$
   .                                            test/integration/e2e/internal/diagnostics\.ts$
   /local-                                      test/integration/e2e/internal/(targets|transports)/local-smolvm-
   ^dedicated-job/(aws|gcp|azure|lambda)-        test/integration/e2e/internal/(targets|transports)/public-cloud-job
@@ -239,8 +225,9 @@ function reachingMembers(tree: Tree, members: Map<string, string>) {
     const imported = [...text.matchAll(/(?:from|import) '(\.[^']+)'/g)].map(
       (m) => normalize(join(dirname(source), m[1])).replace(/\.js$/, '.ts'),
     );
+    // A `.dockerignore` goes with the Dockerfile it is named for.
     const named = files.filter(
-      (f) => f !== source && text.includes(basename(f)),
+      (f) => f !== source && text.includes(basename(f, '.dockerignore')),
     );
     for (const target of [...imported, ...named])
       importers.set(target, [...(importers.get(target) ?? []), source]);
@@ -317,7 +304,9 @@ export function renderE2e({ changes, head, base, workflows }: Input): string {
           )
         : [...(headReach.get(c.path) ?? baseReach.get(c.path) ?? [])];
       if (c.path.startsWith(MAPS)) members.push(basename(c.path, '.json'));
-      else if (!members.length) unmapped.push(label(c));
+      // A deleted file nothing reaches any more runs in no member; whatever
+      // imported it changed too and is classified itself.
+      else if (!members.length && c.status !== 'D') unmapped.push(label(c));
       const paidOnly = PAID_HARNESS.find(({ pattern }) => pattern.test(c.path));
       if (paidOnly) {
         const match = paidOnly.pattern.exec(c.path)!;
@@ -432,11 +421,14 @@ async function main() {
     execFileSync('git', args, { cwd: root, maxBuffer: 1 << 28 }).toString();
   const lines = (text: string) => text.split('\n').filter(Boolean);
   const tree = (ref?: string): Tree => ({
-    files: lines(
-      ref
-        ? git('ls-tree', '-r', '--name-only', ref)
-        : git('ls-files', '--cached', '--others', '--exclude-standard'),
-    ),
+    files: ref
+      ? lines(git('ls-tree', '-r', '--name-only', ref))
+      : // The index still lists a file deleted but not yet staged.
+        lines(
+          git('ls-files', '--cached', '--others', '--exclude-standard'),
+        ).filter((path) =>
+          statSync(join(root, path), { throwIfNoEntry: false }),
+        ),
     read: (path) =>
       ref
         ? git('show', `${ref}:${path}`)
@@ -471,14 +463,17 @@ async function main() {
       changes.push({ status: 'A', path, added, deleted: 0 });
     }
   const head = tree(values.head);
-  const workflows = Object.fromEntries(
-    head.files
-      .filter((f) => E2E_FILE.test(f) && f.startsWith('.github/'))
-      .map((f) => [basename(f), head.read(f)]),
-  );
+  const base = tree(mergeBase);
+  const workflowsOf = (at: Tree) =>
+    Object.fromEntries(
+      at.files
+        .filter((f) => E2E_FILE.test(f) && f.startsWith('.github/'))
+        .map((f) => [basename(f), at.read(f)]),
+    );
+  // A deleted workflow still names the members it ran.
+  const workflows = { ...workflowsOf(base), ...workflowsOf(head) };
   console.log(renderLayers(changes));
   console.log();
-  const base = tree(mergeBase);
   console.log(renderE2e({ changes, head, base, workflows }));
   console.log();
   // The base is the committed document; the working tree's is regenerated.

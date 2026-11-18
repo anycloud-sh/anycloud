@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  getDeploymentStore,
   getPersistence,
   getSpendControlsStore,
   getWorkloadLifecycle,
@@ -20,19 +19,12 @@ describe('persistence composition', () => {
     expect(getPersistence()).toBe(persistence);
     expect(getWorkloadLifecycle()).toBe(persistence.workloadLifecycle);
     expect(getSpendControlsStore()).toBe(persistence.spendControls);
-    expect(getDeploymentStore()).toBe(persistence.deployments);
     expect(persistence.clusterRecords).toBeDefined();
-    expect(persistence.nodePools).toBeDefined();
   });
 
   it('does not expose admission-only writes through the runtime facade', () => {
     for (const repository of Object.values(getPersistence())) {
-      for (const write of [
-        'createWorkload',
-        'createTargetedWorkload',
-        'createPoolJob',
-        'upsertCredential',
-      ]) {
+      for (const write of ['createWorkload', 'upsertCredential']) {
         expect(write in repository).toBe(false);
       }
     }
@@ -59,9 +51,7 @@ describe('persistence composition', () => {
     const next = getPersistence();
     expect(next.workloadLifecycle).not.toBe(previous.workloadLifecycle);
     expect(next.spendControls).not.toBe(previous.spendControls);
-    expect(next.deployments).not.toBe(previous.deployments);
     expect(next.clusterRecords).not.toBe(previous.clusterRecords);
-    expect(next.nodePools).not.toBe(previous.nodePools);
     await expect(next.spendControls.listThrottles()).resolves.toEqual([]);
   });
 
@@ -73,7 +63,5 @@ describe('persistence composition', () => {
     const next = getPersistence();
     expect(next.workloadLifecycle).not.toBe(previous.workloadLifecycle);
     expect(next.spendControls).not.toBe(previous.spendControls);
-    expect(next.deployments).not.toBe(previous.deployments);
-    expect(next.nodePools).not.toBe(previous.nodePools);
   });
 });

@@ -2,11 +2,6 @@ import type { WorkloadAdmissionResponse } from '../../shared/api-contract/worklo
 import { type CloudCredentials } from '../../shared/cloud.js';
 import { encryptCredential, hashCredential } from './cloud-config.js';
 import type { WorkloadCreationPlan } from './workload-admission-plan.js';
-import type { CreateWorkloadInput } from './repositories/workload-creation.js';
-import type {
-  CreatePoolJobInput,
-  CreateTargetedWorkloadInput,
-} from './repositories/targeted-job-creation.js';
 import {
   getWorkloadAdmissionWriter,
   type WorkloadAdmissionWriter,
@@ -53,25 +48,4 @@ export async function persistWorkloadCreation(
     checkpointStorageCredentialId,
   });
   return plan.response;
-}
-
-/** Persist an already-resolved targeted Job through the admission-only writer. */
-export function persistTargetedWorkload(
-  workload: CreateTargetedWorkloadInput,
-): Promise<boolean> {
-  return getWorkloadAdmissionWriter().createTargetedWorkload(workload);
-}
-
-/** Persist an already-admitted pool Job and find or create its managed Deployment. */
-export function persistPoolJob(
-  input: CreatePoolJobInput,
-): Promise<string | null> {
-  return getWorkloadAdmissionWriter().createPoolJob(input);
-}
-
-/** Persist an already-admitted Service on a node pool through the admission-only writer. */
-export function persistNodePoolServiceWorkload(
-  workload: CreateWorkloadInput,
-): Promise<void> {
-  return getWorkloadAdmissionWriter().createWorkload(workload);
 }

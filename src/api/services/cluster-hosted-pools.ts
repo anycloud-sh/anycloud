@@ -1,6 +1,6 @@
 import { ANYCLOUD_CLIENT_VERSION_HEADER } from '../../shared/api-version.js';
 import { apiTokenResponseSchema } from '../../shared/api-contract/api-access-schemas.js';
-import { listNodePoolsResponseSchema } from '../../shared/api-contract/node-pools-schemas.js';
+import { z } from 'zod';
 import { systemBackupResponseSchema } from '../../shared/api-contract/system-release-schemas.js';
 import { errorMessage } from '../../shared/log-diagnostics.js';
 import { WorkloadState } from '../../shared/workload.js';
@@ -15,6 +15,22 @@ import type { StoredCluster } from './cluster-installer-store.js';
 import { clusterApiUrl } from '../../shared/api-ingress.js';
 
 const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * An API before node pools were removed still lists them, read loosely: its
+ * pools' VMs outlive a deleted cluster.
+ */
+const servedNodePoolsSchema = z.object({
+  nodePools: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      state: z.string(),
+      releasing: z.boolean(),
+      liveReferences: z.number(),
+    }),
+  ),
+});
 /**
  * A backup copies and uploads the database, normally in seconds. The wait is
  * best effort: the route's 90 s bounds only its client, so a backup past 95 s
@@ -113,8 +129,10 @@ export function createHostedNodePoolInventory(deps: {
           reason = errorMessage(error);
           continue;
         }
+        // A hosted API without node pools has no such route.
+        if (response.status === 404) return { kind: 'pools', pools: [] };
         if (response.ok) {
-          const pools = listNodePoolsResponseSchema.parse(
+          const pools = servedNodePoolsSchema.parse(
             await response.json(),
           ).nodePools;
           return {

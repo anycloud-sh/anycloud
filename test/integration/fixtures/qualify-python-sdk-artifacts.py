@@ -11,6 +11,8 @@ from pathlib import Path
 HANDWRITTEN_MODULES = {
     "client.py",
     "current_deployment.py",
+    "deployment_jobs.py",
+    "deployments.py",
     "errors.py",
     "job.py",
     "job_group.py",
@@ -41,8 +43,6 @@ def qualify(archive: Path) -> None:
         assert "anycloud_workflows/workloads.py" in members, archive
         assert "anycloud_workflows/jobs.py" in members, archive
         assert "anycloud_workflows/async_jobs.py" in members, archive
-        assert "anycloud_workflows/deployment_jobs.py" in members, archive
-        assert "anycloud_workflows/deployments.py" in members, archive
         assert "anycloud_workflows/_request_deadline.py" in members, archive
         for name in ("LICENSE", "NOTICE"):
             assert any(
@@ -66,7 +66,6 @@ def qualify(archive: Path) -> None:
         assert any(name.endswith("/NOTICE") for name in members)
         assert any(name.endswith("/generated/anycloud/__init__.py") for name in members)
         assert any(name.endswith("/package-data/anycloud/py.typed") for name in members)
-        assert any(name.endswith("/examples/async_deployment_submission.py") for name in members)
         assert any(name.endswith("/examples/job_completion.py") for name in members)
         assert any("/generated/anycloud/api/" in name for name in members)
         assert any("/generated/anycloud/models/" in name for name in members)
@@ -88,14 +87,6 @@ def qualify(archive: Path) -> None:
         )
         assert any(
             name.endswith("/extensions/anycloud_workflows/async_jobs.py")
-            for name in members
-        )
-        assert any(
-            name.endswith("/extensions/anycloud_workflows/deployment_jobs.py")
-            for name in members
-        )
-        assert any(
-            name.endswith("/extensions/anycloud_workflows/deployments.py")
             for name in members
         )
         assert any(

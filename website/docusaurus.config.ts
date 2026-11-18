@@ -290,7 +290,7 @@ const config: Config = {
             {
               siteTitle: 'anycloud',
               siteDescription:
-                'The CLI for people and AI agents to run Jobs, Services, Kubernetes Deployments, and persistent VMs across connected cloud accounts. [Agent setup](https://anycloud.sh/SKILL.md): installation and operating instructions for coding agents.',
+                'The CLI for people and AI agents to run Jobs, Services, and persistent VMs across connected cloud accounts. [Agent setup](https://anycloud.sh/SKILL.md): installation and operating instructions for coding agents.',
               depth: 2,
               content: {
                 enableLlmsFullTxt: true,
@@ -368,10 +368,6 @@ const config: Config = {
             { label: 'Getting started', to: '/getting-started' },
             { label: 'Jobs', to: '/platform/jobs' },
             { label: 'Services', to: '/platform/services' },
-            {
-              label: 'Kubernetes Deployments',
-              to: '/reference/cli/deployments',
-            },
             { label: 'VMs', to: '/platform/vms' },
             { label: 'Spend controls', to: '/platform/spend-controls' },
             { label: 'Slack app', to: '/slack' },

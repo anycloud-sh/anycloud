@@ -702,7 +702,6 @@ describe('cluster create on AWS through the aws CLI', () => {
         publicARecordExists: async () => true,
         sleep: async () => {},
         now: () => 0,
-        capacityFaultPool: undefined,
         e2eAccess: false,
       },
     );

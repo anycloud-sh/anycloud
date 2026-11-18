@@ -12,38 +12,33 @@ decision guidance, start with [GPUs & VM Types](/platform/gpus-vm-types),
 
 ## Configuration mappings
 
-| Purpose               | CLI                                          | Python setting                                      | Notes                                                                                    |
-| --------------------- | -------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Deployment target     | `job --deployment ID-OR-NAME`                | `submit(deployment=...)`                            | The Job carries only its ID; no per-Job overrides                                        |
-| Node pool             | `deployment create --node-pool ID-OR-NAME`   | `create_deployment(node_pool=...)`                  | Target for the Deployment                                                                |
-| Deployment GPU access | `deployment create --gpus all` or `--gpus N` | `create_deployment(docker_options={"gpus": "all"})` | `all` uses one VM's verified NVIDIA supply; `N` is a positive count (a string in Python) |
-| Compute credential    | `--credentials NAME`                         | `credential_name`                                   | Required for remote VM compute                                                           |
-| Region                | `--region REGION`                            | `cloud_config["region"]`                            | Omit for normal multi-region selection                                                   |
-| Region allow-list     | `--regions A,B,C`                            | `cloud_config["regions"]`                           | VM Jobs only; not with `region` or a zone                                                |
-| GPU model and count   | `--gpu-type TYPE`                            | `gpu`                                               | Mutually exclusive with exact VM                                                         |
-| Exact VM              | `--vm-type TYPE`                             | `cloud_config["vm_type"]`                           | Mutually exclusive with GPU type                                                         |
-| Spot                  | `--spot`                                     | `cloud_config["spot"]`                              | Jobs only                                                                                |
-| Root disk capacity    | `--disk-size GB`                             | `cloud_config["disk_size_gb"]`                      | Independent of performance tier                                                          |
-| Root disk tier        | `--disk-tier TIER`                           | `cloud_config["disk_tier"]`                         | `medium`, `high`, or `ultra`                                                             |
-| gp3 root IOPS         | `--disk-iops N`                              | `cloud_config["disk_iops"]`                         | AWS VM Jobs only; 3,000–80,000                                                           |
-| gp3 root throughput   | `--disk-throughput MiBps`                    | `cloud_config["disk_throughput_mibps"]`             | AWS VM Jobs only; 125–2,000 MiB/s                                                        |
-| Availability zone     | `--zone ZONE`                                | `cloud_config["availability_zone"]`                 | Provider-specific value                                                                  |
-| Input Bucket          | `--input-bucket NAME`                        | `cloud_config["input_bucket"]`                      | Jobs only; must exist                                                                    |
-| Output Bucket         | `--output-bucket NAME`                       | `cloud_config["output_bucket"]`                     | Jobs only; created if needed                                                             |
-| Checkpoint Bucket     | `--checkpoint-bucket NAME`                   | `cloud_config["checkpoint_bucket"]`                 | Jobs and VM-backed Services; must exist                                                  |
-| Environment           | `-e`, `--env-file`                           | `env`                                               | Explicit values override Secret keys                                                     |
-| Named Secret          | `--secret NAME`                              | `secrets`                                           | Sequence of saved names                                                                  |
-| Container runtime     | Docker flags below                           | `docker_options`                                    | Applies after hardware resolution                                                        |
+| Purpose             | CLI                        | Python setting                          | Notes                                     |
+| ------------------- | -------------------------- | --------------------------------------- | ----------------------------------------- |
+| Compute credential  | `--credentials NAME`       | `credential_name`                       | Required for remote VM compute            |
+| Region              | `--region REGION`          | `cloud_config["region"]`                | Omit for normal multi-region selection    |
+| Region allow-list   | `--regions A,B,C`          | `cloud_config["regions"]`               | VM Jobs only; not with `region` or a zone |
+| GPU model and count | `--gpu-type TYPE`          | `gpu`                                   | Mutually exclusive with exact VM          |
+| Exact VM            | `--vm-type TYPE`           | `cloud_config["vm_type"]`               | Mutually exclusive with GPU type          |
+| Spot                | `--spot`                   | `cloud_config["spot"]`                  | Jobs only                                 |
+| Root disk capacity  | `--disk-size GB`           | `cloud_config["disk_size_gb"]`          | Independent of performance tier           |
+| Root disk tier      | `--disk-tier TIER`         | `cloud_config["disk_tier"]`             | `medium`, `high`, or `ultra`              |
+| gp3 root IOPS       | `--disk-iops N`            | `cloud_config["disk_iops"]`             | AWS VM Jobs only; 3,000–80,000            |
+| gp3 root throughput | `--disk-throughput MiBps`  | `cloud_config["disk_throughput_mibps"]` | AWS VM Jobs only; 125–2,000 MiB/s         |
+| Availability zone   | `--zone ZONE`              | `cloud_config["availability_zone"]`     | Provider-specific value                   |
+| Input Bucket        | `--input-bucket NAME`      | `cloud_config["input_bucket"]`          | Jobs only; must exist                     |
+| Output Bucket       | `--output-bucket NAME`     | `cloud_config["output_bucket"]`         | Jobs only; created if needed              |
+| Checkpoint Bucket   | `--checkpoint-bucket NAME` | `cloud_config["checkpoint_bucket"]`     | Jobs and VM-backed Services; must exist   |
+| Environment         | `-e`, `--env-file`         | `env`                                   | Explicit values override Secret keys      |
+| Named Secret        | `--secret NAME`            | `secrets`                               | Sequence of saved names                   |
+| Container runtime   | Docker flags below         | `docker_options`                        | Applies after hardware resolution         |
 
-The Python column describes `Client.submit()` unless it names another method.
+The Python column describes `Client.submit()`.
 Pass dictionary entries together as `cloud_config={...}`. Services use generated
 admission models with the corresponding fields; see [Services](/platform/services).
-Deployment-targeted Jobs accept only `deployment` and optional `workload_id`, including
-when other supplied values are empty mappings or lists.
 
 ## Python SDK
 
-`from anycloud import Client` supplies the Job and Deployment client. It discovers
+`from anycloud import Client` supplies the Job client. It discovers
 the API URL from `api_url=`, `API_URL`, the saved `api-url` file, then the local
 default. An explicit `token=` is the bearer as given. Otherwise a loopback API
 URL takes the `local-api-token` file `api start` wrote. A hosted API takes its
@@ -84,8 +79,7 @@ A CLI `--credentials` value wins over the
 automatically selects the sole saved credential. With several saved
 credentials, an interactive terminal shows a picker; non-interactive use must
 pass `--credentials`. Inline credential environment variables are also
-accepted. Local workloads do not require a cloud credential. Deployments use
-their node pool's compute credential rather than a per-Job compute credential.
+accepted. Local workloads do not require a cloud credential.
 
 Remote API requests must contain one resolved named or inline compute
 credential. If that credential fails authentication, the workload becomes
@@ -96,7 +90,7 @@ regional failover within the selected account.
 
 Remote image submissions require exactly one of `gpu` / `--gpu-type` or
 `cloud_config["vm_type"]` / `--vm-type`. A saved credential does not supply a
-default hardware selector. Deployment-targeted Jobs use their Deployment's capacity.
+default hardware selector.
 
 - GPU selection accepts a model with optional count, such as `h100` or
   `a100:8`.
@@ -200,8 +194,7 @@ those bucket roles. These saved-name arguments are not accepted by
 
 Cross-cloud storage currently supports S3. It uses scoped STS credentials that
 last up to 12 hours and are not refreshed during periodic sync. VM-hosted
-workloads mint a fresh token for their final copy. Deployment-targeted Jobs do
-not support per-Job Buckets.
+workloads mint a fresh token for their final copy.
 
 ## Root disk tiers
 
@@ -290,22 +283,22 @@ the Job's cost. A CPU VM Job's root is 30 GiB unless `--disk-size` says
 otherwise, which carries up to 15,000 IOPS; a GPU VM Job's root is its AMI's,
 and at least 30 GiB.
 More IOPS than the root carries are refused with the `--disk-size` they need.
-Any other cloud, a Service, a VM, or a Job on a node pool refuses them. The
+Any other cloud, a Service, or a VM refuses them. The
 workload's `diskIops` and `diskThroughputMibps` record what was asked.
 
 ## Docker runtime options
 
-| CLI                       | `docker_options` key | Example           |
-| ------------------------- | -------------------- | ----------------- |
-| `--gpus`                  | `gpus`               | `all`, `2`        |
-| `--shm-size`              | `shm_size`           | `8g`              |
-| `--memory`                | `memory`             | `32g`             |
-| `--cpus`                  | `cpus`               | `4`               |
-| `--ipc`                   | `ipc`                | `host`            |
-| `--ulimit`                | `ulimits`            | repeatable        |
-| `--runtime`               | `runtime`            | `nvidia`          |
-| `--bind`                  | `binds`              | repeatable volume |
-| Deployment `--privileged` | `privileged`         | `true`            |
+| CLI            | `docker_options` key | Example           |
+| -------------- | -------------------- | ----------------- |
+| `--gpus`       | `gpus`               | `all`, `2`        |
+| `--shm-size`   | `shm_size`           | `8g`              |
+| `--memory`     | `memory`             | `32g`             |
+| `--cpus`       | `cpus`               | `4`               |
+| `--ipc`        | `ipc`                | `host`            |
+| `--ulimit`     | `ulimits`            | repeatable        |
+| `--runtime`    | `runtime`            | `nvidia`          |
+| `--bind`       | `binds`              | repeatable volume |
+| `--privileged` | `privileged`         | `true`            |
 
 Anycloud configures GPU access automatically for GPU-backed VMs. `--gpus`
 controls what Docker exposes; it is not normally necessary to specify an
@@ -320,14 +313,9 @@ provisioning. VM-host targets support the options above and accept the `runc`
 and `nvidia` runtime names. A user bind cannot overlap an enabled Anycloud
 bucket mount at `/mnt/input`, `/mnt/output`, or `/mnt/checkpoint`.
 
-Deployments translate `--gpus`, `--runtime`, `--shm-size`, `--memory`, and `--cpus`
-according to their [capacity and runtime rules](/reference/cli/deployments).
-IPC and ulimit flags are unsupported. `--privileged`, deprecated and removed
-in the next release, opts into broad node
-device and capability access and requires trusted workloads. A Deployment
-`--bind /absolute/path` creates a disposable Pod volume; host paths and named
-Docker volumes are unsupported. In Python, use
-`docker_options={"privileged": True, "binds": ["/runtime"]}`.
+`--privileged`, deprecated and removed in the next release, runs the container
+as root on its host; use [`--host-docker`](/platform/jobs#docker-in-a-vm-job)
+instead.
 
 ## Runtime environment
 

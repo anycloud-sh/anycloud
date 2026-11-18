@@ -2,10 +2,7 @@ import { apiAccessRouter } from './api-access.js';
 import { routerImplementation as root } from './base.js';
 import { bucketMetadataRouter } from './bucket-metadata.js';
 import { credentialsRouter } from './credentials.js';
-import { deploymentsRouter } from './deployments.js';
-import { deploymentWorkloadRouter } from './deployment-workload.js';
 import { clustersRouter } from './clusters.js';
-import { nodePoolsRouter } from './node-pools.js';
 import { systemReleaseRouter } from './system-release.js';
 import { databaseRouter } from './database.js';
 import { workloadManagementRouter } from './workload-management.js';
@@ -22,10 +19,7 @@ export const apiRouter = root.router({
   notifications: notificationsRouter,
   credentials: credentialsRouter,
   clusters: clustersRouter,
-  nodePools: nodePoolsRouter,
   systemRelease: systemReleaseRouter,
-  deployments: deploymentsRouter,
-  deploymentWorkload: deploymentWorkloadRouter,
   apiAccess: apiAccessRouter,
   database: databaseRouter,
   workloads: workloadManagementRouter,

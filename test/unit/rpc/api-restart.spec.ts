@@ -10,12 +10,11 @@ import {
 } from 'vitest';
 import { createApp } from '../../../src/api/server.js';
 import { createApiRequestTracker } from '../../../src/api/services/http-shutdown.js';
-import { createApiRpcDomains } from '../../../src/api/composition.js';
-import type { DeploymentWorkloadDomain } from '../../../src/api/services/deployment-workload-domain.js';
 import type { createApiClient as CreateApiClient } from '../../../src/shared/services/api-client/rpc.js';
 import { testAuthenticate } from '../../helpers/test-authentication.js';
 
 const owner = { userId: '1', username: 'owner' };
+const ADMISSION = { image: 'alpine:3.20', cloudConfig: {} };
 
 describe('API restart', () => {
   let draining: Server;
@@ -116,64 +115,16 @@ describe('API restart', () => {
     });
   });
 
-  // Run 37750459341: the replica's Job long poll, in flight when the old Pod
-  // got SIGTERM, was answered 500 and raised through the SDK's ride-out.
-  it('answers a query cut off by shutdown with API_RESTARTING', async () => {
-    const shutdown = new AbortController();
-    const requests = createApiRequestTracker();
-    let polling!: () => void;
-    const inFlight = new Promise<void>((resolve) => (polling = resolve));
-    // The replica's long poll: it waits until its request is cut off.
-    const poll: Pick<DeploymentWorkloadDomain, 'candidate'> = {
-      candidate: (_deployment, _waitMs, _authorization, operation) =>
-        new Promise((_resolve, reject) => {
-          polling();
-          operation?.signal.addEventListener('abort', () =>
-            reject(operation.signal.reason),
-          );
-        }),
-    };
-    const domains = createApiRpcDomains({
-      overrides: { deploymentWorkload: poll as DeploymentWorkloadDomain },
-    });
-    const server: Server = await new Promise((resolve) => {
-      const listening = createApp({
-        requests,
-        shutdownSignal: shutdown.signal,
-        authenticate: testAuthenticate,
-        resolveRpcDomains: () => domains,
-      }).listen(0, '127.0.0.1', () => resolve(listening));
-    });
-    try {
-      const { port } = server.address() as { port: number };
-      const response = fetch(
-        `http://127.0.0.1:${port}/v1/deployments/d/jobs/candidate?waitMs=20000`,
-        { headers: { authorization: 'Bearer pod-token' } },
-      );
-      await inFlight;
-      requests.beginDrain();
-      shutdown.abort(new Error('API server is shutting down'));
-      const answered = await response;
-      expect(answered.status).toBe(503);
-      await expect(answered.json()).resolves.toMatchObject({
-        defined: true,
-        code: 'API_RESTARTING',
-      });
-    } finally {
-      server.close();
-    }
-  });
-
   it('replays a not-processed admission through the drain, announcing the wait once', async () => {
     const { api, attempts } = client(5, 'draining', { id: 'job-1' });
-    await expect(api.admission.submit({ deployment: 'd' })).resolves.toEqual({
+    await expect(api.admission.submit(ADMISSION)).resolves.toEqual({
       id: 'job-1',
     });
     expect(attempts()).toBe(6);
     expect(stderr).toEqual(['API restarting, waiting…\n']);
-    await client(1, 'draining', { id: 'job-2' }).api.admission.submit({
-      deployment: 'd',
-    });
+    await client(1, 'draining', { id: 'job-2' }).api.admission.submit(
+      ADMISSION,
+    );
     expect(stderr).toHaveLength(1);
   });
 
@@ -198,7 +149,7 @@ describe('API restart', () => {
     const { api, attempts } = client(1, outage, owner);
     const failed =
       call === 'submit'
-        ? api.admission.submit({ deployment: 'd' })
+        ? api.admission.submit(ADMISSION)
         : api.apiAccess.grant({ username: 'u' });
     await expect(failed).rejects.toMatchObject({ status: 503 });
     if (outage === 'proxy') {

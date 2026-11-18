@@ -42,8 +42,22 @@ async function billingSchema(db) {
   const [workload] = await db.query(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='workloads'",
   );
+  // Before 0171 and 0172, a spec could belong to a Deployment and a VM to a
+  // node pool; later layouts read those owners as NULL.
+  const has = async (table, column) =>
+    (
+      await db.query(
+        `SELECT 1 FROM pragma_table_info('${table}') WHERE name = '${column}'`,
+      )
+    ).length > 0;
   return workload
     ? {
+        specDeployment: (await has('container_specs', 'deployment_id'))
+          ? 'deployment_id'
+          : 'NULL AS deployment_id',
+        vmNodePool: (await has('vms', 'node_pool_id'))
+          ? 'node_pool_id'
+          : 'NULL AS node_pool_id',
         ownerTable: 'workloads',
         ownerColumn: 'workload_id',
         ownerType: 'workloadType',
@@ -52,6 +66,8 @@ async function billingSchema(db) {
         stateName: 'WorkloadState',
       }
     : {
+        specDeployment: 'worker_id AS deployment_id',
+        vmNodePool: 'NULL AS node_pool_id',
         ownerTable: 'deployments',
         ownerColumn: 'deployment_id',
         ownerType: 'deploymentType',
@@ -234,14 +250,12 @@ export function resourceIdOf(row) {
 }
 
 export async function readBillingRows(db) {
-  const { ownerColumn } = await billingSchema(db);
+  const { ownerColumn, vmNodePool } = await billingSchema(db);
   return db.query(
     'SELECT id, cloud_id, ' +
       ownerColumn +
       ' AS workload_id, ' +
-      (ownerColumn === 'workload_id'
-        ? 'node_pool_id'
-        : 'NULL AS node_pool_id') +
+      vmNodePool +
       ', cluster_id, credential_id, ' +
       "created_at, ended_at, region, vm_type, ip, cost FROM vms WHERE cloud_id LIKE 'billing-vm-%' ORDER BY id",
   );
@@ -314,9 +328,9 @@ export async function fixtureFingerprint(
     [
       'container_specs',
       'SELECT ' +
-        (schema.ownerColumn === 'workload_id'
-          ? 'workload_id,deployment_id'
-          : 'deployment_id AS workload_id,worker_id AS deployment_id') +
+        schema.ownerColumn +
+        ' AS workload_id,' +
+        schema.specDeployment +
         ',image,image_digest,command,docker_options,env,registry_username,registry_token FROM container_specs ORDER BY workload_id',
     ],
     [
@@ -328,9 +342,7 @@ export async function fixtureFingerprint(
       'SELECT id,cloud_id,' +
         schema.ownerColumn +
         ' AS workload_id,' +
-        (schema.ownerColumn === 'workload_id'
-          ? 'node_pool_id'
-          : 'NULL AS node_pool_id') +
+        schema.vmNodePool +
         ',cluster_id,credential_id,created_at,ended_at,region,vm_type,ip,cost FROM vms ORDER BY id',
     ],
   ]) {

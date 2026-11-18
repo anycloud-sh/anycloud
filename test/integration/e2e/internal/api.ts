@@ -11,12 +11,8 @@ import {
   redactedCredentialSchema,
   type RedactedCredential,
 } from '../../../../src/shared/api-contract/credentials-schemas.js';
-import type { DedicatedWorkloadAdmissionInput } from '../../../../src/shared/api-contract/workload-admission-schemas.js';
+import type { WorkloadAdmissionInput } from '../../../../src/shared/api-contract/workload-admission-schemas.js';
 import { bucketItemSchema } from '../../../../src/shared/api-contract/bucket-metadata-schemas.js';
-import type {
-  CreateDeploymentRequest,
-  DeploymentSummary,
-} from '../../../../src/shared/api-contract/deployments-schemas.js';
 
 import type { ArtifactStore, Redactor } from './artifacts.js';
 import {
@@ -26,9 +22,6 @@ import {
 import type {
   CloudCredentialInput,
   DeclaredApiError,
-  NodePoolCreateRequest,
-  NodePoolStatusLookup,
-  NodePoolSummary,
   WorkloadCreateBody,
   WorkloadCreateResponse,
   WorkloadStatusLookup,
@@ -111,11 +104,6 @@ function isWorkloadAbsent(error: unknown): boolean {
     declared?.code === 'WORKLOAD_MANAGEMENT_NOT_FOUND' &&
     declared.status === 404
   );
-}
-
-function isNodePoolAbsent(error: unknown): boolean {
-  const declared = declaredApiError(error);
-  return declared?.code === 'NODE_POOL_NOT_FOUND' && declared.status === 404;
 }
 
 interface CachedClient {
@@ -404,10 +392,9 @@ export class ApiClient {
       );
     }
     return this.#record('create-workload', body, () =>
-      this.#defaultClient().admission.submit(
-        body as DedicatedWorkloadAdmissionInput,
-        { signal: this.#operationSignal() },
-      ),
+      this.#defaultClient().admission.submit(body as WorkloadAdmissionInput, {
+        signal: this.#operationSignal(),
+      }),
     );
   }
 
@@ -418,81 +405,6 @@ export class ApiClient {
       }),
     );
     return response.clusters;
-  }
-
-  async createNodePool(
-    request: NodePoolCreateRequest,
-  ): Promise<NodePoolSummary> {
-    const response = await this.#record('create-node-pool', request, () =>
-      this.#defaultClient().nodePools.create(request, {
-        signal: this.#operationSignal(),
-      }),
-    );
-    return response.nodePool;
-  }
-
-  async listNodePools(): Promise<readonly NodePoolSummary[]> {
-    const response = await this.#record('list-node-pools', {}, () =>
-      this.#defaultClient().nodePools.list(undefined, {
-        signal: this.#operationSignal(),
-      }),
-    );
-    return response.nodePools;
-  }
-
-  async lookupNodePool(id: string): Promise<NodePoolStatusLookup> {
-    try {
-      const response = await this.#record('node-pool-status', { id }, () =>
-        this.#defaultClient().nodePools.get(
-          { params: { id } },
-          { signal: this.#operationSignal() },
-        ),
-      );
-      return { kind: 'found', nodePool: response.nodePool };
-    } catch (error) {
-      if (isNodePoolAbsent(error)) return { kind: 'absent' };
-      throw error;
-    }
-  }
-
-  async deleteNodePool(id: string): Promise<NodePoolSummary> {
-    const response = await this.#record('delete-node-pool', { id }, () =>
-      this.#defaultClient().nodePools.delete(
-        { params: { id } },
-        { signal: this.#operationSignal() },
-      ),
-    );
-    return response.nodePool;
-  }
-
-  async createDeployment(
-    request: CreateDeploymentRequest,
-  ): Promise<DeploymentSummary> {
-    const response = await this.#record('create-deployment', request, () =>
-      this.#defaultClient().deployments.create(request, {
-        signal: this.#operationSignal(),
-      }),
-    );
-    return response.deployment;
-  }
-
-  async listDeployments(): Promise<readonly DeploymentSummary[]> {
-    const response = await this.#record('list-deployments', {}, () =>
-      this.#defaultClient().deployments.list(undefined, {
-        signal: this.#operationSignal(),
-      }),
-    );
-    return response.deployments;
-  }
-
-  async deleteDeployment(id: string): Promise<DeploymentSummary> {
-    const response = await this.#record('delete-deployment', { id }, () =>
-      this.#defaultClient().deployments.delete(
-        { params: { id } },
-        { signal: this.#operationSignal() },
-      ),
-    );
-    return response.deployment;
   }
 
   async createSecret(

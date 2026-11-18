@@ -5,7 +5,7 @@ import { KubeConfig } from '@kubernetes/client-node';
  * keeps the ServiceAccount-token connection bootstrap built (`installer`); the
  * hosted API uses its own Pod ServiceAccount through in-cluster discovery
  * (`in-cluster`) and stores no credential. Both carry the public control-plane
- * endpoint and certificate authority that node pool VMs join through. No
+ * endpoint and certificate authority. No
  * client-authored kubeconfig is parsed anywhere.
  */
 export type ClusterConnectionDocument =
@@ -17,7 +17,7 @@ export type ClusterConnectionDocument =
     }
   | {
       kind: 'in-cluster';
-      /** `https://<public-ip>:6443`; what node pool VMs join through. */
+      /** `https://<public-ip>:6443`, the public control-plane endpoint. */
       server: string;
       certificateAuthorityData: string;
     };

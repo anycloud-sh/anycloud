@@ -136,10 +136,9 @@ export type HostedNodePoolInventory =
   | { kind: 'unreachable'; reason: string };
 
 /**
- * Seam for B1: the installer asks the hosted API (`GET /v1/node-pools` at the
- * installation's hostname with the actor's bearer) which pools exist and which
- * carry live Deployments or Services. Until B1 lands, the default adapter
- * answers from the installer's own node-pool records.
+ * The installer asks the hosted API (`GET /v1/node-pools` at the
+ * installation's hostname with the actor's bearer) which node pools a release
+ * from before their removal still runs; a current API has none.
  */
 export interface HostedNodePoolInventorySource {
   inventory(
@@ -385,7 +384,6 @@ export interface ClusterDomainDependencies {
   clusterRecords: Pick<
     ClusterRecordRepository,
     | 'getConnection'
-    | 'countActiveNodePools'
     | 'storeConnection'
     | 'listForScope'
     | 'getForScope'
@@ -578,7 +576,6 @@ export function managementVmCloudId(
  */
 function summarizeRecord(
   record: StoredClusterRecord,
-  activeNodePoolCount: number,
   self: Pick<
     ClusterSummary,
     'address' | 'apiVersion' | 'apiImage' | 'managementApiUrl'
@@ -606,7 +603,6 @@ function summarizeRecord(
     connected: record.state !== ClusterState.Destroyed,
     kubernetesIdentity: record.kubernetesIdentity,
     connectionRevision: record.connectionRevision,
-    activeNodePoolCount,
     address: self.address,
     managementApiUrl: self.managementApiUrl,
     release:
@@ -627,7 +623,7 @@ function summarize(
   installation: StoredCluster,
   vm: StoredManagementVm | null,
   release: StoredClusterRelease | null,
-  record: Pick<ClusterSummary, 'connectionRevision' | 'activeNodePoolCount'>,
+  record: Pick<ClusterSummary, 'connectionRevision'>,
 ): ClusterSummary {
   const address = vm?.ip ?? null;
   return {
@@ -651,7 +647,6 @@ function summarize(
     connected: installation.connectionId !== null,
     kubernetesIdentity: installation.kubernetesIdentity,
     connectionRevision: record.connectionRevision,
-    activeNodePoolCount: record.activeNodePoolCount,
     address,
     // The API's public URL once its release is complete: the installation's
     // hostname, answered through Cloudflare.
@@ -733,13 +728,7 @@ export function createClustersDomain(
         installation,
         await installations.getManagementVm(installation.id),
         await installations.currentReleaseIntent(installation.id),
-        {
-          connectionRevision: record?.connectionRevision ?? 1,
-          activeNodePoolCount:
-            await dependencies.clusterRecords.countActiveNodePools(
-              installation.id,
-            ),
-        },
+        { connectionRevision: record?.connectionRevision ?? 1 },
       ),
     };
   }
@@ -755,19 +744,15 @@ export function createClustersDomain(
       ? parseClusterConnection(stored.connection).server
       : null;
     return {
-      cluster: summarizeRecord(
-        record,
-        await dependencies.clusterRecords.countActiveNodePools(record.id),
-        {
-          // An IPv6 host keeps its URL brackets; the installer's address has none.
-          address: server
-            ? new URL(server).hostname.replace(/^\[|\]$/g, '')
-            : null,
-          apiVersion: dependencies.apiVersion,
-          apiImage: dependencies.ownApiImage,
-          managementApiUrl: stored ? clusterApiUrl(record.id) : null,
-        },
-      ),
+      cluster: summarizeRecord(record, {
+        // An IPv6 host keeps its URL brackets; the installer's address has none.
+        address: server
+          ? new URL(server).hostname.replace(/^\[|\]$/g, '')
+          : null,
+        apiVersion: dependencies.apiVersion,
+        apiImage: dependencies.ownApiImage,
+        managementApiUrl: stored ? clusterApiUrl(record.id) : null,
+      }),
     };
   }
 
@@ -1754,7 +1739,7 @@ export function createClustersDomain(
         : [
             `the management VM's network resources named ${clusterScope(installation).id} (its security group, firewall or network)`,
           ]),
-      `node pool VMs, networks and disks tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
+      `Workload VMs, networks and disks tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
       ...(bucket?.managed
         ? [
             `checkpoint bucket ${bucket.name}, kept on purpose with its backups; delete it only if you no longer need them`,
@@ -1798,7 +1783,7 @@ export function createClustersDomain(
           : 'it has no checkpoint bucket';
     const vms = [
       ...(vm ? [`management VM ${vm.cloudId}`] : []),
-      `node pool VMs tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
+      `Workload VMs tagged ${OWNER_API_TAG}=${hostedApiIdentity(installation.id)}`,
     ];
     return `The hosted API at ${apiUrl} is unreachable (${reason}) and ${why}. Terminate ${vms.join(' and ')}, then run anycloud cluster forget ${name}; it names what else is left.`;
   }
@@ -2140,9 +2125,9 @@ export function createClustersDomain(
           if (installation.state === ClusterState.Destroying) {
             return installation;
           }
-          // Node pools live in the hosted API. Referenced pools are never
-          // destroyed from here: the operator removes their Deployments and
-          // Services, then the pools. An unreachable hosted API is restored first
+          // A hosted API from before node pools were removed may still run
+          // some, whose VMs would outlive the cluster: the operator removes
+          // them first. An unreachable hosted API is restored first
           // (or, with no restorable backup, cleaned up by hand and forgotten). An
           // installation whose release never completed, or whose management VM
           // a failed delete already released, has no hosted API to ask:

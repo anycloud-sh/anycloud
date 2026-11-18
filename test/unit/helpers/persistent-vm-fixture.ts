@@ -58,10 +58,6 @@ export function persistentVmWorkload(
   return {
     id,
     userId: 'e2e-user',
-    deploymentId: null,
-    submissionRevision: 0,
-    claimDeadlineAt: null,
-    claimed: false,
     workloadType: WorkloadType.Vm,
     image: 'alpine:3.20',
     cloudProvider: CloudType.AWS,
@@ -98,7 +94,6 @@ export function persistentVmWorkload(
     totalCost: null,
     costSource: null,
     dnsRecordId: null,
-    publicEndpoint: null,
     secretNames: null,
     session: null,
     agent: null,

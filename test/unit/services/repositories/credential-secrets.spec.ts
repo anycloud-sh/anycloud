@@ -8,7 +8,6 @@ import {
 } from '../../../../src/api/services/cloud-config.js';
 import {
   getCredentialSecretStore as credentials,
-  getDeploymentStore,
   resetPersistence,
   getWorkloadOutcomes as outcomes,
 } from '../../../../src/api/services/persistence.js';
@@ -24,8 +23,6 @@ import {
   WorkloadState,
 } from '../../../../src/shared/workload.js';
 import { createWorkload } from '../../../../src/api/services/repositories/workload-creation.js';
-import { makeContainerSpec } from '../../helpers/fixtures.js';
-import { seedReadyNodePool } from '../../helpers/node-pool-seed.js';
 
 // Every caller reaches the whole API; the identity arguments name the submitter.
 const scope = (_username?: string, _id?: string) => ({ kind: 'api' }) as const;
@@ -235,37 +232,6 @@ describe('CredentialSecretStore', () => {
       expect(result.blocking).toEqual(['dep-using-hf']);
       // Secret must still exist — delete was rolled back.
       expect((await store.listSecrets()).map((s) => s.name)).toEqual(['hf']);
-    });
-
-    it('refuses delete while an undeleted Deployment references it', async () => {
-      const store = credentials();
-      await store.saveSecret('hf', { HF_TOKEN: 'x' });
-      await seedReadyNodePool({ nodePoolId: 'pool', ownerUserId: 'owner' });
-      await getDeploymentStore().create(
-        {
-          id: 'deployment-using-hf',
-          ownerUserId: 'owner',
-          name: 'model',
-          nodePoolId: 'pool',
-          config: makeContainerSpec(),
-          secretNames: ['hf'],
-          gpuCount: 0,
-          maxConcurrentJobsPerReplica: 1,
-        },
-        { kind: 'api' },
-      );
-
-      expect(await store.deleteSecretIfNotReferenced('hf', false)).toEqual({
-        deleted: false,
-        blocking: ['deployment-using-hf'],
-      });
-      await getDB().query(
-        'UPDATE deployments SET deletion_requested_at = created_at, deleted_at = created_at',
-      );
-      expect(await store.deleteSecretIfNotReferenced('hf', false)).toEqual({
-        deleted: true,
-        blocking: [],
-      });
     });
 
     it('preserves an unrelated secret saved while deletion is refused', async () => {

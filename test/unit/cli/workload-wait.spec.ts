@@ -20,14 +20,10 @@ import { WorkloadHealthStatus } from '../../../src/shared/runtime.js';
 import { CloudFailureDiagnosis } from '../../../src/shared/cloud.js';
 import { LocalApiUnavailableError } from '../../../src/shared/services/api-client/runtime.js';
 import {
-  makeDeploymentSummary,
-  makeNodePoolSummary,
   makeStatusWorkloadMetadata,
   makeWorkloadEvent,
 } from '../helpers/fixtures.js';
-import type { DeploymentStatus } from '../../../src/shared/api-contract/deployments-schemas.js';
 import type { ClusterSummary } from '../../../src/shared/api-contract/clusters-schemas.js';
-import type { NodePoolSummary } from '../../../src/shared/api-contract/node-pools-schemas.js';
 
 const START = Date.parse('2026-10-02T19:00:00Z');
 
@@ -136,13 +132,13 @@ describe('waitForWorkloads', () => {
     expect(lines[0]).toBe('[19:00:00] job errored (exit 2)');
   });
 
-  it("names a failed Job's message when it has no reason, as a targeted Job records it", async () => {
+  it("names a failed Job's message when it has no reason", async () => {
     const errored = status('job', S.Errored, WorkloadType.Job, {
       events: [
         makeWorkloadEvent({
           state: S.Errored,
           createdAt: START,
-          metadata: { executionId: 'x-1', message: 'bad input' },
+          metadata: { message: 'bad input' },
         }),
       ],
     });
@@ -379,179 +375,42 @@ describe('runWait', () => {
 });
 
 describe('parseWaitTarget', () => {
-  it('reads typed references and bare Workload IDs', () => {
+  it('reads cluster references and bare Workload IDs', () => {
     expect(parseWaitTarget('train-a')).toEqual({
       kind: 'workload',
       id: 'train-a',
-    });
-    expect(parseWaitTarget('deployment/inference')).toEqual({
-      kind: 'deployment',
-      id: 'inference',
-    });
-    expect(parseWaitTarget('node-pool/gpu')).toEqual({
-      kind: 'node-pool',
-      id: 'gpu',
     });
     expect(parseWaitTarget('cluster/main')).toEqual({
       kind: 'cluster',
       id: 'main',
     });
-    expect(() => parseWaitTarget('service/api')).toThrow('deployment/<id>');
+    expect(() => parseWaitTarget('deployment/api')).toThrow('cluster/<id>');
   });
 });
 
-describe('waiting on Deployments, node pools and clusters', () => {
-  const deploymentStatus = (
-    overrides: Partial<DeploymentStatus>,
-  ): DeploymentStatus => {
-    const status: Partial<DeploymentStatus> = {
-      state: S.Starting,
-      releasing: false,
-      ready: false,
-      upgrade: null,
-      reason: '',
-      requestedGeneration: 1,
-      appliedGeneration: 1,
-      podGeneration: 1,
-      ...overrides,
-    };
-    return status as DeploymentStatus;
-  };
-  const deployment = (
-    status: DeploymentStatus | null,
-    generation = 1,
-  ): WaitObservation => ({
-    kind: 'deployment',
-    deployment: makeDeploymentSummary({ id: 'inference', generation, status }),
-  });
-  const pool = (
-    state: NodePoolSummary['state'],
+describe('waiting on clusters and Workload reasons', () => {
+  const cluster = (
+    state: ClusterSummary['state'],
     lastError: string | null = null,
-  ) => ({
-    kind: 'node-pool' as const,
-    nodePool: makeNodePoolSummary({ id: 'gpu', state, lastError }),
-  });
+  ): WaitObservation => {
+    const summary: Partial<ClusterSummary> = { id: 'main', state, lastError };
+    return { kind: 'cluster', cluster: summary as ClusterSummary };
+  };
 
-  it('is ready once the Pod on the latest revision is ready, with each reason on its own line', async () => {
-    const { deps, lines } = harness({
-      inference: [
-        deployment(null),
-        deployment(deploymentStatus({ reason: 'Pulling image' })),
-        deployment(deploymentStatus({ reason: 'Pulling image' })),
-        deployment(deploymentStatus({ state: S.Running, ready: true })),
-      ],
-    });
-    await expect(
-      waitForWorkloads(['deployment/inference'], deps, {}),
-    ).resolves.toBe(WAIT_EXIT.succeeded);
-    expect(lines).toEqual([
-      '[19:00:00] deployment/inference starting',
-      '[19:00:05] deployment/inference starting: Pulling image',
-      '[19:00:15] deployment/inference running (ready)',
-      '[19:00:15] succeeded: deployment/inference',
-    ]);
-  });
-
-  it('waits for the upgraded revision and fails a failed rollout', async () => {
-    const upgrading = deploymentStatus({
-      state: S.Running,
-      ready: false,
-      requestedGeneration: 2,
-      podGeneration: 1,
-      upgrade: { number: 1, state: S.Starting },
-    });
-    const upgraded = deploymentStatus({
-      state: S.Running,
-      ready: true,
-      requestedGeneration: 2,
-      podGeneration: 2,
-      upgrade: { number: 1, state: S.Running },
-    });
+  it('is ready when a cluster runs, and fails when it fails', async () => {
     const ok = harness({
-      inference: [deployment(upgrading, 2), deployment(upgraded, 2)],
+      main: [cluster(S.Provisioning), cluster(S.Running)],
     });
-    await expect(
-      waitForTargets([{ kind: 'deployment', id: 'inference' }], ok.deps, {}),
-    ).resolves.toBe(WAIT_EXIT.succeeded);
-    expect(ok.lines[0]).toBe(
-      '[19:00:00] deployment/inference running (upgrade 1 starting)',
+    await expect(waitForWorkloads(['cluster/main'], ok.deps, {})).resolves.toBe(
+      WAIT_EXIT.succeeded,
     );
+    expect(ok.lines.at(-1)).toBe('[19:00:05] succeeded: cluster/main');
 
-    const failedRollout = deploymentStatus({
-      state: S.Failed,
-      requestedGeneration: 2,
-      upgrade: { number: 1, state: S.Failed },
-      reason: 'CrashLoopBackOff',
-    });
-    const bad = harness({ inference: [deployment(failedRollout, 2)] });
+    const bad = harness({ main: [cluster(S.Failed, 'quota exceeded')] });
     await expect(
-      waitForWorkloads(['deployment/inference'], bad.deps, {}),
+      waitForWorkloads(['cluster/main'], bad.deps, {}),
     ).resolves.toBe(WAIT_EXIT.failed);
-    expect(bad.lines[0]).toBe(
-      '[19:00:00] deployment/inference failed (upgrade 1 failed): CrashLoopBackOff',
-    );
-  });
-
-  it('fails a Deployment whose container keeps failing before it is ready', async () => {
-    const crashing = deploymentStatus({
-      state: S.Failed,
-      reason: 'CrashLoopBackOff',
-    });
-    const { deps, lines } = harness({ inference: [deployment(crashing)] });
-    await expect(
-      waitForWorkloads(['deployment/inference'], deps, {}),
-    ).resolves.toBe(WAIT_EXIT.failed);
-    expect(lines[0]).toBe(
-      '[19:00:00] deployment/inference failed: CrashLoopBackOff',
-    );
-  });
-
-  it('keeps reading the record a name first resolved to', async () => {
-    const deletedByName = new ORPCError('NOT_FOUND', {
-      status: 404,
-      message: 'Deployment not found',
-    });
-    const resolved = (status: DeploymentStatus): WaitObservation => ({
-      kind: 'deployment',
-      deployment: makeDeploymentSummary({ id: 'dep-123', name: 'web', status }),
-    });
-    const { deps, reads } = harness({
-      web: [
-        resolved(deploymentStatus({ reason: 'Pulling image' })),
-        deletedByName,
-      ],
-      'dep-123': [resolved(deploymentStatus({ state: S.Terminated }))],
-    });
-    await expect(waitForWorkloads(['deployment/web'], deps, {})).resolves.toBe(
-      WAIT_EXIT.failed,
-    );
-    expect(reads).toEqual(['web', 'dep-123']);
-  });
-
-  it('is ready when a node pool or cluster runs, and fails when either fails', async () => {
-    const cluster: Partial<ClusterSummary> = {
-      id: 'main',
-      state: S.Running,
-      lastError: null,
-    };
-    const ok = harness({
-      gpu: [pool(S.Provisioning), pool(S.Running)],
-      main: [{ kind: 'cluster', cluster: cluster as ClusterSummary }],
-    });
-    await expect(
-      waitForWorkloads(['node-pool/gpu', 'cluster/main'], ok.deps, {}),
-    ).resolves.toBe(WAIT_EXIT.succeeded);
-    expect(ok.lines.at(-1)).toBe(
-      '[19:00:05] succeeded: node-pool/gpu, cluster/main',
-    );
-
-    const bad = harness({ gpu: [pool(S.Failed, 'quota exceeded')] });
-    await expect(
-      waitForWorkloads(['node-pool/gpu'], bad.deps, {}),
-    ).resolves.toBe(WAIT_EXIT.failed);
-    expect(bad.lines[0]).toBe(
-      '[19:00:00] node-pool/gpu failed: quota exceeded',
-    );
+    expect(bad.lines[0]).toBe('[19:00:00] cluster/main failed: quota exceeded');
   });
 
   it('says why a Workload waits or ended', async () => {
@@ -559,23 +418,22 @@ describe('waiting on Deployments, node pools and clusters', () => {
       status('svc', S.Queued, WorkloadType.Service, {
         events: [makeWorkloadEvent({ state: S.Queued, metadata: { message } })],
       });
-    const queued = status('job', S.Queued, WorkloadType.Job, { jobsAhead: 2 });
-    const expired = status('job', S.Terminated, WorkloadType.Job, {
+    const ended = status('job', S.Terminated, WorkloadType.Job, {
       events: [
         makeWorkloadEvent({
           state: S.Terminated,
-          metadata: { reason: 'claim-deadline-expired' },
+          metadata: { reason: 'spend-cap' },
         }),
       ],
     });
     const { deps, lines } = harness(
       {
         svc: [
-          blocked('Node pool gpu is failed'),
-          blocked('Waiting for node pool capacity'),
+          blocked('Spend cap reached'),
+          blocked('Waiting for capacity'),
           S.Running,
         ],
-        job: [queued, expired],
+        job: [S.Queued, ended],
       },
       { svc: WorkloadType.Service },
     );
@@ -583,10 +441,10 @@ describe('waiting on Deployments, node pools and clusters', () => {
       WAIT_EXIT.failed,
     );
     expect(lines.slice(0, 5)).toEqual([
-      '[19:00:00] svc queued: Node pool gpu is failed',
-      '[19:00:00] job queued (2 Jobs ahead)',
-      '[19:00:05] svc queued: Waiting for node pool capacity',
-      '[19:00:05] job terminated (claim-deadline-expired)',
+      '[19:00:00] svc queued: Spend cap reached',
+      '[19:00:00] job queued',
+      '[19:00:05] svc queued: Waiting for capacity',
+      '[19:00:05] job terminated (spend-cap)',
       '[19:00:10] svc running (ready)',
     ]);
   });

@@ -1,5 +1,5 @@
 /**
- * Launch targets for the VM owners, VM Jobs and node pools (RFC 0044 layer 9):
+ * Launch targets for the VM owners and VM Jobs (RFC 0044 layer 9):
  * catalog candidates, the provider's preflight, denied-region filtering, the
  * picker over the owner's launch-failure history, and the classification a
  * failed launch records.

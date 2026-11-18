@@ -197,13 +197,6 @@ export class CredentialSecretStore {
       [credentialId],
     );
     if (vmRows.length > 0) return true;
-    const nodePoolRows = tx.query<{ one: number }>(
-      `SELECT 1 AS one FROM node_pools
-       WHERE compute_credential_id = ?
-       LIMIT 1`,
-      [credentialId],
-    );
-    if (nodePoolRows.length > 0) return true;
     const installationRows = tx.query<{ one: number }>(
       `SELECT 1 AS one FROM clusters
        WHERE compute_credential_id = ?
@@ -213,23 +206,19 @@ export class CredentialSecretStore {
     return installationRows.length > 0;
   }
 
-  /** Live node pools and clusters keep their compute credential in use. */
-  private activeNodePoolsUsingCredentials(
+  /** Live clusters keep their compute credential in use. */
+  private activeClustersUsingCredentials(
     tx: DBTransaction,
     credentialIds: string[],
   ): string[] {
     const idPlaceholders = credentialIds.map(() => '?').join(', ');
     return tx
       .query<{ id: string }>(
-        `SELECT id FROM node_pools
-         WHERE compute_credential_id IN (${idPlaceholders})
-           AND state <> 'deleted'
-         UNION ALL
-         SELECT id FROM clusters
+        `SELECT id FROM clusters
          WHERE compute_credential_id IN (${idPlaceholders})
            AND state <> 'destroyed'
          ORDER BY id`,
-        [...credentialIds, ...credentialIds],
+        credentialIds,
       )
       .map((row) => row.id);
   }
@@ -391,7 +380,7 @@ export class CredentialSecretStore {
         );
         const blocking = [
           ...blockingRows.map((r) => r.id),
-          ...this.activeNodePoolsUsingCredentials(tx, ids),
+          ...this.activeClustersUsingCredentials(tx, ids),
         ];
         if (blocking.length > 0) {
           return { deleted: false, blocking };
@@ -491,7 +480,7 @@ export class CredentialSecretStore {
   async listRunningVmHostWorkloadIds(secretName: string): Promise<string[]> {
     const rows = await this.db.query<{ id: string }>(
       `SELECT DISTINCT w.id FROM workloads w, json_each(w.secret_names)
-       WHERE json_each.value = ? AND w.state = ? AND w.deployment_id IS NULL
+       WHERE json_each.value = ? AND w.state = ?
        ORDER BY 1`,
       [secretName, WorkloadState.Running],
     );
@@ -506,8 +495,7 @@ export class CredentialSecretStore {
    * the check and the delete. When `force` is true, skips the check.
    *
    * Returns `blocking` populated (and `deleted` false) when the caller
-   * did not pass `force` and non-terminal workloads or undeleted
-   * Deployments (managed: with a live Job) reference the secret.
+   * did not pass `force` and non-terminal workloads reference the secret.
    */
   async deleteSecretIfNotReferenced(
     name: string,
@@ -519,11 +507,8 @@ export class CredentialSecretStore {
         const rows = tx.query<{ id: string }>(
           `SELECT d.id FROM workloads d, json_each(d.secret_names)
            WHERE json_each.value = ? AND d.state IN (${placeholders})
-           UNION
-           SELECT p.id FROM deployments p, json_each(p.secret_names)
-           WHERE json_each.value = ? AND p.deleted_at IS NULL AND (NOT p.managed
-             OR p.id IN (SELECT deployment_id FROM workloads WHERE state IN (${placeholders}))) ORDER BY 1`,
-          [name, ...ACTIVE_STATES, name, ...ACTIVE_STATES],
+           ORDER BY 1`,
+          [name, ...ACTIVE_STATES],
         );
         const blocking = rows.map((r) => r.id);
         if (blocking.length > 0) {

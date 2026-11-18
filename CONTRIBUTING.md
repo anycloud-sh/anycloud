@@ -246,8 +246,7 @@ for them.
 `test/unit/ci/verify-ci-parity.spec.ts` fails if a `verify` check loses its CI
 step. CI also runs checks that `verify` does not. CI runs the Python SDK
 checks: `yarn generate:python-sdk`, which needs Python and Java, then `yarn test:generated-python-sdk`,
-`yarn test:generated-python-sdk-wire`, `yarn test:python-api-wire`, and
-`python -m pytest test/unit/test_submission_response_loss.py`. The `test-sdk`
+`yarn test:generated-python-sdk-wire` and `yarn test:python-api-wire`. The `test-sdk`
 and `installed-sdk` jobs build the SDK wheel and source distribution and test
 them in a clean environment, which has no single local command.
 
@@ -309,7 +308,7 @@ evasion is review's responsibility. Scopes that need no lint exceptions use
 `noInlineConfig`.
 
 VM lifecycle orchestration consumes a bound `VmCompute` from the named
-Workload, node pool or cluster composition root. Preserve the attempt credential, native
+Workload or cluster composition root. Preserve the attempt credential, native
 ID, region, and zone through observations and cleanup; new paths must choose
 the documented legacy-credential behavior explicitly. The protected
 `local/exact-vm-compute-ownership` rule reserves raw lifecycle operations for
@@ -706,10 +705,7 @@ committed as `src/shared/api-contract/openapi.generated.json`; run
 `yarn generate:openapi` after a contract change, and `yarn check:openapi` fails
 when it is stale. The section compares that document at the merge base with the
 branch's and reports a change declared on a base or a tag's shared errors once,
-with the exact number of endpoints it reaches. Replica routes are flagged ⚠️:
-replicas of the previous release parse their payloads strictly, so a change to
-them needs a maintainer's sign-off before
-`test/unit/rpc/__snapshots__/replica-openapi.snap` is updated. On a merge
+with the exact number of endpoints it reaches. On a merge
 conflict in the document, rebase, run `yarn generate:openapi` and commit the
 result.
 
@@ -795,9 +791,6 @@ This prevents:
 - `api/services/repositories/credential-secrets.ts` - encrypted credentials and named secrets, including the reference-guarded deletes, wired the same way; its admission-only `upsertCredential` is a free function that only the admission writer imports
 - `api/services/repositories/workload-queries.ts` - Workload query projections, wired the same way: hydrated reads, `list` and `status` on the `db.read` connection, the terminal digest rows, scheduling and reconcile candidates, and the VM rows operations read; it performs no transitions
 - `api/services/repositories/workload-spend.ts` - the spend reads, wired the same way: the windowed cost report that `anycloud cost` and the budget-cap alert read, the exact per-workload cost, and the digest's start counts and VM spend; it holds `windowedVmSpendSql`, the one windowed VM spend definition, which `spend-controls-store.ts` also uses, and imports the shared VM aggregate and attribution filters from `workload-queries.ts`
-- `api/services/repositories/deployment-executions.ts` - Deployment-targeted Job persistence, wired the same way: discovery, the claim transaction, claim-deadline expiry, execution reports, cleanup acknowledgement, counts and status snapshots; its admission-only `createTargetedWorkload` is a free function that only the admission writer imports, and its other consumers import only its types
-- `api/services/repositories/node-pool-services.ts` - the node pool Service controller's discovery set and the Workload references that hold a node pool in use, rendering `node-pool-references.ts`'s definition of a live reference
-- `api/services/node-pool-service-reconciler.ts`, `node-pool-service-controller.ts` and `api/services/kubernetes/service-workload.ts` - the node pool Service path: the reconciler discovers Services on its cadence and after a restart, and runs one reconcile per Service at a time; the controller moves the Workload from native readiness, publishes its route, and stops or removes it; `service-workload.ts` applies, observes and deletes the native objects by exact ownership and UID. `monitor.ts` starts the reconciler, and the shared cleanup lane (`api/services/workload-workflows/cleanup.ts`) removes a terminal Service through the controller, pinned by `node-pool-service-cleanup-lane.spec.ts`
 - `api/services/workload-event-metadata.ts` - redacted workload-event metadata encoding and decoding
 - `shared/cloud-config.ts` - cloud configuration utilities
 - `cli/services/*.ts` - CLI-specific logic
@@ -805,7 +798,7 @@ This prevents:
 - `api/services/*-domain.ts` - transport-free domain semantics with required dependency ports
 - `api/composition.ts` - production wiring for concrete persistence, gateways, runtimes, environment, and telemetry
 - `api/services/monitor.ts` - composition only: background-service start/stop, scheduling, one builder for every workflow's declared dependencies, and routing reconciler work to its workflow; periodic bodies such as `notifications-digest.ts` (with its rendering in `notifications-digest-format.ts`) and `api/services/cost-calculation/monitor.ts` live with their owners and are imported only by it
-- `api/services/workload-workflows/*.ts` - workload workflow families, such as `vm-host-startup.ts` (fresh startup, active-step replay, and in-place resume), `retry-recovery.ts`, the Job `completion.ts` with its reconciler handlers in `completion-reconcile.ts`, the terminal `cleanup.ts`, `persistent-vm-repair.ts`, the dispatch and active-pipeline recovery in `workload-pipeline.ts`, `provisioning-scheduler.ts`, and the Deployment-targeted Job protocol in `targeted-job.ts`; the pipeline receives the monitor's reconciler as a port, since the reconciler's active-recovery work runs the pipeline; each declares the persistence interfaces it uses and receives them from `monitor.ts` (or, for startup and the Job poll, from `api/services/job/default-runtime.ts`), never importing the monitor, `persistence.ts`, provider gateways, provider clients, or SDKs
+- `api/services/workload-workflows/*.ts` - workload workflow families, such as `vm-host-startup.ts` (fresh startup, active-step replay, and in-place resume), `retry-recovery.ts`, the Job `completion.ts` with its reconciler handlers in `completion-reconcile.ts`, the terminal `cleanup.ts`, `persistent-vm-repair.ts`, the dispatch and active-pipeline recovery in `workload-pipeline.ts`, and `provisioning-scheduler.ts`; the pipeline receives the monitor's reconciler as a port, since the reconciler's active-recovery work runs the pipeline; each declares the persistence interfaces it uses and receives them from `monitor.ts` (or, for startup and the Job poll, from `api/services/job/default-runtime.ts`), never importing the monitor, `persistence.ts`, provider gateways, provider clients, or SDKs
 - `api/services/host-runtime/*.ts` - host effects shared by workflows, such as the startup readiness, container start and health in `host-startup.ts`, the image pull in `image-delivery.ts`, the persistent-VM container repair in `vm-container-repair.ts`, `vm-release-observer.ts`, and the VM teardown in `termination.ts`; they and the repositories never import a workflow or the monitor
 
 Do not add another catch-all type module or a convenience export path. Import a

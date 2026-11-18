@@ -43,11 +43,6 @@ import {
   type WorkloadTypeValue,
 } from '../../../src/shared/workload.js';
 import config from '../../../src/api/config.js';
-import {
-  seedDigestDeployment,
-  seedDigestNodePoolVm,
-  seedDigestTargetedJob,
-} from '../../helpers/deployment-digest.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
 
 // Seed the sentinel so runNotificationsDigestOnce skips its first-run guard
@@ -72,7 +67,6 @@ function row(overrides: {
   workloadType?: WorkloadTypeValue;
   userId?: string;
   ownerUserId?: string;
-  deploymentId?: string;
   wasPreempted?: boolean;
   startedAt?: number;
   completedAt?: number | null;
@@ -81,7 +75,6 @@ function row(overrides: {
   state: WorkloadState;
   userId: string;
   ownerUserId: string | null;
-  deploymentId: string | null;
   wasPreempted: boolean;
   startedAt: number;
   completedAt: number | null;
@@ -91,7 +84,6 @@ function row(overrides: {
     state: overrides.state,
     userId: overrides.userId ?? 'alice',
     ownerUserId: overrides.ownerUserId ?? null,
-    deploymentId: overrides.deploymentId ?? null,
     wasPreempted: overrides.wasPreempted ?? false,
     startedAt: overrides.startedAt ?? 0,
     completedAt: overrides.completedAt ?? null,
@@ -114,7 +106,6 @@ function starts(
       jobs?: Partial<WorkloadTypeStarts>;
       services?: Partial<WorkloadTypeStarts>;
       vms?: Partial<WorkloadTypeStarts>;
-      deploymentJobs?: UserWorkloadStarts['deploymentJobs'];
     }>;
   } = {},
 ): {
@@ -140,7 +131,6 @@ function starts(
             jobs,
             services,
             vms,
-            deploymentJobs: [],
           },
         ]
       : [];
@@ -155,7 +145,6 @@ function starts(
         jobs: { ...noStarts(), ...user.jobs },
         services: { ...noStarts(), ...user.services },
         vms: { ...noStarts(), ...user.vms },
-        deploymentJobs: user.deploymentJobs ?? [],
       })) ?? defaultUsers,
   };
 }
@@ -324,15 +313,10 @@ describe('aggregateDigest', () => {
 });
 
 describe('foldLocalApiOwners', () => {
-  it('reports one entry per Deployment when owners before and after local ownership target it', () => {
+  it('reports owners before and after local ownership as one local owner', () => {
     const localOwner = 'local:0123456789abcdef0123456789abcdef';
     const done = (userId: string, ownerUserId: string) =>
-      row({
-        state: WorkloadState.Completed,
-        userId,
-        ownerUserId,
-        deploymentId: 'dep-1',
-      });
+      row({ state: WorkloadState.Completed, userId, ownerUserId });
     const summary = aggregateDigest(
       [
         done('octocat', '583231'),
@@ -340,19 +324,6 @@ describe('foldLocalApiOwners', () => {
         done('local', localOwner),
       ],
       starts(),
-      [
-        {
-          id: 'dep-1',
-          name: 'inference',
-          nodePoolName: 'gpu',
-          ownerUserId: localOwner,
-          ownerUsername: 'local',
-          presentAtEnd: true,
-          createdInWindow: false,
-          deletedInWindow: false,
-          hasVmUsage: false,
-        },
-      ],
     );
     const spend = {
       runningCost: 0,
@@ -368,14 +339,22 @@ describe('foldLocalApiOwners', () => {
       users: [],
     });
 
+    expect(folded.summary.users).toEqual([
+      {
+        userId: 'local',
+        ownerUserId: localOwner,
+        jobs: summary.jobs,
+        services: summary.services,
+        vms: summary.vms,
+      },
+    ]);
+    expect(folded.summary.jobs.completed).toBe(3);
     const { text } = formatDigestNotification(
       '2026-11-04',
       folded.summary,
       folded.spend,
     );
     expect(text).not.toContain('👤');
-    expect(text.match(/inference \/ gpu/g)).toHaveLength(1);
-    expect(text).toContain('inference / gpu: 3 completed');
   });
 });
 
@@ -1058,85 +1037,32 @@ describe('runNotificationsDigestOnce (end-to-end)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    { kind: 'provisioned capacity', provisioned: true, send: true },
-    { kind: 'provisioning placeholders', provisioned: false, send: false },
-    { kind: 'no capacity', provisioned: undefined, send: false },
-  ])(
-    'handles Job-idle Deployment inventory with $kind',
-    async ({ provisioned, send }) => {
-      const now = new Date();
-      const endMs = Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-      );
-      const startMs = endMs - 24 * 60 * 60 * 1000;
-      await seedDigestDeployment({ id: 'idle-model', createdAt: startMs - 1 });
-      if (provisioned !== undefined) {
-        await seedDigestNodePoolVm({
-          id: 'capacity',
-          createdAt: startMs - 1,
-          endedAt: endMs - 1,
-          provisioned,
-        });
-      }
-      await enableSlack();
-      await seedSentinelOlderThanYesterday();
-      await runNotificationsDigestOnce();
-      expect(fetchMock).toHaveBeenCalledTimes(send ? 1 : 0);
-      if (send) {
-        const payload = JSON.parse(fetchMock.mock.calls[0][1].body) as {
-          text: string;
-        };
-        expect(payload.text).toContain('☸️ Kubernetes Deployments');
-        expect(payload.text).toContain('1 present at day end');
-        expect(payload.text).not.toContain('📦 Jobs');
-        expect(payload.text).not.toContain('Compute spend');
-      }
-      expect(await getNotificationsStore().readReceipt('digest')).toBe(
-        new Date(startMs).toISOString().slice(0, 10),
-      );
-      await runNotificationsDigestOnce();
-      expect(fetchMock).toHaveBeenCalledTimes(send ? 1 : 0);
-    },
-  );
-
-  it('sends actual Deployment and Job activity without backing VMs', async () => {
+  it('retries a rejected digest and records delivery only after success', async () => {
     const now = new Date();
     const endMs = Date.UTC(
       now.getUTCFullYear(),
       now.getUTCMonth(),
       now.getUTCDate(),
     );
-    const startMs = endMs - 24 * 60 * 60 * 1000;
-    await seedDigestDeployment({ id: 'new-model', createdAt: startMs + 1 });
-    await seedDigestTargetedJob({
-      id: 'queued-job',
-      deploymentId: 'new-model',
-      submittedAt: startMs + 2,
+    await getDB().query(
+      `INSERT INTO credentials (id, encrypted_data, cloud_provider) VALUES ('cred-1', '', 'AWS')`,
+    );
+    await createWorkload(getDB(), {
+      id: 'queued-1',
+      userId: 'alice',
+      workloadType: 'job',
+      image: 'alpine:latest',
+      requestedComputeProvider: CloudType.AWS,
+      region: 'us-east-1',
+      vmType: 't3.medium',
+      dockerCommand: 'docker run alpine',
+      sshPrivateKey: 'ssh-test-key',
+      credentialId: 'cred-1',
     });
-    await enableSlack();
-    await seedSentinelOlderThanYesterday();
-    await runNotificationsDigestOnce();
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const payload = JSON.parse(fetchMock.mock.calls[0][1].body) as {
-      text: string;
-    };
-    expect(payload.text).toContain('1 present at day end · 1 created');
-    expect(payload.text).toContain('By Kubernetes Deployment — included above');
-    expect(payload.text).toContain('new-model / digest-pool: 1 submitted');
-    expect(payload.text).not.toContain('Compute spend');
-  });
-
-  it('retries a rejected Deployment digest and records delivery only after success', async () => {
-    const now = new Date();
-    const endMs = Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
+    await getDB().query(
+      `UPDATE workloads SET started_at = ?, submitted_at = ? WHERE id = ?`,
+      [endMs - 1, endMs - 1, 'queued-1'],
     );
-    await seedDigestDeployment({ id: 'new-model', createdAt: endMs - 1 });
     await enableSlack();
     await seedSentinelOlderThanYesterday();
     fetchMock.mockResolvedValueOnce({

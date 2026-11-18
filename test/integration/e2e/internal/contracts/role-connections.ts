@@ -9,7 +9,7 @@ import { WaitTimeoutError, type Waiter } from '../wait.js';
 /**
  * RFC 0047's role-connection scenarios on the hosted journey, one
  * `live_checks` entry per lane they wait on:
- * - `role-connections`: S14 (each cloud's setup template, the save, a pool
+ * - `role-connections`: S14 (each cloud's setup template, the save, a VM
  *   Job's output through the connection, nothing secret stored, the pinned
  *   trust refusing another subject's and another audience's token) and S15
  *   (the refused saves); needs lane R1, and R5 for GCS and Blob.
@@ -17,7 +17,7 @@ import { WaitTimeoutError, type Waiter } from '../wait.js';
  * - `role-key-rotation`: S16, the signing key added, overlapped and retired;
  *   lane R4.
  * - `role-storage-tokens`: storage tokens minted from each role
- *   connection by a registered Deployment's own Pod-bound token.
+ *   connection with the run's own API token.
  * One API covers all three clouds: the exchange runs from the API through its
  * public issuer, and the management VM's cloud takes no part in it.
  */
@@ -156,11 +156,10 @@ export interface RoleConnectionsPort {
   rotateSigningKey(step: 'add'): Promise<void>;
   rotateSigningKey(step: 'retire'): Promise<{ readonly refusedEarly: string }>;
   /**
-   * A pool Job writing `content` to `/mnt/output/probe.txt`, its output
+   * A VM Job writing `content` to `/mnt/output/probe.txt`, its output
    * bucket signed by the connection; the object read back through it.
    */
   outputThrough(
-    nodePoolId: string,
     cloud: RoleCloud,
     connection: string,
     content: string,
@@ -379,7 +378,7 @@ export class RoleConnectionChecks {
   }
 
   /** `role-connections`: S15 on the local API, then S14 and S15 per cloud. */
-  async roleConnections(nodePoolId: string): Promise<void> {
+  async roleConnections(): Promise<void> {
     const { port, policy, progress } = this.#d;
     const record: Record<string, unknown> = {};
     for (const cloud of ROLE_CLOUDS) {
@@ -403,7 +402,7 @@ export class RoleConnectionChecks {
       );
       await this.#pinned(cloud);
       const content = `${cloud}-${policy.runId}`;
-      const read = await port.outputThrough(nodePoolId, cloud, name, content);
+      const read = await port.outputThrough(cloud, name, content);
       invariant(
         read.trim() === content,
         `${cloud} output read back "${read.trim()}", expected "${content}"`,

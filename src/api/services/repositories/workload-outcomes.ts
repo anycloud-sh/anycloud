@@ -16,19 +16,9 @@ import {
   eventMetadataColumn,
   type WorkloadEventMetadataInput,
 } from '../workload-event-metadata.js';
-import type { JobChanges } from '../job-changes.js';
-import {
-  commitWorkloadChanges,
-  hasError,
-  POOL_MANAGED_CHECKPOINT_SQL,
-} from './workload-lifecycle.js';
+import { hasError } from './workload-lifecycle.js';
 import { ownershipPredicate, type OwnershipScope } from './ownership-filter.js';
 import type { DB } from './db.js';
-
-export interface SubmissionReceipt {
-  submissionRevision: number;
-  claimDeadlineAt: number | null;
-}
 
 /**
  * The definition of outstanding cleanup: a durable terminal outcome whose
@@ -54,10 +44,7 @@ function boundCleanupError(reason: string): string {
 }
 
 export class WorkloadOutcomeStore {
-  constructor(
-    private readonly db: DB,
-    private readonly jobChanges: JobChanges,
-  ) {}
+  constructor(private readonly db: DB) {}
 
   /**
    * Atomically publish one terminal outcome from the expected active state.
@@ -99,44 +86,39 @@ export class WorkloadOutcomeStore {
     const conditionClause = options?.condition
       ? ` AND (${options.condition.sql})`
       : '';
-    const outcome = await commitWorkloadChanges(
-      this.db,
-      this.jobChanges,
-      (tx, changed) => {
-        const updated = tx.query<{ rowsAffected: number }>(
-          `UPDATE workloads
+    const outcome = await this.db.transaction((tx) => {
+      const updated = tx.query<{ rowsAffected: number }>(
+        `UPDATE workloads
          SET state = ?, end_reason = ?, last_attempt_end_reason = ?,
              completed_at = ?, cleaned_at = ?
          WHERE id = ?
            AND state = ?${workloadTypeClause}${conditionClause}`,
-          [
-            targetState,
-            options?.endReason ?? endReasonOfState(targetState),
-            options?.lastAttemptEndReason ?? null,
-            completedAt,
-            options?.cleanupComplete ? completedAt : null,
-            workloadId,
-            expectedState,
-            ...(options?.workloadType ? [options.workloadType] : []),
-            ...(options?.condition?.params ?? []),
-          ],
-        );
-        if (!updated[0]?.rowsAffected) return false;
-        changed(workloadId);
+        [
+          targetState,
+          options?.endReason ?? endReasonOfState(targetState),
+          options?.lastAttemptEndReason ?? null,
+          completedAt,
+          options?.cleanupComplete ? completedAt : null,
+          workloadId,
+          expectedState,
+          ...(options?.workloadType ? [options.workloadType] : []),
+          ...(options?.condition?.params ?? []),
+        ],
+      );
+      if (!updated[0]?.rowsAffected) return false;
 
-        tx.query(
-          `INSERT INTO workload_events (workload_id, state, metadata, created_at)
+      tx.query(
+        `INSERT INTO workload_events (workload_id, state, metadata, created_at)
          VALUES (?, ?, ?, ?)`,
-          [
-            workloadId,
-            targetState,
-            eventMetadataColumn(options?.metadata),
-            completedAt,
-          ],
-        );
-        return true;
-      },
-    );
+        [
+          workloadId,
+          targetState,
+          eventMetadataColumn(options?.metadata),
+          completedAt,
+        ],
+      );
+      return true;
+    });
 
     if (outcome) {
       const context = {
@@ -216,7 +198,6 @@ export class WorkloadOutcomeStore {
     const updated = await this.db.query<{
       state: WorkloadState;
       cleanedAt: number;
-      deploymentId: string | null;
     }>(
       `UPDATE workloads
        SET cleaned_at = MAX(?, completed_at),
@@ -230,7 +211,7 @@ export class WorkloadOutcomeStore {
            WHERE workload_id = workloads.id
              AND ended_at IS NULL
          )
-       RETURNING state, cleaned_at AS cleanedAt, deployment_id AS deploymentId`,
+       RETURNING state, cleaned_at AS cleanedAt`,
       [
         cleanedAt,
         options.ensureAttemptCounted ? 1 : 0,
@@ -240,9 +221,6 @@ export class WorkloadOutcomeStore {
     );
     const result = updated[0];
     if (result) {
-      this.jobChanges.notify(workloadId);
-      if (result.deploymentId)
-        this.jobChanges.notifyDeployment(result.deploymentId, { waiters: 1 });
       log.info('Workload resource cleanup completed', {
         id: workloadId,
         state: result.state,
@@ -318,24 +296,22 @@ export class WorkloadOutcomeStore {
     workloadId: string,
     callerSession?: string | null,
   ): Promise<boolean> {
-    return (await this.commitResubmission(workloadId, callerSession)) !== false;
+    return this.commitResubmission(workloadId, callerSession);
   }
 
   async resubmitWorkloadForScope(
     workloadId: string,
     scope: OwnershipScope,
     callerSession?: string | null,
-    options?: { claimDeadlineAt?: number | null },
-  ): Promise<SubmissionReceipt | false> {
-    return this.commitResubmission(workloadId, callerSession, scope, options);
+  ): Promise<boolean> {
+    return this.commitResubmission(workloadId, callerSession, scope);
   }
 
   private async commitResubmission(
     workloadId: string,
     callerSession?: string | null,
     scope?: OwnershipScope,
-    options?: { claimDeadlineAt?: number | null },
-  ): Promise<SubmissionReceipt | false> {
+  ): Promise<boolean> {
     const now = Date.now();
     const placeholders = RESUBMITTABLE_STATES.map(() => '?').join(', ');
     const owner = scope ? ownershipPredicate(scope) : undefined;
@@ -343,82 +319,50 @@ export class WorkloadOutcomeStore {
     const metadata: Record<string, string> = { reason: 'resubmitted' };
     if (callerSession) metadata.callerSession = callerSession;
 
-    const resubmitted = await commitWorkloadChanges(
-      this.db,
-      this.jobChanges,
-      (tx, changed) => {
-        const result = tx.query<SubmissionReceipt>(
-          `UPDATE workloads
+    const resubmitted = await this.db.transaction((tx) => {
+      const result = tx.query<{ rowsAffected: number }>(
+        `UPDATE workloads
          SET state = ?,
              started_at = ?,
              completed_at = NULL,
              end_reason = NULL,
              last_attempt_end_reason = NULL,
-             cleaned_at = NULL,
-             current_execution_id = NULL,
-             submission_revision = submission_revision + 1,
-             first_claimed_at = NULL,
-             claim_deadline_at = CASE WHEN deployment_id IS NOT NULL THEN ? ELSE NULL END
+             cleaned_at = NULL
          WHERE id = ?
            ${owner ? `AND ${owner.sql}` : ''}
            AND state IN (${placeholders})
            AND cleaned_at IS NOT NULL
-           AND (
-             deployment_id IS NULL
-             OR EXISTS (
-               SELECT 1 FROM deployments target
-               WHERE target.id = workloads.deployment_id
-                 AND target.deletion_requested_at IS NULL
-                 AND target.deleted_at IS NULL
-             )
-           )
-           AND (
-             node_pool_id IS NULL
-             OR EXISTS (
-               SELECT 1 FROM node_pools p
-               WHERE p.id = workloads.node_pool_id AND p.state = 'ready'
-             )
-           )
            AND NOT EXISTS (
              SELECT 1
              FROM vms
              WHERE workload_id = ?
                AND ended_at IS NULL
-           )
-         RETURNING submission_revision AS submissionRevision, claim_deadline_at AS claimDeadlineAt`,
-          [
-            WorkloadState.Queued,
-            now,
-            options?.claimDeadlineAt ?? null,
-            workloadId,
-            ...(owner?.params ?? []),
-            ...RESUBMITTABLE_STATES,
-            workloadId,
-          ],
-        );
-        if (!result[0]) return false;
-        changed(workloadId);
+           )`,
+        [
+          WorkloadState.Queued,
+          now,
+          workloadId,
+          ...(owner?.params ?? []),
+          ...RESUBMITTABLE_STATES,
+          workloadId,
+        ],
+      );
+      if (!result[0]?.rowsAffected) return false;
 
-        tx.query(
-          `INSERT INTO workload_events (workload_id, state, metadata, created_at)
+      tx.query(
+        `INSERT INTO workload_events (workload_id, state, metadata, created_at)
          VALUES (?, ?, ?, ?)`,
-          [
-            workloadId,
-            WorkloadState.Queued,
-            eventMetadataColumn(metadata),
-            now,
-          ],
-        );
-        return result[0];
-      },
-    );
+        [workloadId, WorkloadState.Queued, eventMetadataColumn(metadata), now],
+      );
+      return true;
+    });
 
     if (!resubmitted) {
       return false;
     }
 
     log.info(`Resubmit: ${workloadId}`, { id: workloadId });
-    return resubmitted;
+    return true;
   }
 
   /**
@@ -438,82 +382,66 @@ export class WorkloadOutcomeStore {
     const now = Date.now();
     const owner = ownershipPredicate(scope);
 
-    const result = await commitWorkloadChanges(
-      this.db,
-      this.jobChanges,
-      (tx, changed) => {
-        const rows = tx.query<{
-          state: WorkloadState;
-          deployment_id: string | null;
-        }>(
-          `SELECT state, deployment_id
+    const result = await this.db.transaction((tx) => {
+      const rows = tx.query<{ state: WorkloadState }>(
+        `SELECT state
          FROM workloads
          WHERE id = ? AND ${owner.sql}`,
-          [workloadId, ...owner.params],
+        [workloadId, ...owner.params],
+      );
+      const previous = rows[0];
+      const previousState = previous?.state;
+      if (!previous || !previousState) return null;
+
+      if (isTerminalState(previousState)) {
+        return {
+          previousState,
+          transitioned: false,
+        };
+      }
+      if (
+        !VALID_TRANSITIONS[WorkloadState.Terminated].includes(previousState)
+      ) {
+        throw new Error(
+          `Workload ${workloadId}: ${previousState} cannot transition to Terminated`,
         );
-        const previous = rows[0];
-        const previousState = previous?.state;
-        if (!previous || !previousState) return null;
+      }
 
-        if (isTerminalState(previousState)) {
-          return {
-            previousState,
-            transitioned: false,
-          };
-        }
-        if (
-          !VALID_TRANSITIONS[WorkloadState.Terminated].includes(previousState)
-        ) {
-          throw new Error(
-            `Workload ${workloadId}: ${previousState} cannot transition to Terminated`,
-          );
-        }
-
-        const completesCleanupImmediately =
-          previous.deployment_id !== null &&
-          (previousState === WorkloadState.Queued ||
-            previousState === WorkloadState.Retrying);
-
-        const transitioned = tx.query<{ rowsAffected: number }>(
-          `UPDATE workloads
-         SET state = ?, end_reason = 'cancelled', completed_at = ?,
-             cleaned_at = CASE WHEN ${POOL_MANAGED_CHECKPOINT_SQL}
-               THEN NULL ELSE ? END
+      const transitioned = tx.query<{ rowsAffected: number }>(
+        `UPDATE workloads
+         SET state = ?, end_reason = 'cancelled', completed_at = ?
          WHERE id = ?
            AND ${owner.sql}
            AND state = ?`,
-          [
-            WorkloadState.Terminated,
-            now,
-            completesCleanupImmediately ? now : null,
-            workloadId,
-            ...owner.params,
-            previousState,
-          ],
-        );
-        if (!transitioned[0]?.rowsAffected) {
-          throw new Error(
-            `Workload ${workloadId}: termination transition was not applied`,
-          );
-        }
-
-        tx.query(
-          `INSERT INTO workload_events (workload_id, state, metadata, created_at)
-         VALUES (?, ?, ?, ?)`,
-          [
-            workloadId,
-            WorkloadState.Terminated,
-            eventMetadataColumn(options?.metadata),
-            now,
-          ],
-        );
-        changed(workloadId);
-        return {
+        [
+          WorkloadState.Terminated,
+          now,
+          workloadId,
+          ...owner.params,
           previousState,
-          transitioned: true,
-        };
-      },
-    );
+        ],
+      );
+      if (!transitioned[0]?.rowsAffected) {
+        throw new Error(
+          `Workload ${workloadId}: termination transition was not applied`,
+        );
+      }
+
+      tx.query(
+        `INSERT INTO workload_events (workload_id, state, metadata, created_at)
+         VALUES (?, ?, ?, ?)`,
+        [
+          workloadId,
+          WorkloadState.Terminated,
+          eventMetadataColumn(options?.metadata),
+          now,
+        ],
+      );
+      return {
+        previousState,
+        transitioned: true,
+      };
+    });
 
     if (result?.transitioned) {
       log.info(`State transition: ${WorkloadState.Terminated}`, {

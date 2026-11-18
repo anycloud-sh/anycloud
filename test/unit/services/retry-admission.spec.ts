@@ -3,7 +3,6 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import config from '../../../src/api/config.js';
 import type { CreateWorkloadInput } from '../../../src/api/services/repositories/workload-creation.js';
 import {
-  getDeploymentStore,
   resetPersistence,
   getWorkloadLifecycle as lifecycle,
   getProvisioningAttemptStore as ledger,
@@ -18,41 +17,27 @@ import {
   provisionTestVm,
   releaseTestVms,
 } from '../../helpers/workload-store.js';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
-import { getWorkloadAdmissionWriter } from '../../../src/api/services/workload-admission-writer.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
 
 const workloadId = 'retry-admission';
 
-type RetryInput = Partial<CreateWorkloadInput> & { deploymentId?: string };
+type RetryInput = Partial<CreateWorkloadInput>;
 
 /** Admit the fixture to Provisioning, where its VM attempts are registered. */
 async function admitRetryWorkload(input: RetryInput = {}): Promise<void> {
-  const { deploymentId, ...workloadInput } = input;
-  if (deploymentId) {
-    const created = await getWorkloadAdmissionWriter().createTargetedWorkload({
-      id: workloadId,
-      userId: 'test-user',
-      ownerUserId: 'test-user',
-      deploymentId,
-    });
-    if (!created)
-      throw new Error(`Deployment target ${deploymentId} was not found`);
-  } else {
-    await createWorkload(getDB(), {
-      id: workloadId,
-      userId: 'test-user',
-      workloadType: 'job',
-      image: 'alpine:latest',
-      requestedComputeProvider: CloudType.GCP,
-      region: 'us-central1',
-      vmType: 'n2-standard-4',
-      dockerCommand: 'docker run alpine',
-      sshPrivateKey: 'test-key',
-      credentialId: null,
-      ...workloadInput,
-    });
-  }
+  await createWorkload(getDB(), {
+    id: workloadId,
+    userId: 'test-user',
+    workloadType: 'job',
+    image: 'alpine:latest',
+    requestedComputeProvider: CloudType.GCP,
+    region: 'us-central1',
+    vmType: 'n2-standard-4',
+    dockerCommand: 'docker run alpine',
+    sshPrivateKey: 'test-key',
+    credentialId: null,
+    ...input,
+  });
   await walkToState(workloadId, WorkloadState.Provisioning);
 }
 
@@ -289,54 +274,6 @@ describe('retry admission', () => {
       expect(await eventLog().getWorkloadEvents(workloadId)).toEqual(before);
     },
   );
-
-  it('derives targeted ownership from the stored Deployment target', async () => {
-    await seedReadyNodePool({
-      nodePoolId: 'target-pool',
-      ownerUserId: 'test-user',
-    });
-    await expect(
-      getDeploymentStore().create(
-        {
-          id: 'target',
-          ownerUserId: 'test-user',
-          name: 'target',
-          nodePoolId: 'target-pool',
-          config: {
-            image: 'example/deployment:latest',
-            imageDigest: null,
-            command: null,
-            dockerOptions: null,
-            env: null,
-            registryUsername: 'test-user',
-            registryToken: null,
-          },
-          gpuCount: 0,
-          maxConcurrentJobsPerReplica: 1,
-        },
-        { kind: 'api' },
-      ),
-    ).resolves.toBe(true);
-    const revision = await createRetry(
-      WorkloadState.Downloading,
-      WorkloadState.Retrying,
-      { deploymentId: 'target' },
-    );
-    await expect(
-      lifecycle().getRetryVMEligibility(workloadId, revision),
-    ).resolves.toBe('ready');
-    await expect(
-      lifecycle().queueRetryCandidate(workloadId, revision),
-    ).resolves.toBe('queued');
-    await walkToState(workloadId, WorkloadState.Provisioning);
-    await addCompleteVM();
-    const withVM = await failRetry(WorkloadState.Downloading);
-    await expectPending(withVM);
-    await releaseTestVms(workloadId, 'complete-vm');
-    await expect(
-      lifecycle().queueRetryCandidate(workloadId, withVM),
-    ).resolves.toBe('queued');
-  });
 
   it('derives VM ownership from a legacy attempt credential when no provider was requested', async () => {
     await admitRetryWorkload({ requestedComputeProvider: null });

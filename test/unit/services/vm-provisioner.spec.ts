@@ -12,8 +12,10 @@ import {
   buildServeIngressSpec,
 } from '../../../src/api/services/network';
 import { VMCreationError } from '../../../src/api/services/codes';
-import { KubernetesResourceOwnershipError } from '../../../src/api/services/kubernetes/managed-resources';
-import { ResourceStateIndeterminateError } from '../../../src/shared/errors';
+import {
+  ResourceOwnershipError,
+  ResourceStateIndeterminateError,
+} from '../../../src/shared/errors';
 import { StateConflictError } from '../../../src/api/services/task';
 import {
   getWorkloadLifecycle as lifecycle,
@@ -445,9 +447,7 @@ describe('vm-provisioner', () => {
       cloud.newVM = vi
         .fn()
         .mockRejectedValue(
-          new KubernetesResourceOwnershipError(
-            'resource belongs to another owner',
-          ),
+          new ResourceOwnershipError('resource belongs to another owner'),
         );
 
       await expect(provisionWithStorage(cloud, baseParams)).rejects.toThrow(

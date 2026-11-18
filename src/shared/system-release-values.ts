@@ -41,7 +41,7 @@ export interface SystemReleaseValues {
   /**
    * What the hosted API records about the cluster it runs in: bootstrap's
    * observed `kube-system` UID (the API refuses to start against another) and
-   * the public control-plane endpoint node pool VMs join through.
+   * the public control-plane endpoint.
    */
   cluster: SystemReleaseClusterValues;
   ingress: { mode: 'traefik'; host: string };

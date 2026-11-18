@@ -18,16 +18,6 @@ enum ProvisioningTargetScope {
   AvailabilityZone = 'availability-zone',
 }
 
-/** How a provider names the availability zone a node pool may pin. */
-export enum ZoneFormat {
-  /** A region-prefixed zone such as `us-east-1a` or `us-central1-a`. */
-  RegionSuffix = 'region-suffix',
-  /** A single digit such as `1`, `2` or `3`. */
-  Numeric = 'numeric',
-  /** The provider exposes no zone selection. */
-  None = 'none',
-}
-
 export enum CheckpointStorageSource {
   ComputeCredential = 'compute-credential',
   ExplicitStorageCredential = 'explicit-storage-credential',
@@ -114,9 +104,6 @@ export interface ComputeProviderData {
   // Whether catalog placement and failure identity stop at the region or
   // include an exact availability zone.
   readonly provisioningTargetScope: ProvisioningTargetScope;
-  // Shape of an explicitly pinned availability zone, checked before it is
-  // frozen on a node pool record.
-  readonly zoneFormat: ZoneFormat;
   // Whether a missing-accelerator workload exit can be retried on replacement
   // capacity. Fixed CPU-only harnesses cannot recover by replacing their host.
   readonly supportsAcceleratorFailureRetry: boolean;
@@ -151,9 +138,6 @@ export interface ComputeProviderData {
   readonly checkpointStorageSource: CheckpointStorageSource;
   // Optional copy for provider availability failure summaries.
   readonly exhaustedCandidateFilterMessage?: string;
-  // Runs pool Jobs and pool Deployments only: no VM-host Workload and no
-  // cluster management VM (RFC 0044, decision 33).
-  readonly poolsOnly?: boolean;
 }
 
 export interface ProviderData {
@@ -220,7 +204,6 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       computeCredentialMode: ComputeCredentialMode.CloudCredentials,
       supportsRegionFailover: true,
       provisioningTargetScope: ProvisioningTargetScope.Region,
-      zoneFormat: ZoneFormat.RegionSuffix,
       supportsAcceleratorFailureRetry: true,
       // Best-effort, usually two minutes ahead; the systemd guard covers a gap.
       spotNoReclaimNoticeCommand: `t=$(curl -sf -m 2 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token) && [ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' -H "X-aws-ec2-metadata-token: $t" http://169.254.169.254/latest/meta-data/spot/instance-action)" = 404 ] && echo no-notice`,
@@ -247,7 +230,6 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       computeCredentialMode: ComputeCredentialMode.CloudCredentials,
       supportsRegionFailover: true,
       provisioningTargetScope: ProvisioningTargetScope.AvailabilityZone,
-      zoneFormat: ZoneFormat.RegionSuffix,
       supportsAcceleratorFailureRetry: true,
       // `preempted` turns TRUE as preemption starts, before its ACPI shutdown.
       spotNoReclaimNoticeCommand: `[ "$(curl -sf -m 2 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/preempted)" = FALSE ] && echo no-notice`,
@@ -269,7 +251,6 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       computeCredentialMode: ComputeCredentialMode.CloudCredentials,
       supportsRegionFailover: true,
       provisioningTargetScope: ProvisioningTargetScope.Region,
-      zoneFormat: ZoneFormat.Numeric,
       supportsAcceleratorFailureRetry: true,
       supportsDiskTier: true,
       preparesJobHosts: true,
@@ -291,7 +272,6 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       computeCredentialMode: ComputeCredentialMode.CloudCredentials,
       supportsRegionFailover: true,
       provisioningTargetScope: ProvisioningTargetScope.Region,
-      zoneFormat: ZoneFormat.None,
       supportsAcceleratorFailureRetry: true,
       supportsDiskTier: false,
       preparesJobHosts: false,
@@ -324,7 +304,6 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       computeCredentialMode: ComputeCredentialMode.ApiInstance,
       supportsRegionFailover: false,
       provisioningTargetScope: ProvisioningTargetScope.Region,
-      zoneFormat: ZoneFormat.None,
       supportsAcceleratorFailureRetry: false,
       supportsDiskTier: false,
       preparesJobHosts: false,
@@ -346,15 +325,6 @@ export function isComputeProvider(cloud: CloudType): boolean {
 
 export function storageOnlyComputeMessage(cloud: CloudType): string {
   return `${cloud} credentials hold storage only and can't run workloads. Use them with --input-storage-credentials, --output-storage-credentials or --checkpoint-storage-credentials, and choose compute with another credential.`;
-}
-
-/** Refuse a VM-host Workload on a provider that runs node pools only. */
-export function assertHostsVmWorkloads(cloud: CloudType): void {
-  if (PROVIDER_DATA[cloud].compute?.poolsOnly) {
-    throw new InvalidAnycloudConfigError(
-      `${cloud} runs Jobs and Services on node pools only. Create one with "anycloud node-pool create" and pass --node-pool.`,
-    );
-  }
 }
 
 /** A compute provider's facts; a storage-only provider is refused. */
@@ -411,11 +381,6 @@ export function usesAvailabilityZoneTargets(cloud: CloudType): boolean {
     computeProviderData(cloud).provisioningTargetScope ===
     ProvisioningTargetScope.AvailabilityZone
   );
-}
-
-/** How an explicitly pinned availability zone must be spelled for this provider. */
-export function nodePoolZoneFormat(cloud: CloudType): ZoneFormat {
-  return computeProviderData(cloud).zoneFormat;
 }
 
 /**
