@@ -1,13 +1,12 @@
 /**
  * The cluster record as the API reads it.
  *
- * The `clusters` table is written by the installer (cluster-installer-store.ts)
- * and by the hosted API's self-record; this store binds the connection and
- * reads lifecycle. Connection material is read back only through
+ * The `clusters` table is written by the hosted API's self-record
+ * (cluster-installer-store.ts); this store reads lifecycle. Connection material is read back only through
  * ClusterConnectionRepository.
  */
 
-import { decryptSecret, encryptSecret } from './secret-crypto.js';
+import { decryptSecret } from './secret-crypto.js';
 import type { DB } from './repositories/db.js';
 import type { OwnershipScope } from './repositories/ownership-filter.js';
 import { ClusterState } from '../../shared/clusters.js';
@@ -29,14 +28,6 @@ export interface StoredClusterRecord {
 
 type ClusterConnectionKind = 'installer' | 'in-cluster';
 
-export interface StoreClusterConnectionInput {
-  clusterId: string;
-  kubernetesIdentity: string;
-  kind: ClusterConnectionKind;
-  /** Serialized `ClusterConnectionDocument`; encrypted at rest. */
-  connection: string;
-}
-
 export interface ClusterConnection {
   clusterId: string;
   kubernetesIdentity: string;
@@ -51,15 +42,6 @@ interface ClusterConnectionRepository {
 }
 
 export interface ClusterRecordRepository extends ClusterConnectionRepository {
-  /**
-   * Bind the cluster's control-plane identity and connection to its record.
-   * The installer stores its bootstrap-time connection; the hosted API stores
-   * its in-cluster kind (no credential). A different identity than the one
-   * already recorded is refused.
-   */
-  storeConnection(
-    input: StoreClusterConnectionInput,
-  ): Promise<'stored' | 'identity-mismatch' | 'not-found'>;
   getForScope(
     clusterId: string,
     scope: OwnershipScope,
@@ -68,16 +50,7 @@ export interface ClusterRecordRepository extends ClusterConnectionRepository {
     name: string,
     scope: OwnershipScope,
   ): Promise<StoredClusterRecord | null>;
-  listForScope(
-    scope: OwnershipScope,
-    options?: { includeDeleted?: boolean },
-  ): Promise<StoredClusterRecord[]>;
-  /**
-   * Ids of deleted cluster records that bound the same control plane, i.e. the
-   * same `kube-system` namespace UID. Objects those clusterRecords installed on the
-   * control plane may be adopted by the cluster that registered it again.
-   */
-  listDestroyedClusterIds(kubernetesIdentity: string): Promise<string[]>;
+  listForScope(scope: OwnershipScope): Promise<StoredClusterRecord[]>;
 }
 
 interface ClusterRecordRow {
@@ -162,38 +135,6 @@ function toStoredClusterRecord(row: ClusterRecordRow): StoredClusterRecord {
 export class ClusterRecordStore implements ClusterRecordRepository {
   constructor(private readonly db: DB) {}
 
-  async storeConnection(
-    input: StoreClusterConnectionInput,
-  ): Promise<'stored' | 'identity-mismatch' | 'not-found'> {
-    if (!input.connection) {
-      throw new Error('cluster connection is required');
-    }
-    const encryptedConnection = await encryptSecret(input.connection);
-    const result = await this.db.query<{ rowsAffected: number }>(
-      `UPDATE clusters
-       SET kubernetes_identity = ?, connection_kind = ?,
-           encrypted_connection = ?,
-           connection_revision = connection_revision + 1, updated_at = ?
-       WHERE id = ? AND state <> ?
-         AND (kubernetes_identity IS NULL OR kubernetes_identity = ?)`,
-      [
-        input.kubernetesIdentity,
-        input.kind,
-        encryptedConnection,
-        Date.now(),
-        input.clusterId,
-        ClusterState.Destroyed,
-        input.kubernetesIdentity,
-      ],
-    );
-    if (result[0]?.rowsAffected === 1) return 'stored';
-    const rows = await this.db.query<{ id: string }>(
-      `SELECT id FROM clusters WHERE id = ? AND state <> ?`,
-      [input.clusterId, ClusterState.Destroyed],
-    );
-    return rows.length > 0 ? 'identity-mismatch' : 'not-found';
-  }
-
   async getForScope(
     clusterId: string,
     scope: OwnershipScope,
@@ -219,20 +160,13 @@ export class ClusterRecordStore implements ClusterRecordRepository {
     return rows[0] ? toStoredClusterRecord(rows[0]) : null;
   }
 
-  async listForScope(
-    scope: OwnershipScope,
-    options?: { includeDeleted?: boolean },
-  ): Promise<StoredClusterRecord[]> {
+  async listForScope(scope: OwnershipScope): Promise<StoredClusterRecord[]> {
     const owner = ownership(scope, 'r');
     const rows = await this.db.query<ClusterRecordRow>(
       `SELECT r.* FROM clusters r
-       WHERE ${owner.sql} AND (? = 1 OR r.state <> ?)
+       WHERE ${owner.sql} AND r.state <> ?
        ORDER BY r.created_at, r.id`,
-      [
-        ...owner.params,
-        options?.includeDeleted ? 1 : 0,
-        ClusterState.Destroyed,
-      ],
+      [...owner.params, ClusterState.Destroyed],
     );
     return rows.map(toStoredClusterRecord);
   }
@@ -251,16 +185,6 @@ export class ClusterRecordStore implements ClusterRecordRepository {
       connection: await decryptSecret(row.encrypted_connection),
       connectionRevision: row.connection_revision,
     };
-  }
-
-  async listDestroyedClusterIds(kubernetesIdentity: string): Promise<string[]> {
-    const rows = await this.db.query<{ id: string }>(
-      `SELECT id FROM clusters
-       WHERE kubernetes_identity = ? AND state = ?
-       ORDER BY created_at, id`,
-      [kubernetesIdentity, ClusterState.Destroyed],
-    );
-    return rows.map((row) => row.id);
   }
 }
 

@@ -411,7 +411,7 @@ export class ClusterCloudContract {
       );
       invariant(
         destroyed.state === 'terminated' && !destroyed.releasing,
-        'cluster delete did not finish',
+        'api delete did not finish',
       );
     }
     invariant(

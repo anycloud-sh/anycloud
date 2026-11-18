@@ -13,7 +13,6 @@ import {
   resolveProvisioningConfig,
   validateStorageCapabilities,
   validateComputeCapabilities,
-  validateComputeCandidateConfig,
   validateWorkloadStorageRequest,
 } from '../../../src/api/services/cloud-config.js';
 import config from '../../../src/api/config.js';
@@ -51,7 +50,6 @@ import { internalsOf } from '../helpers/internals';
 import {
   CandidateRegionAvailability,
   candidateRegionKey,
-  createCloudCompute,
 } from '../../../src/api/services/gateways/cloud.js';
 import { upsertCredential } from '../../../src/api/services/repositories/credential-secrets.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
@@ -625,80 +623,6 @@ describe('validateStorageCapabilities', () => {
     expect(() => validateStorageCapabilities(config)).toThrow(
       'requires credentials that can mint scoped bucket-sync tokens',
     );
-  });
-});
-
-describe('validateComputeCandidateConfig', () => {
-  it('validates bucket names against explicit storage credentials when present', () => {
-    const azureWithAwsStorage: CloudConfig = {
-      cloudProvider: CloudType.Azure,
-      credentials: TEST_AZURE_CRED,
-      region: 'eastus',
-      vmType: 'Standard_D2s_v5',
-      inputBucket: 'valid.name',
-      inputStorageCredentials: TEST_AWS_CRED,
-      inputStorageRegion: 'us-east-1',
-    };
-
-    expect(() =>
-      validateComputeCandidateConfig(
-        azureWithAwsStorage,
-        createComputeProvider(azureWithAwsStorage),
-      ),
-    ).not.toThrow();
-  });
-
-  it('0044/S23: admits a Spot pool without restart, and refuses Spot on Lambda', () => {
-    const spot: CloudConfig = {
-      cloudProvider: CloudType.AWS,
-      credentials: TEST_AWS_CRED,
-      region: 'us-east-1',
-      vmType: 't3.large',
-      spot: true,
-    };
-    const stopOnEvict = createCloudCompute({
-      type: CloudType.AWS,
-      region: 'us-east-1',
-      vmType: 't3.large',
-      rawValidateCredentials: vi.fn(),
-      rawClassifyError: vi.fn(),
-      rawNewVM: vi.fn(),
-      rawRequestVMTermination: vi.fn(),
-      rawTerminateNetworking: vi.fn(),
-      rawGetAllVMs: vi.fn(),
-      rawUpsertFirewall: vi.fn(),
-      observeVMReleaseOnce: vi.fn(),
-      spotLaunch: true,
-      stoppedVmObservation: { observeStoppedVm: vi.fn() },
-    });
-
-    expect(() =>
-      validateComputeCandidateConfig(spot, stopOnEvict),
-    ).not.toThrow();
-    // A VM spot Job still needs restart.
-    expect(() => validateComputeCapabilities(spot, stopOnEvict)).toThrow(
-      'AWS does not support spot instances',
-    );
-    for (const cloudProvider of [CloudType.GCP, CloudType.Azure]) {
-      const config = {
-        ...spot,
-        cloudProvider,
-        credentials:
-          cloudProvider === CloudType.GCP ? TEST_GCP_CRED : TEST_AZURE_CRED,
-      };
-      expect(() =>
-        validateComputeCandidateConfig(config, createComputeProvider(config)),
-      ).not.toThrow();
-    }
-    const lambda: CloudConfig = {
-      cloudProvider: CloudType.Lambda,
-      credentials: new LambdaCreds(),
-      region: 'us-east-1',
-      spot: true,
-    };
-    expect(() =>
-      validateComputeCandidateConfig(lambda, createComputeProvider(lambda)),
-    ).toThrow('Lambda does not support spot instances');
   });
 });
 

@@ -81,7 +81,7 @@ export function installationSweepPolicy(
     keepManagement?: { keepBucket: boolean };
   },
 ): ResourceSweepPolicy {
-  // The management scope's ID, cut to a label as clusters-domain does.
+  // The management scope's ID, cut to a label as clusterNetworkScope does.
   const managementScope = `anycloud-cluster-${clusterId}`.slice(0, 63);
   const keep = options.keepManagement;
   return {

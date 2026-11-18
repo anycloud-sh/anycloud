@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   deleteDNSRecord,
   deleteDNSRecordBySubdomain,
-  issueOriginCertificate,
   publicARecordExists,
   removeApiTls,
   upsertDNSRecord,
@@ -110,32 +109,6 @@ describe('removeApiTls', () => {
     );
     await expect(removeApiTls('api-1', 'github-token')).rejects.toThrow(
       'DNS Worker DELETE /v1/api-tls failed (502): down',
-    );
-  });
-});
-
-describe('issueOriginCertificate', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('surfaces a superseded issuance (409) so the step fails and a resume retries', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json(
-          {
-            error:
-              'a newer certificate for api-1.anycloud.sh was issued concurrently; retry',
-          },
-          { status: 409 },
-        ),
-      ),
-    );
-    await expect(
-      issueOriginCertificate('api-1', 'CSR', 'github-token'),
-    ).rejects.toThrow(
-      /POST \/v1\/api-tls\/certificates failed \(409\): .*newer certificate.*retry/,
     );
   });
 });

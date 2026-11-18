@@ -43,7 +43,7 @@ const table = (text: string) =>
 export const LAYER_MAP = table(String.raw`
   0  -          src/api/((composition|server|config|restore-state|system-release-hook|host-step|runtime-artifacts)\.ts$|middleware/)
   0  -          src/shared/api-contract/openapi\.generated\.json$
-  0  -          S/(api-|first-backup|e2e-access-handoff|notif|telemetry|update-notifications|system-release|cluster-(installer|self|store|hosted-pools)|kubernetes/|cloud-account|credential|role-connection|secret|database-domain|bucket-|storage-token-|catalog|logger|redact|test-identity|vm-release-notifications|http-shutdown|persistence|monitor\.|supervisor|task\.|entities|codes)
+  0  -          S/(api-|first-backup|e2e-access-handoff|notif|telemetry|update-notifications|system-release|cluster-(installer|self|store|hosted-pools)|kubernetes/|credential|role-connection|secret|database-domain|bucket-|storage-token-|catalog|logger|redact|test-identity|vm-release-notifications|http-shutdown|persistence|monitor\.|supervisor|task\.|entities|codes)
   4  slurm      S/slurm/classify
   5  slurm      S/slurm/(.*admission|preflight)
   7  slurm      S/slurm/

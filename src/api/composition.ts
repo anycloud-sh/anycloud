@@ -1,13 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3';
 
-import {
-  extractCredentials,
-  getRegionsForVMType,
-} from '../shared/cloud-config.js';
-import type { CloudConfig } from '../shared/cloud.js';
-import { DeployError } from '../shared/errors.js';
 import { getOwnApiChart, getOwnApiImage, isHelmManagedApi } from './config.js';
-import { generateClusterId } from '../shared/id-generator.js';
 import { sleep } from '../shared/utils.js';
 import {
   createSelfDelete,
@@ -32,9 +25,7 @@ import {
   createBucketMetadataDomain,
   type BucketMetadataDomainDependencies,
 } from './services/bucket-metadata-domain.js';
-import * as catalogReadiness from './services/catalog-readiness.js';
 import {
-  createComputeProvider,
   createStorageProvider,
   createSweeperProvider,
   decryptCredential,
@@ -42,10 +33,7 @@ import {
   hashCredential,
   loadWorkloadConfigs,
   resolveCredentialByName,
-  validateComputeCandidateConfig,
 } from './services/cloud-config.js';
-import { validateTargetAvailability } from './services/compute-candidates.js';
-import { cloudAccount } from './services/cloud-account.js';
 import {
   createCredentialsDomain,
   type CredentialsDomainDependencies,
@@ -72,42 +60,25 @@ import {
 import { toWorkloadEvent } from './services/repositories/workload-events.js';
 import { DockerManager } from './services/docker.js';
 import Github from './services/gateways/github.js';
-import { canManageCloudResources } from './services/gateways/cloud.js';
 import { inspectImage } from '../shared/image-registry.js';
 import { resolveApiImage } from '../shared/api-image.js';
-import { observeClusterIdentity } from './services/kubernetes/cluster-identity.js';
 import {
   createClustersDomain,
   type ClusterDomainDependencies,
-  type NamedCredential,
 } from './services/clusters-domain.js';
 import { ClusterReleaseConflictError } from './services/cluster-errors.js';
-import {
-  createManagementHostAccess,
-  createClusterInfrastructure,
-  createClusterReleaseClient,
-} from './services/cluster-installer-runtime.js';
+import { createClusterReleaseClient } from './services/cluster-installer-runtime.js';
 import { isKubernetesNotFoundError } from './services/kubernetes/errors.js';
 import { observeHookJob } from './services/system-release/ready-job.js';
 import {
   createHostStepExecutor,
   type HostStepExecutor,
 } from './services/system-release/host-step.js';
-import { SSHManager } from './services/gateways/ssh.js';
 import { randomBytes } from 'node:crypto';
 import { getDefaultWorkloadOperations } from './services/job/default-operations.js';
 import { vmSshHost } from './services/job/vm-host-operations.js';
 import { log } from './services/logger.js';
 import { isApiBackupBucket } from './services/bucket-storage-operation.js';
-import {
-  activateApiTls,
-  deleteDNSRecordBySubdomain,
-  issueOriginCertificate,
-  publicARecordExists,
-  removeApiTls,
-  upsertDNSRecord,
-} from '../shared/dns-worker.js';
-import { readApiBackupManifest } from './services/api-backup-manifest.js';
 import {
   getDefaultApiDatabaseBackup,
   getDefaultFirstBackupCheck,
@@ -191,7 +162,6 @@ import {
   createSpendControlsDomain,
   type SpendControlsDomainDependencies,
 } from './services/spend-controls-domain.js';
-import { fireAndForget } from './services/task.js';
 import { readWorkloadCheckpointHealth } from './services/workload-storage.js';
 import { recordEvent, recordStatusEvent } from './services/telemetry.js';
 
@@ -254,139 +224,15 @@ function bucketMetadataDependencies(): BucketMetadataDomainDependencies {
   };
 }
 
-interface CapacityTargetRequest {
-  region?: string;
-  vmType: string;
-  spot?: boolean;
-}
-
-/**
- * Management VM admission for clusters: the catalog must know the target,
- * the provider must isolate capacity networking, and the saved credential
- * must authenticate before durable intent is stored.
- */
-async function validateCapacityTarget(
-  input: CapacityTargetRequest,
-  credential: NamedCredential,
-): Promise<void> {
-  await catalogReadiness.ensureCatalogReady(credential.cloudProvider);
-  const decrypted = await decryptCredential(credential.encryptedData);
-  const cloudConfig: CloudConfig = {
-    cloudProvider: credential.cloudProvider,
-    credentials: extractCredentials(decrypted),
-    region:
-      input.region ??
-      getRegionsForVMType(input.vmType, credential.cloudProvider)[0],
-    vmType: input.vmType,
-    spot: input.spot ?? false,
-  };
-  validateTargetAvailability(cloudConfig, {
-    gpuTypes: [],
-    vmTypes: [input.vmType],
-  });
-  const compute = createComputeProvider(cloudConfig);
-  if (!canManageCloudResources(compute)) {
-    throw new DeployError(
-      `${credential.cloudProvider} does not support isolated capacity VM networking`,
-      400,
-    );
-  }
-  validateComputeCandidateConfig(cloudConfig, compute);
-  await compute.validateCredentials();
-}
-
-/**
- * Cluster creation runs on the API that holds the saved cloud credential. A
- * hosted API has no installer role, so its infrastructure port is null and
- * bootstrap is refused before any durable intent.
- */
 function clusterDependencies(
   persistence: Persistence,
-  hosted: boolean,
 ): ClusterDomainDependencies {
   return {
     installations: persistence.clusters,
     clusterRecords: persistence.clusterRecords,
-    credentials: persistence.credentialSecrets,
-    storageCredential: async (credentialId) => {
-      const saved =
-        await persistence.credentialSecrets.getCredentialWithCloudProvider(
-          credentialId,
-        );
-      if (!saved)
-        throw new Error(`Credential ${credentialId} is no longer saved`);
-      return {
-        cloudProvider: saved.cloudProvider,
-        credentials: await decryptCredential(saved.encryptedData),
-      };
-    },
-    cloudAccount: (credentials) => cloudAccount(credentials),
-    checkpointBucket: async (credential, bucket, region) => {
-      const storage = createStorageProvider({
-        cloudProvider: credential.cloudProvider,
-        credentials: credential.credentials,
-        region,
-      });
-      const exists = await storage.hasBucket(bucket);
-      return {
-        exists,
-        region: exists
-          ? ((await storage.getBucketRegion?.(bucket)) ?? region)
-          : region,
-      };
-    },
-    backupManifest: async (credential, bucket, region) => {
-      const storage = createStorageProvider({
-        cloudProvider: credential.cloudProvider,
-        credentials: credential.credentials,
-        region,
-      });
-      return readApiBackupManifest(storage, bucket);
-    },
-    validateTarget: async (input, credential) => {
-      await validateCapacityTarget(input, credential);
-      return {
-        region: input.region,
-        zone: input.zone ?? null,
-        vmType: input.vmType,
-      };
-    },
-    infrastructure: hosted
-      ? null
-      : createClusterInfrastructure(config.currVersion),
-    host: createManagementHostAccess(),
-    releases: createClusterReleaseClient(),
-    // No held record id: the cluster record is removed by subdomain, so a
-    // fresh record on each publish is harmless.
-    dns: {
-      publish: async (subdomain, ip, token) => {
-        log.info('Publishing DNS record', { subdomain, ip });
-        await upsertDNSRecord(subdomain, ip, token, { proxied: true });
-      },
-      publicARecordExists,
-      remove: (subdomain, token) =>
-        deleteDNSRecordBySubdomain(subdomain, token),
-      issueCertificate: issueOriginCertificate,
-      activateTls: activateApiTls,
-      removeTls: removeApiTls,
-    },
-    resolveApiImage,
-    observeKubernetesIdentity: observeClusterIdentity,
-    generateId: generateClusterId,
-    generateOperationId: () =>
-      `op-${Date.now()}-${randomBytes(4).toString('hex')}`,
-    generateServerToken: () => randomBytes(32).toString('hex'),
-    generateSshKeypair: () => SSHManager.generateKeypair(),
     resolveScope: resolveOwnershipScope,
     apiVersion: config.currVersion,
     ownApiImage: getOwnApiImage(),
-    schedule: (task) => fireAndForget(task()),
-    sleep,
-    now: () => Date.now(),
-    log: {
-      info: (message, metadata) => log.info(message, metadata),
-      warn: (message, metadata) => log.warn(message, metadata),
-    },
   };
 }
 
@@ -744,9 +590,7 @@ export function createApiRpcDomains(
       createCredentialsDomain(credentialsDependencies(persistence)),
     clusters:
       overrides.clusters ??
-      createClustersDomain(
-        clusterDependencies(persistence, isHelmManagedApi()),
-      ),
+      createClustersDomain(clusterDependencies(persistence)),
     apiAccess:
       overrides.apiAccess ?? createApiAccessDomain(apiAccessDependencies()),
     database:

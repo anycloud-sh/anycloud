@@ -1256,12 +1256,11 @@ export function canListObjects(
   );
 }
 
-// Spot is three optional capabilities (RFC 0044, decision 33). Spot launch:
-// `newResourceVM` honours the config's `spot`. Stopped-VM observation, the
-// pool's: an exact-ID read, true if the VM is stopped or stopping, false if
-// running or not found. Stopped-VM restart, VM spot Jobs': their own stopped
-// read, and starting the VM in place, returning its new public IP, or null if
-// that failed. No pool needs restart.
+// Spot is two optional capabilities (RFC 0044, decision 33). Stopped-VM
+// observation: an exact-ID read, true if the VM is stopped or stopping, false
+// if running or not found. Stopped-VM restart, VM spot Jobs': their own
+// stopped read, and starting the VM in place, returning its new public IP, or
+// null if that failed.
 interface StoppedVmObservationOps {
   observeStoppedVm(cloudId: string): Promise<boolean>;
 }
@@ -1270,11 +1269,9 @@ interface StoppedVmRestartOps {
   startVM(cloudId: string): Promise<string | null>;
 }
 
-const spotLaunchBrand: unique symbol = Symbol('SpotLaunch');
 const stoppedVmObservationBrand: unique symbol = Symbol('StoppedVmObservation');
 const stoppedVmRestartBrand: unique symbol = Symbol('StoppedVmRestart');
 
-export type SpotLaunch = { readonly [spotLaunchBrand]: true };
 export type StoppedVmObservation = StoppedVmObservationOps & {
   readonly [stoppedVmObservationBrand]: true;
 };
@@ -1299,13 +1296,6 @@ export function isPreemptible(
   return (
     canObserveStoppedVms(gateway) && hasBrand(gateway, stoppedVmRestartBrand)
   );
-}
-
-/** A Spot pool replaces a stopped VM instead of restarting it. */
-export function canLaunchSpotPools(
-  gateway: object,
-): gateway is CloudCompute & SpotLaunch & StoppedVmObservation {
-  return canObserveStoppedVms(gateway) && hasBrand(gateway, spotLaunchBrand);
 }
 
 // Optional capability: the cloud can determine whether it supports requested
@@ -1774,7 +1764,6 @@ export interface CloudComputeOps {
   releaseConfirmMaxAttempts?: number;
   releaseConfirmWaitMs?: number;
   releaseConfirmationPolicy?: VMReleaseConfirmationPolicy;
-  spotLaunch?: true;
   stoppedVmObservation?: StoppedVmObservationOps;
   stoppedVmRestart?: StoppedVmRestartOps;
   ingressSupport?: IngressSupportOps;
@@ -1913,7 +1902,6 @@ export function createCloudCompute(ops: CloudComputeOps): CloudCompute {
 
   const brand = (key: symbol) =>
     Object.defineProperty(compute, key, { value: true, enumerable: false });
-  if (ops.spotLaunch) brand(spotLaunchBrand);
   const { stoppedVmObservation, stoppedVmRestart } = ops;
   if (stoppedVmObservation) {
     compute.observeStoppedVm = (cloudId: string) =>

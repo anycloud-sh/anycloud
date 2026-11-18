@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { clusterHostname } from './api-ingress.js';
 import {
   RELEASE_INSTALLATION_ANNOTATION,
@@ -66,7 +65,7 @@ export interface SystemReleaseBackupValues {
   target?: { name: string; region: string; vmType: string };
 }
 
-export interface SystemReleaseClusterValues {
+interface SystemReleaseClusterValues {
   name: string;
   kubernetesIdentity: string;
   joinEndpoint: string;
@@ -184,10 +183,6 @@ export function systemReleaseValues(
   };
 }
 
-export function valuesSha256(values: SystemReleaseValues): string {
-  return createHash('sha256').update(JSON.stringify(values)).digest('hex');
-}
-
 export function buildSystemReleaseHelmChart(
   input: SystemReleaseIntentInput,
 ): HelmChartObject {
@@ -221,61 +216,4 @@ export function buildSystemReleaseHelmChart(
       valuesContent: JSON.stringify(values),
     },
   };
-}
-
-export type ReleaseIntentComparison =
-  | { action: 'apply' }
-  | { action: 'current' }
-  | { action: 'refuse'; reason: string };
-
-/**
- * Decide what applying `desired` against the cluster's `observed` HelmChart may
- * do. Only a strictly higher revision for the same installation is applied;
- * an equal revision with the same operation is already current; anything else
- * is refused, so a stale intent (older revision, other installation, or a
- * replayed manifest) cannot move the release backwards.
- */
-export function compareReleaseIntent(
-  observed: Pick<HelmChartObject, 'metadata'> | null,
-  desired: Pick<HelmChartObject, 'metadata'>,
-): ReleaseIntentComparison {
-  if (!observed) return { action: 'apply' };
-  const annotations = observed.metadata.annotations ?? {};
-  const desiredAnnotations = desired.metadata.annotations;
-  const observedInstallation = annotations[RELEASE_INSTALLATION_ANNOTATION];
-  if (
-    observedInstallation !== undefined &&
-    observedInstallation !== desiredAnnotations[RELEASE_INSTALLATION_ANNOTATION]
-  ) {
-    return {
-      action: 'refuse',
-      reason: `cluster release belongs to installation ${observedInstallation}`,
-    };
-  }
-  const observedRevision = Number(annotations[RELEASE_REVISION_ANNOTATION]);
-  const desiredRevision = Number(
-    desiredAnnotations[RELEASE_REVISION_ANNOTATION],
-  );
-  if (!Number.isSafeInteger(observedRevision)) {
-    return {
-      action: 'refuse',
-      reason: 'cluster release carries no AnyCloud revision',
-    };
-  }
-  if (observedRevision > desiredRevision) {
-    return {
-      action: 'refuse',
-      reason: `cluster release revision ${observedRevision} is newer than intent ${desiredRevision}`,
-    };
-  }
-  if (observedRevision === desiredRevision) {
-    return annotations[RELEASE_OPERATION_ANNOTATION] ===
-      desiredAnnotations[RELEASE_OPERATION_ANNOTATION]
-      ? { action: 'current' }
-      : {
-          action: 'refuse',
-          reason: `cluster release revision ${observedRevision} was applied by a different operation`,
-        };
-  }
-  return { action: 'apply' };
 }

@@ -12,18 +12,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import {
-  parseClusterConnection,
-  serializeClusterConnection,
-} from '../../../../src/api/services/kubernetes/cluster-connection.js';
-import {
-  parseInstallerAccessMaterial,
-  managementHostStartupScript,
-  installerConnectionDocument,
   managementKubernetesConfig,
-  INSTALLER_ACCESS_READ_COMMAND,
   MANAGEMENT_K3S_CONFIG_STAGING_PATH,
   MANAGEMENT_KUBERNETES_CONFIGURE_COMMAND,
-  MANAGEMENT_KUBERNETES_READY_COMMAND,
   managementKubernetesReconfigureScript,
   parseManagementReconfigure,
 } from '../../../../src/api/services/system-release/management-host.js';
@@ -31,49 +22,8 @@ import {
   HOST_STEP_RUNNER,
   parseHostStepReport,
 } from '../../../../src/api/services/system-release/host-step.js';
-import {
-  SYSTEM_RELEASE_K3S_SHA256,
-  SYSTEM_RELEASE_K3S_VERSION,
-} from '../../../../src/shared/system-release.js';
-
-const CA = Buffer.from('ca').toString('base64');
 
 describe('management host scripts', () => {
-  it('prepares the host with the pinned, checksum-verified K3s binary and a disabled unit', () => {
-    const script = managementHostStartupScript({
-      sshPublicKey: 'ssh-ed25519 AAAA anycloud',
-      k3sVersion: SYSTEM_RELEASE_K3S_VERSION,
-      k3sSha256: SYSTEM_RELEASE_K3S_SHA256,
-    });
-    expect(script).toContain('ssh-ed25519 AAAA anycloud');
-    expect(script).toContain(
-      `https://github.com/k3s-io/k3s/releases/download/${encodeURIComponent(SYSTEM_RELEASE_K3S_VERSION)}/k3s`,
-    );
-    expect(script).toContain(
-      `${SYSTEM_RELEASE_K3S_SHA256}  /usr/local/bin/k3s.download`,
-    );
-    expect(script).toContain('sha256sum -c -');
-    expect(script).not.toContain('systemctl enable');
-    expect(script).not.toContain('get.k3s.io');
-  });
-
-  it('rejects an unpinned toolchain', () => {
-    expect(() =>
-      managementHostStartupScript({
-        sshPublicKey: 'k',
-        k3sVersion: 'latest',
-        k3sSha256: SYSTEM_RELEASE_K3S_SHA256,
-      }),
-    ).toThrow('Unexpected K3s version');
-    expect(() =>
-      managementHostStartupScript({
-        sshPublicKey: 'k',
-        k3sVersion: SYSTEM_RELEASE_K3S_VERSION,
-        k3sSha256: 'abc',
-      }),
-    ).toThrow('64 hex');
-  });
-
   it('stages the server configuration with the management taint, disabled public components and the public address as a SAN', () => {
     const config = managementKubernetesConfig({
       serverToken: 'a1b2c3d4',
@@ -392,46 +342,5 @@ describe('management host scripts', () => {
       expect(lost.code).toBe(70);
       expect(lost.stderr).toContain('ended without a result');
     });
-  });
-
-  it('reads installer access as a ServiceAccount token plus inline CA, never the admin certificate', () => {
-    expect(INSTALLER_ACCESS_READ_COMMAND).toContain('kind: ServiceAccount');
-    expect(INSTALLER_ACCESS_READ_COMMAND).toContain(
-      'kubernetes.io/service-account-token',
-    );
-    expect(INSTALLER_ACCESS_READ_COMMAND).toContain('server-ca.crt');
-    expect(INSTALLER_ACCESS_READ_COMMAND).not.toContain('client-admin');
-    expect(INSTALLER_ACCESS_READ_COMMAND).not.toContain('k3s.yaml');
-    expect(MANAGEMENT_KUBERNETES_READY_COMMAND).toContain('/readyz');
-  });
-
-  it('builds the installer connection from the access material and the public endpoint', () => {
-    const material = parseInstallerAccessMaterial(
-      `noise\n${JSON.stringify({ certificateAuthorityData: CA, token: 'sa-token' })}\n`,
-    );
-    const document = installerConnectionDocument({
-      publicIp: '203.0.113.5',
-      material,
-    });
-    expect(document).toEqual({
-      kind: 'installer',
-      server: 'https://203.0.113.5:6443',
-      certificateAuthorityData: CA,
-      credential: { kind: 'token', token: 'sa-token' },
-    });
-    expect(
-      parseClusterConnection(serializeClusterConnection(document)),
-    ).toEqual(document);
-  });
-
-  it('rejects incomplete or non-JSON access material', () => {
-    expect(() => parseInstallerAccessMaterial('not json')).toThrow(
-      'not valid JSON',
-    );
-    expect(() =>
-      parseInstallerAccessMaterial(
-        JSON.stringify({ certificateAuthorityData: CA }),
-      ),
-    ).toThrow('incomplete');
   });
 });

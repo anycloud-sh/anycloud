@@ -35,11 +35,6 @@ function recordCluster(overrides: Partial<typeof baseCluster> = {}) {
   return clusters().recordSelf({ ...baseCluster, ...overrides });
 }
 
-async function destroyCluster(id = baseCluster.id): Promise<void> {
-  await clusters().setState(id, ClusterState.Destroying);
-  await clusters().setState(id, ClusterState.Destroyed);
-}
-
 describe('cluster persistence', () => {
   beforeEach(async () => {
     resetPersistence();
@@ -137,120 +132,6 @@ describe('cluster persistence', () => {
           [baseCluster.id],
         ),
       ).rejects.toThrow(/immutable|CHECK constraint failed/);
-    });
-
-    it('stores the installer connection once the identity is observed and refuses another identity', async () => {
-      await clusters().record({
-        id: 'install-a',
-        ownerUserId: 'owner-1',
-        name: 'production',
-        computeCredentialId: 'compute-aws',
-        region: 'us-east-1',
-        zone: null,
-        vmType: 't3.small',
-        k3sVersion: 'v1.35.5+k3s1',
-        k3sSha256: 'a'.repeat(64),
-        helmJobImage: 'rancher/klipper-helm:v0.9.4-build20250113',
-        apiVersion: '0.1.65',
-        apiImage: `ghcr.io/anycloud-sh/api:0.1.65@sha256:${'b'.repeat(64)}`,
-        chartVersion: '0.3.0',
-        chartSha256: 'c'.repeat(64),
-        checkpointBucket: { name: 'bucket', managed: true },
-        restoreFromBackup: false,
-        serverToken: 'token',
-        sshPublicKey: 'ssh-ed25519 AAAA',
-        sshPrivateKey: 'key\n',
-      });
-      await expect(
-        clusterRecords().getConnection('install-a'),
-      ).resolves.toBeNull();
-      await expect(
-        clusterRecords().getForScope('install-a', owner),
-      ).resolves.toMatchObject({
-        state: ClusterState.Bootstrapping,
-        kubernetesIdentity: null,
-      });
-
-      const connection = { ...baseCluster, kind: 'installer' as const };
-      await expect(
-        clusterRecords().storeConnection({
-          ...connection,
-          clusterId: 'install-a',
-        }),
-      ).resolves.toBe('stored');
-      await expect(
-        clusterRecords().storeConnection({
-          ...connection,
-          clusterId: 'install-a',
-          kubernetesIdentity: 'uid-foreign',
-        }),
-      ).resolves.toBe('identity-mismatch');
-      await expect(
-        clusterRecords().storeConnection({
-          ...connection,
-          clusterId: 'missing',
-        }),
-      ).resolves.toBe('not-found');
-      await expect(
-        clusterRecords().getConnection('install-a'),
-      ).resolves.toMatchObject({
-        kind: 'installer',
-        kubernetesIdentity: 'uid-cluster-a',
-        connectionRevision: 2,
-      });
-    });
-  });
-
-  describe('cluster destroy safety', () => {
-    it('destroying clears the connection, bumps the revision and frees the singleton slot', async () => {
-      await recordCluster();
-      await destroyCluster();
-
-      await expect(
-        getDB().query<{ encrypted_connection: string | null }>(
-          'SELECT encrypted_connection FROM clusters WHERE id = ?',
-          [baseCluster.id],
-        ),
-      ).resolves.toEqual([{ encrypted_connection: null }]);
-      await expect(
-        clusterRecords().getConnection(baseCluster.id),
-      ).resolves.toBeNull();
-      await expect(
-        clusterRecords().getByNameForScope('production', owner),
-      ).resolves.toBeNull();
-      await expect(clusterRecords().listForScope(owner)).resolves.toEqual([]);
-      await expect(
-        clusterRecords().listForScope(owner, { includeDeleted: true }),
-      ).resolves.toMatchObject([
-        {
-          state: ClusterState.Destroyed,
-          connectionRevision: 2,
-        },
-      ]);
-      await expect(
-        getDB().query('UPDATE clusters SET state = ? WHERE id = ?', [
-          ClusterState.Ready,
-          baseCluster.id,
-        ]),
-      ).rejects.toThrow(/Cluster identity is immutable/);
-
-      await expect(recordCluster({ id: 'cluster-a2' })).resolves.toBe(
-        'recorded',
-      );
-      await expect(
-        clusterRecords().getByNameForScope('production', owner),
-      ).resolves.toMatchObject({
-        id: 'cluster-a2',
-        kubernetesIdentity: 'uid-cluster-a',
-      });
-      // The re-recorded control plane can find the records that bound it
-      // before; the active record and other control planes are not listed.
-      await expect(
-        clusterRecords().listDestroyedClusterIds('uid-cluster-a'),
-      ).resolves.toEqual([baseCluster.id]);
-      await expect(
-        clusterRecords().listDestroyedClusterIds('uid-other'),
-      ).resolves.toEqual([]);
     });
   });
 });

@@ -67,7 +67,7 @@ import {
 type ClusterProvider = 'aws' | 'gcp' | 'azure';
 
 /**
- * The management VM's resource scope (`clusters-domain.ts` clusterScope): its
+ * The management VM's resource scope (`clusterNetworkScope`): its
  * VM and network carry `anycloud_resource=<scope>` on GCP and Azure, which
  * the GCP and Azure inventories read.
  */
