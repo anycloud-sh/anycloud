@@ -1,6 +1,6 @@
 # Runner disk tier: gp3 IOPS and throughput against start time
 
-- Status: Running. Results are below once the run finishes.
+- Status: Complete. Every resource is deleted; see Cleanup.
 - Decision record: owner decision, 2026-11-18 (chat-only; no tracking issue).
   backmesh's AWS runner disks stay at 4,000 IOPS / 500 MiB/s until their cost
   is measured against gp3's free baseline of 3,000 / 125. On a 100 GB disk,
@@ -57,18 +57,55 @@ The API's SSH round trips aren't included. They're the same in every arm.
 
 ## Runs
 
-| Run | Arguments | Outcome |
-| --- | --------- | ------- |
+| Run                                                                             | Source      | Outcome                                                                                                                                                           |
+| ------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [44359549478](https://github.com/anycloud-sh/anycloud/actions/runs/44359549478) | `dc46dfbae` | 15 of 15 VMs finished every step. 14 spot launches were refused for capacity in us-east-2a and 2b, and each VM failed over to another zone. Cleanup left nothing. |
+
+Each VM's instance ID is in the run's `summary.json`:
+
+- `baseline`: `i-005e879d3ea7da4c0`, `i-0f5755c01599a4732`,
+  `i-0584277d5aad88762`, `i-0b2a25fb682dbf222` and `i-0504d0f2f8d0711d3`.
+- `today`: `i-080674b0823ab851a`, `i-00a759eb567ee2378`,
+  `i-040fb44c8255e373c`, `i-0c8204a1d98c30458` and `i-08d540203e6430edc`.
+- `high`: `i-078e9e1e04017b858`, `i-059dd796bebd21fee`,
+  `i-040eb6a60c27de3bf`, `i-0554a3c5484eaeef9` and `i-099e474070ebe0e8a`.
 
 ## Results
 
-Pending.
+All times are in seconds, as the median with the range in brackets, n = 5
+per arm. Every user data pull used the containerd transfer.
+
+| Arm         | Boot to ready        | Launch to ready      | Runner image pull | node:22 pull      | npm ci            |
+| ----------- | -------------------- | -------------------- | ----------------- | ----------------- | ----------------- |
+| `baseline`  | 57.4 (48.6–59.1)     | 61.8 (53.5–63.0)     | 33.7 (31.2–35.9)  | 9.2 (8.7–9.8)     | 12.2 (10.9–14.1)  |
+| **`today`** | **32.5** (28.5–33.7) | **36.7** (31.8–37.8) | **8.0** (7.7–8.1) | **6.3** (6.2–6.7) | **3.9** (3.7–4.0) |
+| `high`      | 30.0 (21.6–30.2)     | 34.1 (29.0–35.8)     | 6.0 (5.7–6.5)     | 6.5 (6.3–6.9)     | 3.9 (3.8–4.0)     |
+
+- **The baseline is about 25 s slower to start a runner.** Nearly all of it
+  is the runner image's pull: 33.7 s against 8.0 s. The pull writes about
+  3 GB, the unpacked layers and containerd's compressed blobs, so 125 MiB/s
+  bounds it. The ranges don't overlap.
+- **A job's own disk work is slower too.** `npm ci` for express takes 12.2 s
+  against 3.9 s, and the `node:22` pull 9.2 s against 6.3 s. That adds about
+  11 s to this job.
+- **8,000 / 1,000 saves about 2.5 s more than 4,000 / 500.** The pull takes
+  2 s less. The `node:22` pull and `npm ci` take the same time.
+- The boot to Docker (about 24 s) and the `docker run` (0.17 s) are the same
+  in every arm.
+
+**Baseline compared with today, per job:**
+
+- About 36 s slower: 25 s to start and 11 s in this job's steps.
+- The disk saves $0.0046 per 10-minute job. The extra 36 s of spot VM time
+  costs about $0.0007 at $0.064/h.
 
 ## Cost
 
-Estimated at about $0.30: 15 spot VMs for about 8 minutes each, at
-m8i.xlarge's spot price of about $0.064/h plus the disks. The Spike
-workflow's runner adds about an hour. Each gp3 arm costs, over 100 GB at
+About $0.05: 15 spot VMs for 1–2 minutes each, at m8i.xlarge's spot price of
+$0.061–0.067/h plus the disks. The Spike workflow's runner ran for about
+10 minutes.
+
+Each arm's disk costs this much more than the baseline's, for 100 GB at
 $0.08/GB-month:
 
 | Arm        | Extra IOPS cost | Extra MiB/s cost | Over baseline, $/h | Per 10-minute job |
@@ -86,6 +123,10 @@ above 125.
 `anycloud-spike=runner-disk-tier`, deletes the `ac-spike-disk-*` buckets with
 that label, and fails unless no tagged instance, volume or bucket remains.
 Re-dispatch with `arguments` `["cleanup"]` if a run was interrupted.
+
+In run 44359549478, cleanup found one tagged VM still shutting down
+(`baseline-r5`) and terminated it. Its listing then came back empty for
+instances, volumes and buckets (`cleanup.json`).
 
 ## Promotion criteria
 
