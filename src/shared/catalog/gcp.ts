@@ -11,7 +11,10 @@
 
 import { MachineTypesClient, protos } from '@google-cloud/compute';
 import { parse } from 'csv-parse/sync';
-import { gcpGpuMachineCapability } from '../gcp-machine-capabilities.js';
+import {
+  GCP_ATTACHED_GPU_SHAPES,
+  gcpGpuMachineCapability,
+} from '../gcp-machine-capabilities.js';
 import { withRetry } from '../utils.js';
 import type { CloudCatalogFetcher, VMCatalogEntry } from './fetcher.js';
 import { errorMessage } from '../log-diagnostics.js';
@@ -20,6 +23,8 @@ import { gcpNestedVirtualization } from './nested-virtualization.js';
 const DEFAULT_UPSTREAM =
   'https://raw.githubusercontent.com/skypilot-org/skypilot-catalog/master/catalogs/v8/gcp/vms.csv';
 
+// N1-attached GPUs never join a built-in machine; a T4 is published only as one
+// of GCP_ATTACHED_GPU_SHAPES.
 const INTENTIONALLY_EXCLUDED_ACCELERATORS = new Set([
   'T4',
   'V100',
@@ -235,12 +240,24 @@ export function normalizeGcpCatalogWithDiagnostics(
       .filter((name) => !isIntentionallyExcludedAccelerator(name)),
   );
 
+  const attachedGpus = Object.entries(GCP_ATTACHED_GPU_SHAPES);
+  const attachedPrices = new Map<string, UpstreamRow>();
   const components = new Map<string, AcceleratorPriceComponent>();
   for (const row of acceleratorRows) {
     const name = row.AcceleratorName.trim();
-    if (isIntentionallyExcludedAccelerator(name)) continue;
     const count = parsePositiveInteger(row.AcceleratorCount);
     const zone = row.AvailabilityZone?.trim();
+    if (
+      count &&
+      zone &&
+      attachedGpus.some(
+        ([, gpu]) =>
+          gpu.acceleratorName === name && gpu.acceleratorCount === count,
+      )
+    ) {
+      attachedPrices.set(acceleratorKey(zone, name, count), row);
+    }
+    if (isIntentionallyExcludedAccelerator(name)) continue;
     if (!count || !zone || !row.Region?.trim()) {
       throw new Error(
         `Invalid GCP accelerator price row: ${name || 'unknown'}:${row.AcceleratorCount || 'unknown'} in ${zone || 'unknown zone'}`,
@@ -329,7 +346,27 @@ export function normalizeGcpCatalogWithDiagnostics(
         );
         continue;
       }
-      out.push(toCpuEntry(row));
+      const cpuEntry = toCpuEntry(row);
+      out.push(cpuEntry);
+      for (const [vmType, gpu] of attachedGpus) {
+        if (gpu.machineType !== normalizedInstanceType || !zone) continue;
+        const accelerator = attachedPrices.get(
+          acceleratorKey(zone, gpu.acceleratorName, gpu.acceleratorCount),
+        );
+        if (!accelerator) continue;
+        const price = fullPrice(row.Price, accelerator.Price);
+        const spotPrice = fullPrice(row.SpotPrice, accelerator.SpotPrice);
+        if (!(price || spotPrice)) continue;
+        out.push({
+          ...cpuEntry,
+          instanceType: vmType,
+          price,
+          spotPrice,
+          acceleratorName: gpu.acceleratorName,
+          acceleratorCount: gpu.acceleratorCount,
+          gpuInfo: accelerator.GpuInfo || null,
+        });
+      }
       continue;
     }
 
