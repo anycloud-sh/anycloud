@@ -121,10 +121,6 @@ ruleTester.run(
         code: 'export async function insertContainerSpec(db) { return db.transaction(tx => tx.query(`INSERT INTO container_specs (id) VALUES (?)`)); }',
       },
       {
-        filename: 'src/api/services/deployment-store.ts',
-        code: 'export class DeploymentStore { update() { return db.transaction(tx => tx.query("UPDATE container_specs SET image = ?")); } }',
-      },
-      {
         code: 'db.query("SELECT * FROM container_specs")',
       },
       ...[
@@ -143,10 +139,6 @@ ruleTester.run(
         'log.error(`Unable; DELETE FROM ${name}`)',
         'log.error(`Failed; UPDATE ${name} after retry`)',
       ].map((code) => ({ code })),
-      {
-        filename: 'src/api/services/deployment-store.ts',
-        code: 'export class DeploymentStore { update() { db.query(`UPDATE ${"container_" + "specs"} SET ${assignments} WHERE ${predicate}`); } }',
-      },
     ],
     invalid: [
       ...[
@@ -1385,30 +1377,6 @@ ruleTester.run(
           '/repo/test/integration/e2e/internal/targets/public-cloud-serve.ts',
       },
       {
-        code: 'import type { NodePoolCreateTransport, NodePoolDeleteAttemptTransport, NodePoolDeleteTransport } from "../node-pool-mutations.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { DeploymentCreateInput, DeploymentCreateTransport, DeploymentDeleteTransport, DeploymentReadTransport, DeploymentUpdateInput, DeploymentUpdateTransport } from "../deployment-mutations.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { DeploymentKernel, TrackedDeploymentRef } from "../deployments.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import type { NodePoolKernel, TrackedNodePoolRef } from "../node-pools.js";',
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import { NodePoolState } from "../../../../../src/shared/node-pools.js";',
-        filename: '/repo/test/integration/e2e/internal/contracts/node-pool.ts',
-      },
-      {
         code: 'import type { VmProvider } from "../profiles.js";',
         filename:
           '/repo/test/integration/e2e/internal/targets/persistent-vm.ts',
@@ -1472,30 +1440,6 @@ ruleTester.run(
         errors: [{ messageId: 'kernel' }],
         filename:
           '/repo/test/integration/e2e/internal/targets/persistent-vm.ts',
-      },
-      {
-        code: 'import { DeploymentMutationTransport } from "../deployment-mutations.js";',
-        errors: [{ messageId: 'raw' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import { TrackedDeploymentKernel } from "../deployments.js";',
-        errors: [{ messageId: 'kernel' }],
-        filename:
-          '/repo/test/integration/e2e/internal/contracts/cluster-local.ts',
-      },
-      {
-        code: 'import { TrackedNodePoolKernel } from "../node-pools.js";',
-        errors: [{ messageId: 'kernel' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
-      },
-      {
-        code: 'import type { NodePoolMutationTransport } from "../node-pool-mutations.js";',
-        errors: [{ messageId: 'raw' }],
-        filename:
-          '/repo/test/integration/e2e/internal/targets/cluster-node-pool.ts',
       },
       {
         code: 'import { HostIdentityHarness } from "../host-identity.js";',

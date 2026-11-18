@@ -1,3 +1,6 @@
+import BetterSqlite3 from 'better-sqlite3';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MigrationDatabase } from './migration-database.js';
 
 /** The migrations that remove node pools, Deployments and node pool Services. */
@@ -80,8 +83,32 @@ export function refuseRemovedWorkloads(
       [
         'This release removes node pools, Kubernetes Deployments and node pool Services, and this database still has:',
         ...live.map((entry) => `  ${entry}`),
-        'Nothing was changed. Start the previous release on this database, remove them, then upgrade again.',
+        'Nothing was changed. Remove them with the previous release ("anycloud terminate <id>" for each Service, "anycloud deployment delete <name>", then "anycloud node-pool delete <name>"), then upgrade again.',
       ].join('\n'),
     );
+  }
+}
+
+/**
+ * The same refusal against the API database in `directory`, opened read-only:
+ * the system release's pre-upgrade hook runs it while the API it would
+ * replace still serves.
+ */
+export function refuseRemovedWorkloadsIn(directory: string): void {
+  const path = ['api.db', 'conductor.db']
+    .map((name) => join(directory, name))
+    .find((candidate) => existsSync(candidate));
+  if (!path) return;
+  const database = new BetterSqlite3(path, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    refuseRemovedWorkloads({
+      query: <T>(sql: string, params: unknown[] = []) =>
+        database.prepare(sql).all(...params) as T[],
+    });
+  } finally {
+    database.close();
   }
 }

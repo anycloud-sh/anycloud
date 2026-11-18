@@ -1,3 +1,4 @@
+import { workloadListRequestSchema } from '../../../src/shared/api-contract/workload-management-schemas.js';
 import type { Server } from 'node:http';
 import { isContractProcedure } from '@orpc/contract';
 import express from 'express';
@@ -387,6 +388,14 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.paths).not.toHaveProperty('/root-installations');
     expect(document.paths).not.toHaveProperty('/cluster-deployments');
     expect(document.paths).not.toHaveProperty('/cluster-deployments/{id}');
+    expect(document.paths).not.toHaveProperty('/deployments');
+    expect(document.paths).not.toHaveProperty('/node-pools');
+    // A removed filter is refused, never ignored: a list-then-terminate
+    // script must not get every Workload back.
+    expect(
+      workloadListRequestSchema.safeParse({ query: { deploymentId: 'web' } })
+        .success,
+    ).toBe(false);
   });
 
   it('documents user authentication and the client version on every operation', async () => {

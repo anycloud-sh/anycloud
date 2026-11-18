@@ -447,7 +447,6 @@ function hostedSelfDelete(
       }
     },
     liveDependents: async () => ({
-      pools: [],
       workloads: await persistence.workloadQueries.listLiveVmHostWorkloadIds(),
     }),
     backup: getDefaultApiDatabaseBackup(identity.installationId),

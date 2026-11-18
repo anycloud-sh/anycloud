@@ -15147,17 +15147,6 @@
             "allowReserved": true,
             "explode": true,
             "in": "query",
-            "name": "deploymentId",
-            "schema": {
-              "$ref": "#/components/schemas/WorkloadId"
-            },
-            "style": "deepObject"
-          },
-          {
-            "allowEmptyValue": true,
-            "allowReserved": true,
-            "explode": true,
-            "in": "query",
             "name": "credentialName",
             "schema": {
               "$ref": "#/components/schemas/CredentialName"

@@ -63,7 +63,6 @@ export const workloadListRequestSchema = z.object({
       stateClass: z.enum(['terminatable', 'resubmittable']).optional(),
       status: z.string().optional(),
       workloadType: z.enum(['job', 'service', 'vm']).optional(),
-      deploymentId: workloadIdSchema.optional(),
       credentialName: credentialNameSchema.optional(),
       filter: z.string().optional(),
     })

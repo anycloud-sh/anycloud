@@ -391,8 +391,6 @@ export interface WorkloadRow {
   checkpoint_storage_region: string | null;
   image_runtime: string | null; // 'cuda'|'rocm'|'unknown' (migration 0066). Raw TEXT; narrowed on read. Insert-only.
   dns_record_id: string | null;
-  // Node pool Service public endpoint (migration 0128): the entry IP the
-  // record was last published at and whether it is current.
   secret_names: string | null; // JSON string[] in DB
   // Caller-supplied attribution (migration 0047). Insert-only, never mutated.
   session: string | null;

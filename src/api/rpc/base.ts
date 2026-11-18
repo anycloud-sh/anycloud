@@ -19,7 +19,6 @@ import {
   isLocalOwnerId,
 } from '../services/api-authentication.js';
 import type { ApiRpcContext } from './context.js';
-import type { User } from '../services/entities.js';
 import {
   assertRequestActive,
   awaitWithSignal,

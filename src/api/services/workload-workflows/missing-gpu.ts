@@ -9,7 +9,6 @@
 
 import { CloudFailureDiagnosis, GpuRuntime } from '../../../shared/cloud.js';
 import { WorkloadState } from '../../../shared/workload.js';
-import { UNUSABLE_GPU_MAX_RETRIES } from '../../config.js';
 import type { DbVM } from '../entities.js';
 import { GPU_RERUN_DIAGNOSIS } from '../workload-event-metadata.js';
 import { probeUsableGpu, UnusableGpuError } from '../host-runtime/gpu-probe.js';

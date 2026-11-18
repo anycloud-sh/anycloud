@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runMigrations } from '../../../../src/api/services/repositories/migrations.js';
+import { refuseRemovedWorkloadsIn } from '../../../../src/api/services/repositories/removed-workloads-guard.js';
 import { auditContainerSpecOwnership } from '../../../../src/api/services/repositories/container-spec-ownership.js';
 import type { MigrationDatabase } from '../../../../src/api/services/repositories/migration-database.js';
 
@@ -117,6 +121,27 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
         rows(`SELECT * FROM ${table} ORDER BY rowid`),
       ),
     ).toEqual(before);
+  });
+
+  it("refuses from the running API's database file, read-only, as the pre-upgrade hook does", () => {
+    const directory = mkdtempSync(join(tmpdir(), 'removed-workloads-'));
+    try {
+      expect(() => refuseRemovedWorkloadsIn(directory)).not.toThrow();
+      const file = join(directory, 'api.db');
+      writeFileSync(file, sqlite.serialize());
+      expect(() => refuseRemovedWorkloadsIn(directory)).toThrow(
+        '  node pool gpu (pool-1)',
+      );
+      sqlite.exec(`
+        UPDATE deployments SET deletion_requested_at = 2, deleted_at = 3;
+        UPDATE node_pools SET state = 'deleted';
+        UPDATE vms SET ended_at = 5 WHERE node_pool_id IS NOT NULL;
+      `);
+      writeFileSync(file, sqlite.serialize());
+      expect(() => refuseRemovedWorkloadsIn(directory)).not.toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('drops the removed history and keeps every VM-host Workload byte for byte', async () => {

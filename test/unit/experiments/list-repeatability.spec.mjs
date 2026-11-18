@@ -44,8 +44,6 @@ function input() {
     'vms',
     'workload_events',
     'credentials',
-    'deployments',
-    'node_pools',
   ]) {
     db.exec(`CREATE TABLE ${table} (id INTEGER PRIMARY KEY, value TEXT)`);
     db.prepare(`INSERT INTO ${table} (value) VALUES (?)`).run(
