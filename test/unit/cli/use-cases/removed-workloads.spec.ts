@@ -19,7 +19,7 @@ describe('remainingRemovedWorkloads', () => {
   it('names live node pool Services, user Deployments and node pools, read as the served release', async () => {
     const fetch = served({
       '/workloads': [
-        { id: 'svc-pool', nodePoolId: 'np-1' },
+        { id: 'svc-pool', nodePoolId: 'np-1', nodePoolName: 'gpu' },
         { id: 'svc-vm', nodePoolId: null },
         { id: 'svc-old' },
       ],
@@ -42,7 +42,7 @@ describe('remainingRemovedWorkloads', () => {
     await expect(
       remainingRemovedWorkloads(API, '0.1.78', 'token', fetch),
     ).resolves.toEqual([
-      { kind: 'node pool Service', id: 'svc-pool', name: 'svc-pool' },
+      { kind: 'node pool Service', id: 'svc-pool', name: 'svc-pool (on gpu)' },
       { kind: 'Deployment', id: 'dep-1', name: 'web' },
       { kind: 'node pool', id: 'np-1', name: 'gpu' },
       { kind: 'node pool', id: 'np-2', name: 'old' },
@@ -53,6 +53,7 @@ describe('remainingRemovedWorkloads', () => {
     expect(url).toBe(
       `${API}/v1/workloads?workloadType=service&stateClass=terminatable&limit=1000`,
     );
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.headers).toMatchObject({
       Authorization: 'Bearer token',
       'AnyCloud-Client-Version': '0.1.78',
@@ -76,14 +77,14 @@ describe('remainingRemovedWorkloads', () => {
 describe('removedWorkloadsRefusal', () => {
   it('names each one and its replacement', () => {
     const refusal = removedWorkloadsRefusal([
-      { kind: 'node pool Service', id: 'svc-1', name: 'svc-1' },
+      { kind: 'node pool Service', id: 'svc-1', name: 'svc-1 (on gpu)' },
       { kind: 'node pool', id: 'np-1', name: 'gpu' },
     ]);
     expect(refusal.code).toBe('REMOVED_WORKLOADS_REMAIN');
     expect(refusal.message).toBe(
       [
         'This release removes node pools, Kubernetes Deployments and node pool Services, and these remain:',
-        '  node pool Service svc-1',
+        '  node pool Service svc-1 (on gpu)',
         '  node pool gpu (np-1)',
         'Remove them on the current release first: "anycloud terminate <id>" for each Service, "anycloud deployment delete <name>", then "anycloud node-pool delete <name>". Run Jobs as VM Jobs ("anycloud job"), and long-running processes on a VM ("anycloud vm") or as a VM Service ("anycloud service").',
       ].join('\n'),
