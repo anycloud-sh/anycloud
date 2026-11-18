@@ -96,7 +96,11 @@ import {
   validateGCPZoneSuffixSyntax,
 } from '../../../shared/cloud-config.js';
 import { retryUntil, sleep, withRetry } from '../../../shared/utils.js';
-import { gcpGpuMachineCapability } from '../../../shared/gcp-machine-capabilities.js';
+import {
+  gcpAttachedGpu,
+  gcpGpuMachineCapability,
+  gcpMachineType,
+} from '../../../shared/gcp-machine-capabilities.js';
 import { gcpNestedMinCpuPlatform } from '../../../shared/catalog/nested-virtualization.js';
 import { buildJobIngressSpec, isSharedJobIngress } from '../network.js';
 import { numericRulePort, resolveFirewallPlan } from '../firewall-plan.js';
@@ -1160,7 +1164,7 @@ export class GCP {
         await this.machineTypesClient.get({
           project: this.projectId,
           zone,
-          machineType: vmType,
+          machineType: gcpMachineType(vmType),
         });
         return true;
       } catch (error) {
@@ -1376,7 +1380,7 @@ export class GCP {
     });
     const instanceResource: any = {
       name: vmId,
-      machineType: `zones/${zone}/machineTypes/${this.vmType}`,
+      machineType: `zones/${zone}/machineTypes/${gcpMachineType(this.vmType)}`,
       disks: [
         {
           boot: true,
@@ -1457,10 +1461,18 @@ export class GCP {
       ),
     };
 
-    // Accelerator-optimized catalog machine types include their GPUs. --gpus
-    // selects the container runtime; it must not mutate the VM's hardware by
-    // silently attaching an unrelated T4 accelerator.
-    if (gpuRuntime === GpuRuntime.Cuda) {
+    // Accelerator-optimized machine types include their GPUs; an attached-GPU
+    // catalog type names the GPU its N1 machine gets.
+    const attachedGpu = gcpAttachedGpu(this.vmType);
+    if (attachedGpu) {
+      instanceResource.guestAccelerators = [
+        {
+          acceleratorType: `zones/${zone}/acceleratorTypes/${attachedGpu.acceleratorType}`,
+          acceleratorCount: attachedGpu.acceleratorCount,
+        },
+      ];
+    }
+    if (gpuRuntime === GpuRuntime.Cuda || attachedGpu) {
       // GPU instances require onHostMaintenance to be TERMINATE
       instanceResource.scheduling = {
         onHostMaintenance: 'TERMINATE',
