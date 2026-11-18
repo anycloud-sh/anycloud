@@ -127,7 +127,8 @@ export class ClusterReleaseConflictError extends Error {
 
 /** What still holds a cluster: an older hosted API's node pools, and Workloads. */
 export interface ClusterDependents {
-  readonly pools: ReadonlyArray<{ name: string; liveReferences: number }>;
+  /** An older hosted API's node pools; this release runs none. */
+  readonly pools?: ReadonlyArray<{ name: string; liveReferences: number }>;
   /** VM Services and Jobs not yet ended, by ID. */
   readonly workloads: readonly string[];
 }
@@ -141,7 +142,7 @@ const plural = (count: number, one: string, many: string) =>
  * run against when the refusal comes from elsewhere.
  */
 export function dependentsRefusal(
-  { pools, workloads }: ClusterDependents,
+  { pools = [], workloads }: ClusterDependents,
   clusterName: string,
   apiUrl?: string,
 ): string | null {

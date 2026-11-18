@@ -17,7 +17,7 @@ import {
   CloudType,
   type AzureConnectionCreds,
 } from '../../shared/cloud.js';
-import { WorkloadState, WorkloadType } from '../../shared/workload.js';
+import { WorkloadState } from '../../shared/workload.js';
 import { toArray } from '../../shared/utils.js';
 import {
   completeCloudConfig,

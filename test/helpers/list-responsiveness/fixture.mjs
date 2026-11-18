@@ -113,8 +113,7 @@ async function seedTools(db, store, encryptCredential) {
         ...changes,
       };
       insertWorkload(record);
-      if (!record.deployment_id)
-        insertSpec({ ...spec, workload_id: id, ...specChanges });
+      insertSpec({ ...spec, workload_id: id, ...specChanges });
       return record;
     },
     vm(id, index, changes = {}) {
@@ -171,8 +170,6 @@ async function finishFixture(db, manifest) {
     'vms',
     'workload_events',
     'credentials',
-    'deployments',
-    'node_pools',
   ]) {
     counts[table] = native
       .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
@@ -201,7 +198,6 @@ async function finishFixture(db, manifest) {
 export async function seedFixture({
   db,
   store,
-  deploymentStore,
   encryptCredential,
   profile,
   small = false,
@@ -209,7 +205,7 @@ export async function seedFixture({
   const started = performance.now();
   const tools = await seedTools(db, store, encryptCredential);
   if (profile === 'correctness') {
-    const result = await seedCorrectness(db, store, deploymentStore, tools);
+    const result = await seedCorrectness(db, store, tools);
     return finishFixture(db, {
       profile,
       ...result,
@@ -345,7 +341,7 @@ export async function seedFixture({
   return result;
 }
 
-async function seedCorrectness(db, store, deploymentStore, tools) {
+async function seedCorrectness(db, store, tools) {
   const ids = [];
   const row = (suffix, changes = {}, spec = {}) => {
     const id = 'list-' + suffix;
@@ -457,44 +453,6 @@ async function seedCorrectness(db, store, deploymentStore, tools) {
         started_at: BUSINESS_NOW - 3 * HOUR - i,
       });
   })();
-  await db.query(
-    `INSERT INTO clusters (id,owner_user_id,name,state,step,kubernetes_identity,encrypted_connection,created_at,updated_at)
-    VALUES ('list-root','1','list-root','ready','release','list-root-uid','synthetic',?,?)`,
-    [BUSINESS_NOW, BUSINESS_NOW],
-  );
-  await db.query(
-    `INSERT INTO node_pools (id,cluster_id,owner_user_id,name,state,compute_credential_id,region,vm_type,min_vm_count,max_vm_count,created_at,updated_at)
-    VALUES ('list-pool','list-root','1','list-pool','ready','list-aws','us-east-1','["t3.medium"]',1,1,?,?)`,
-    [BUSINESS_NOW, BUSINESS_NOW],
-  );
-  await deploymentStore.create(
-    {
-      id: 'list-worker',
-      ownerUserId: '1',
-      name: 'list-worker',
-      nodePoolId: 'list-pool',
-      config: {
-        image: 'fixture/worker:synthetic',
-        imageDigest: null,
-        command: null,
-        dockerOptions: null,
-        env: null,
-        registryUsername: PRIMARY.username,
-        registryToken: null,
-      },
-      gpuCount: 0,
-      maxConcurrentJobsPerReplica: 1,
-    },
-    { kind: 'api' },
-  );
-  await store.createTargetedWorkload({
-    id: 'list-worker-job',
-    userId: PRIMARY.username,
-    ownerUserId: PRIMARY.id,
-    deploymentId: 'list-worker',
-    session: 'edges',
-  });
-  ids.push('list-worker-job');
   return { ids, statusId: 'list-actual', session: 'edges' };
 }
 
@@ -506,8 +464,6 @@ export function fixtureDigest(db) {
     'vms',
     'workload_events',
     'credentials',
-    'deployments',
-    'node_pools',
   ]) {
     hash.update(table + '\0');
     for (const row of db.db

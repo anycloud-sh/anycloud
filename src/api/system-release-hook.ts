@@ -1,12 +1,14 @@
 import { AppsV1Api, CoreV1Api, KubeConfig } from '@kubernetes/client-node';
 import { setTimeout as delay } from 'node:timers/promises';
 import { errorMessage } from '../shared/log-diagnostics.js';
+import { getAnycloudDir } from '../shared/utils.js';
 import {
   assessReleaseGuard,
   assessReleaseReadiness,
   type ExpectedRelease,
   type ObservedApiPod,
 } from './services/system-release/release-readiness.js';
+import { refuseRemovedWorkloadsIn } from './services/repositories/removed-workloads-guard.js';
 
 /**
  * Helm hook entrypoint for the API system release. Runs inside the API image
@@ -14,7 +16,8 @@ import {
  *
  * `guard` (pre-upgrade, always rendered) refuses an incoming revision that is
  * not newer than the running Deployment's, so the cluster cannot be rolled back
- * from inside the cluster. `ready` (post-install/post-upgrade) decides
+ * from inside the cluster, or that would drop node pools or Deployments that
+ * are still live. `ready` (post-install/post-upgrade) decides
  * completion: the Pod for the requested revision/operation runs the pinned
  * image digest, is Ready, and serves the expected version through its real
  * endpoint.
@@ -170,6 +173,9 @@ async function guard(): Promise<void> {
   if (!verdict.allowed) {
     throw new Error(`Refusing release: ${verdict.reason}`);
   }
+  // Read before Helm replaces the running API's Pod: refused here, that API
+  // keeps serving; refused at startup, none would (the Deployment recreates).
+  refuseRemovedWorkloadsIn(getAnycloudDir());
   console.log(
     JSON.stringify({
       hook: 'guard',

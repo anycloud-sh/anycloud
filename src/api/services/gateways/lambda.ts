@@ -44,7 +44,6 @@ import {
 } from './resource-sweeper.js';
 import {
   type CloudResourceScope,
-  type ResourceVM,
   type GatewayVM,
   type IngressSpec,
   type NewVMProps,

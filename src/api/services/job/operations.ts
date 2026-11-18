@@ -55,14 +55,6 @@ interface JobOperationRejection {
   telemetryError: string;
 }
 
-/** A refusal whose telemetry is its client error. */
-const refused = (status: number, clientError: string) => ({
-  ok: false as const,
-  status,
-  clientError,
-  telemetryError: clientError,
-});
-
 interface PreparedJobExec {
   ok: true;
   run(stream: JobOperationStream): Promise<number>;

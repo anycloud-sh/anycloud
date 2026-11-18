@@ -1926,17 +1926,6 @@
           "allowReserved": true
         },
         {
-          "name": "deploymentId",
-          "in": "query",
-          "schema": {
-            "$ref": "#/components/schemas/WorkloadId"
-          },
-          "style": "deepObject",
-          "explode": true,
-          "allowEmptyValue": true,
-          "allowReserved": true
-        },
-        {
           "name": "credentialName",
           "in": "query",
           "schema": {

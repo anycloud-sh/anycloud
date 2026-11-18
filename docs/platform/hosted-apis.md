@@ -264,7 +264,10 @@ anycloud api upgrade
 With a hosted API active, `api upgrade` (alias `update`) asks the
 cluster-hosted API to upgrade, without Docker or the local API. It refuses
 while the hosted API still has node pools, Deployments or node pool Services,
-naming each; see [`api upgrade`](/reference/cli/cluster). From any machine, the
+naming each; see [`api upgrade`](/reference/cli/cluster). An older CLI skips
+that check, so the release's pre-upgrade hook repeats it against the running
+API's database: the upgrade fails, nothing changes, and the hosted API keeps
+serving on its release until you remove them and upgrade again. From any machine, the
 hosted API first brings the cluster's K3s configuration to the new release's from a Job
 on the management Node, briefly restarting the Kubernetes API server when it
 changed, and labels the management Node with the label that the API and its
@@ -345,6 +348,10 @@ After a restore, every member runs `anycloud api token rotate`, and the owner
 rotates every service token and removes again any service removed since the
 backup: the backup brings back the API tokens it held. Restoring the backup taken by
 `api upgrade` also drops what the new API recorded.
+
+A backup that still has live node pools, Deployments or node pool Services
+can't be restored by this release: the API refuses to start and names them.
+Restore it with the release that took it, remove them there, then upgrade.
 
 ## Retire a hosted API
 
