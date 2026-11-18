@@ -1379,7 +1379,8 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       }),
     );
     const getFromFamily = vi.fn().mockResolvedValue([{ selfLink: 'image' }]);
-    gcp.imagesClient = fakeSdkClient({ getFromFamily } as any);
+    const imagesClient: any = { getFromFamily };
+    gcp.imagesClient = fakeSdkClient(imagesClient);
     gcp.projectId = 'test-project';
     let inserted: any;
     const instancesClient: any = {
