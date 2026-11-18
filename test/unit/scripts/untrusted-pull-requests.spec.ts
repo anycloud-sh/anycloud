@@ -359,11 +359,13 @@ describe('untrusted pull requests and the runs they start', () => {
       'tests.yml:generated-sdk',
       'docs.yml:verify',
       'integration.yml:e2e-cluster-local',
-      'local-smolvm-nuke > nuke.yml:nuke',
+      'integration.yml:local-smolvm',
       'actions-storage.yml:cleanup',
     ]) {
       expect(ids, id).toContain(id);
     }
+    // The Local nuke needs a backmesh-kvm-16; a hosted runner can't hold it.
+    expect(ids).not.toContain('local-smolvm-nuke > nuke.yml:nuke');
   });
 
   it('skips the private clone exactly where the fixture token is withheld', () => {

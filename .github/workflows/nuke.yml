@@ -101,6 +101,9 @@ permissions: {}
 
 jobs:
   nuke:
+    # The Local nuke is sized for backmesh-kvm-16; a standard hosted runner
+    # shuts down under its 300 microVMs, so it runs only on backmesh runners.
+    if: (inputs.provider || 'azure') != 'local' || !(vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]'))
     runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || (inputs.provider || 'azure') == 'local' && 'backmesh-kvm-16' || 'backmesh-od-4' }}
     environment: ${{ (inputs.provider || 'azure') != 'local' && 'cloud-e2e' || '' }}
     # Timeout headroom is for seeded DB load, the real overlay, and manual
@@ -173,10 +176,6 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
           sudo docker system prune -af
-
-      - name: Grant hosted runner KVM access
-        if: ${{ env.PROVIDER == 'local' }}
-        uses: ./.github/actions/hosted-kvm
 
       - name: Setup Local smolvm runtime
         if: ${{ env.PROVIDER == 'local' }}
