@@ -16,8 +16,6 @@ const mocks = vi.hoisted(() => ({
   createCluster: vi.fn(),
   getCluster: vi.fn(),
   listClusters: vi.fn(),
-  destroyCluster: vi.fn(),
-  forgetCluster: vi.fn(),
   printError: vi.fn(),
   printInfo: vi.fn(),
   printSuccess: vi.fn(),
@@ -166,28 +164,6 @@ function printedFields(spy: MockInstance<typeof console.log>): string[] {
   );
 }
 
-const RESTORE = `anycloud api create production --credentials <credential> --region us-east-1 --vm-type t3.medium --checkpoint-bucket install-production-1`;
-/** The domain's answer for a reachable delete that keeps the managed bucket. */
-const KEPT = {
-  deleted: [
-    { kind: 'managementVm', id: 'i-0abc123' },
-    { kind: 'dnsRecord', name: 'install-production-1.anycloud.sh' },
-  ],
-  remaining: [
-    {
-      kind: 'checkpointBucket',
-      name: 'install-production-1',
-      managed: true,
-      reason: 'kept',
-      backedUpAt: '2026-11-04T18:12:03Z',
-      finalBackup: 'taken',
-      restoreCommand: RESTORE,
-      deleteCommand:
-        'anycloud api delete install-production-1 --delete-buckets',
-    },
-  ],
-};
-
 /** `create` and `delete` (with its aliases) are `api` subcommands; the rest are `cluster`'s. */
 async function runCluster(argv: string[]): Promise<void> {
   const command = new Command('anycloud').exitOverride();
@@ -244,17 +220,11 @@ describe('cluster command', () => {
         create: mocks.createCluster,
         get: mocks.getCluster,
         list: mocks.listClusters,
-        destroy: mocks.destroyCluster,
-        forget: mocks.forgetCluster,
       },
     });
     mocks.createCluster.mockResolvedValue({ cluster: recorded });
     mocks.getCluster.mockResolvedValue({ cluster: ready });
     mocks.listClusters.mockResolvedValue({ clusters: [ready] });
-    mocks.destroyCluster.mockResolvedValue({
-      cluster: { ...ready, state: WorkloadState.Terminated, releasing: true },
-      ...KEPT,
-    });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((code) => {
       throw new Error(`process.exit:${code ?? 0}`);
     });

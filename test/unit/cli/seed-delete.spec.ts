@@ -120,7 +120,7 @@ function world(
 
 const NONE = { deleteVms: false, deleteBuckets: false, skipCloud: false };
 
-describe('cluster delete through the hosted API', () => {
+describe('api delete through the hosted API', () => {
   function api(
     states: Array<SelfDeleteStatus | null>,
   ): HostedSelfDelete & { request: ReturnType<typeof vi.fn> } {
@@ -252,7 +252,7 @@ describe('cluster delete through the hosted API', () => {
   });
 });
 
-describe('cluster delete with the hosted API dead', () => {
+describe('api delete with the hosted API dead', () => {
   it.each([
     { kind: 'in-progress', detail: 'STOPPING' },
     { kind: 'failed', detail: 'CREATE_FAILED' },

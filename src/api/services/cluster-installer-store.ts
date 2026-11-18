@@ -167,8 +167,6 @@ export interface ClusterInstallerRepository {
     connection: string;
     record: SystemReleaseClusterRecord | null;
   }): Promise<boolean>;
-  /** Delete the record and its installer-side rows; nothing in the cloud changes. */
-  forget(installationId: string): Promise<void>;
   /** The managed checkpoint bucket was deleted: the record names none. */
   clearCheckpointBucket(installationId: string): Promise<void>;
   setState(
@@ -787,16 +785,6 @@ export class ClusterInstallerStore implements ClusterInstallerRepository {
       vmRowId,
       installationId,
     ]);
-  }
-
-  async forget(installationId: string): Promise<void> {
-    await this.db.transaction((tx) => {
-      tx.query('DELETE FROM vms WHERE cluster_id = ?', [installationId]);
-      tx.query('DELETE FROM cluster_releases WHERE cluster_id = ?', [
-        installationId,
-      ]);
-      tx.query('DELETE FROM clusters WHERE id = ?', [installationId]);
-    });
   }
 
   async clearCheckpointBucket(installationId: string): Promise<void> {

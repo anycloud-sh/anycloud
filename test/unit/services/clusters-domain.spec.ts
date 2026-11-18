@@ -4,7 +4,6 @@ import {
   createClustersDomain,
   managementVmCloudId,
   type ClusterDomainDependencies,
-  type HostedNodePoolInventory,
   type ManagementHostAccess,
   type ManagementHostExecOutcome,
   type ClusterInfrastructure,
@@ -14,17 +13,10 @@ import {
   ClusterDestroyFailedError,
   ClusterExistsError,
   ClusterBusyError,
-  HostedApiAccessError,
   ClusterUnavailableError,
   ClusterReleaseConflictError,
-  ClusterVmPresentError,
 } from '../../../src/api/services/cluster-errors.js';
-import { resolveComputeConfig } from '../../../src/api/services/cloud-config.js';
-import {
-  createCloudCompute,
-  VM_PRESENT,
-  VM_RELEASE_CANDIDATE,
-} from '../../../src/api/services/gateways/cloud.js';
+import { createCloudCompute } from '../../../src/api/services/gateways/cloud.js';
 import { createClusterInfrastructure } from '../../../src/api/services/cluster-installer-runtime.js';
 import {
   parseClusterConnection,
@@ -58,9 +50,8 @@ import {
   ClusterStep,
   ClusterReleaseState,
 } from '../../../src/shared/clusters.js';
-import { CloudType, type CloudConfig } from '../../../src/shared/cloud.js';
+import { CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
-import { makeMockCloudStorage } from '../helpers/fixtures.js';
 import {
   SYSTEM_RELEASE_HELM_JOB_IMAGE,
   SYSTEM_RELEASE_K3S_SHA256,
@@ -81,9 +72,6 @@ const CHART = `oci://ghcr.io/anycloud-sh/api-k8-chart@sha256:${CHART_SHA}`;
 const CA = Buffer.from('root-ca').toString('base64');
 const INSTALLER_TOKEN = 'cluster-service-account-token';
 const IDENTITY = 'kube-system-uid-1';
-
-const KEEP = { deleteBuckets: false };
-const DELETE_BUCKETS = { deleteBuckets: true };
 
 const request = {
   name: 'production',
@@ -136,12 +124,6 @@ interface Fakes {
   originPullCa: string | null;
   /** On-node 443 probes that see no certificate before Traefik serves it. */
   tlsUnservedProbes: number;
-  /** What the hosted-API inventory seam answers. */
-  hostedPools: HostedNodePoolInventory;
-  inventoryCalls: number;
-  /** Final backups the hosted API took; a reason makes the next one fail. */
-  backups: number;
-  backupFailure: string | null;
   helmChart: HelmChartObject | null;
   applied: HelmChartObject[];
   /** Apply attempts rejected with a conflict before one succeeds. */
@@ -426,10 +408,6 @@ describe('kubernetes clusters domain', () => {
       issued: [],
       originPullCa: null,
       tlsUnservedProbes: 0,
-      hostedPools: { kind: 'pools', pools: [] },
-      inventoryCalls: 0,
-      backups: 0,
-      backupFailure: null,
       helmChart: null,
       applied: [],
       conflicts: 0,
@@ -490,17 +468,6 @@ describe('kubernetes clusters domain', () => {
         },
         removeTls: async (subdomain, token) => {
           fakes.dns.push(`remove-tls ${subdomain} ${token}`);
-        },
-      },
-      hostedPools: {
-        inventory: async () => {
-          fakes.inventoryCalls += 1;
-          return fakes.hostedPools;
-        },
-        backup: async () => {
-          if (fakes.backupFailure) throw new Error(fakes.backupFailure);
-          fakes.backups += 1;
-          return { backedUpAt: '2026-11-04T18:12:03.000Z' };
         },
       },
       credentials: persistence.credentialSecrets,
@@ -943,171 +910,6 @@ describe('kubernetes clusters domain', () => {
     ).resolves.toEqual([]);
   });
 
-  it('refuses destroy while the hosted API manages node pools and names the steps', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    fakes.hostedPools = {
-      kind: 'pools',
-      pools: [
-        { id: 'np-1', name: 'gpu-a', liveReferences: 2 },
-        { id: 'np-2', name: 'cpu-b', liveReferences: 0 },
-      ],
-    };
-    await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      /Node pool gpu-a still has Deployments or Services.*anycloud deployment delete <id> \/ anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud api delete production again\.$/,
-    );
-    fakes.hostedPools = {
-      kind: 'pools',
-      pools: [{ id: 'np-2', name: 'cpu-b', liveReferences: 0 }],
-    };
-    await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      /Node pool cpu-b still exists.*anycloud node-pool delete <name>, then anycloud api delete production again\.$/,
-    );
-  });
-
-  it('forgets a destroyed cluster naming only the Workload resources that can remain', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    await domain().destroy(actor, cluster.id, DELETE_BUCKETS);
-    await drain();
-    fakes.hostedPools = { kind: 'unreachable', reason: 'no such host' };
-    await expect(domain().forget(actor, cluster.id)).resolves.toMatchObject({
-      leftovers: [
-        expect.stringMatching(/^Workload VMs, networks and disks tagged /),
-      ],
-    });
-  });
-
-  it('with an unreachable hosted API and a backup, delete, restore and delete again on one installer', async () => {
-    const zoned = {
-      ...request,
-      zone: 'us-east-1a',
-      checkpointBucket: 'my-api-state',
-    };
-    const { cluster } = await domain().create(actor, zoned);
-    await drain();
-    const manifest = {
-      version: 1 as const,
-      clusterId: cluster.id,
-      backedUpAt: '2026-09-27T12:00:00.000Z',
-      schemaAppVersion: '0.1.64',
-      databaseSha256: 'a'.repeat(64),
-    };
-    const withBackup = domain({ backupManifest: async () => manifest });
-    fakes.hostedPools = { kind: 'unreachable', reason: 'connect timeout' };
-    await expect(withBackup.destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      `The hosted API at https://${cluster.id}.anycloud.sh is unreachable (connect timeout). Restore it with anycloud api create production --cloud aws --region us-east-1 --zone us-east-1a --vm-type t3.medium --checkpoint-bucket my-api-state (if its management VM anycloud-cluster-${cluster.id} still runs but the cluster is broken, terminate that VM first), then run anycloud api delete production.`,
-    );
-    // The management VM is gone; the restore replaces the record.
-    fakes.provisioned.clear();
-    fakes.helmChart = null;
-    fakes.applied = [];
-    await withBackup.create(actor, zoned);
-    await drain();
-    fakes.hostedPools = { kind: 'pools', pools: [] };
-    await withBackup.destroy(actor, cluster.id, KEEP);
-    await drain();
-    expect(await installationRow()).toMatchObject([
-      { id: cluster.id, state: ClusterState.Destroyed },
-    ]);
-  });
-
-  it('with an unreachable hosted API and no backup, delete names the VMs, and forget needs the management VM gone', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    await expect(domain().forget(actor, cluster.id)).rejects.toThrow(
-      'is reachable; run anycloud api delete production instead',
-    );
-    const refusing = domain({
-      hostedPools: {
-        ...dependencies.hostedPools,
-        inventory: async () => {
-          throw new HostedApiAccessError('https://x', 403);
-        },
-      },
-    });
-    await expect(refusing.forget(actor, cluster.id)).rejects.toThrow(
-      `answered but refused this account (HTTP 403), so it is reachable. Sign in as the account that bootstrapped it, then run anycloud api delete production.`,
-    );
-    const rejecting = domain({
-      hostedPools: {
-        ...dependencies.hostedPools,
-        inventory: async () => {
-          throw new HostedApiAccessError('https://x', 400, 'x');
-        },
-      },
-    });
-    await expect(rejecting.forget(actor, cluster.id)).rejects.toThrow(
-      'The hosted API at https://x rejected the node pool check (HTTP 400: x), so it is reachable; run anycloud api delete production instead.',
-    );
-    expect(new HostedApiAccessError('https://x', 400).message).toBe(
-      'The hosted API at https://x rejected the node pool check (HTTP 400)',
-    );
-    fakes.hostedPools = { kind: 'unreachable', reason: 'connect timeout' };
-    const hand = new RegExp(
-      `Terminate management VM anycloud-cluster-${cluster.id} and Workload VMs tagged anycloud_owner_api=[0-9a-f]{32}, then run anycloud api delete production --skip-cloud; it names what else is left\\.$`,
-    );
-    await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      new RegExp(
-        `unreachable \\(connect timeout\\) and its bucket holds no restorable backup\\. ${hand.source}`,
-      ),
-    );
-    const unreadable = domain({
-      backupManifest: async () => {
-        throw new Error('AccessDenied');
-      },
-    });
-    await expect(unreadable.destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      new RegExp(
-        `its backup could not be read \\(AccessDenied\\)\\. ${hand.source}`,
-      ),
-    );
-    await expect(domain().forget(actor, cluster.id)).rejects.toThrow(
-      `Management VM anycloud-cluster-${cluster.id} of cluster "production" still exists. Terminate it, then run anycloud api delete production --skip-cloud again.`,
-    );
-    const releases = fakes.releaseCalls;
-    fakes.provisioned.clear();
-    fakes.dns = [];
-    await expect(domain().forget(actor, cluster.id)).resolves.toEqual({
-      id: cluster.id,
-      name: 'production',
-      leftovers: [
-        `the management VM's network resources named anycloud-cluster-${cluster.id} (its security group, firewall or network)`,
-        expect.stringMatching(
-          /^Workload VMs, networks and disks tagged anycloud_owner_api=[0-9a-f]{32}$/,
-        ),
-        `checkpoint bucket ${cluster.id}, kept on purpose with its backups; delete it only if you no longer need them`,
-      ],
-    });
-    expect(fakes.dns).toEqual([
-      `remove-tls ${cluster.id} ${actor.token}`,
-      `remove ${cluster.id} ${actor.token}`,
-    ]);
-    expect(await installationRow()).toEqual([]);
-    expect(await vmRows()).toEqual([]);
-    expect(fakes.releaseCalls).toBe(releases);
-    expect(fakes.bucketDeletes).toEqual([]);
-    // A later restore records the cluster again under the same id.
-    fakes.helmChart = null;
-    fakes.applied = [];
-    const restoring = domain({
-      backupManifest: async () => ({
-        version: 1,
-        clusterId: cluster.id,
-        backedUpAt: '2026-09-27T12:00:00.000Z',
-        schemaAppVersion: '0.1.64',
-        databaseSha256: 'a'.repeat(64),
-      }),
-    });
-    await restoring.create(actor, {
-      ...request,
-      checkpointBucket: cluster.id,
-    });
-    expect(await installationRow()).toMatchObject([
-      { id: cluster.id, restore_from_backup: 1 },
-    ]);
-  });
-
   it('keeps polling when the configuration write hits a transport failure and re-stages only on exit 66', async () => {
     fakes.writeFailures = 2;
     fakes.staleStagedPolls = 1;
@@ -1346,99 +1148,6 @@ describe('kubernetes clusters domain', () => {
     expect(fakes.provisionCalls).toBe(1);
   });
 
-  it('refuses to delete a cluster whose creation is running', async () => {
-    const creating = domain();
-    const { cluster } = await creating.create(actor, request);
-    await expect(creating.destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      'cluster creation is in progress',
-    );
-    await drain();
-    expect((await creating.get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Running,
-    );
-  });
-
-  it('deletes a cluster whose creation an API restart orphaned, releasing what it made', async () => {
-    // The creation provisioned the VM and bucket, then the process died
-    // mid-task: the row stays bootstrapping with no task to finish it.
-    fakes.failAt = 'configure';
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    await getDB().query(
-      `UPDATE clusters SET state = 'bootstrapping' WHERE id = ?`,
-      [cluster.id],
-    );
-    expect(fakes.provisioned.size).toBe(1);
-
-    const restarted = domain();
-    await restarted.destroy(actor, cluster.id, DELETE_BUCKETS);
-    await drain();
-    const gone = await restarted.get(actor, cluster.id);
-    expect(gone.cluster.state).toBe(WorkloadState.Terminated);
-    expect(fakes.provisioned.size).toBe(0);
-    expect(fakes.bucketDeletes).toEqual([cluster.id]);
-    expect((await vmRows()).filter((vm) => vm.ended_at === null)).toHaveLength(
-      0,
-    );
-  });
-
-  it('claims the installation before its first await, so an interleaved create and delete refuse each other', async () => {
-    fakes.failAt = 'configure';
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    // Each phase holds the first state write until the other request ran.
-    let entered = () => {};
-    let open = () => {};
-    let gate = Promise.resolve();
-    const hold = () => {
-      const reached = new Promise<void>((resolve) => (entered = resolve));
-      gate = new Promise<void>((resolve) => (open = resolve));
-      return reached;
-    };
-    const store = dependencies.installations;
-    const setState: typeof store.setState = async (id, state, lastError) => {
-      entered();
-      await gate;
-      return store.setState(id, state, lastError);
-    };
-    const racing = domain({
-      installations: new Proxy(store, {
-        get(target, property) {
-          if (property === 'setState') return setState;
-          const value = Reflect.get(target, property) as unknown;
-          return typeof value === 'function' ? value.bind(target) : value;
-        },
-      }),
-    });
-
-    let reached = hold();
-    const resuming = racing.create(actor, request);
-    await reached;
-    await expect(racing.destroy(actor, cluster.id, KEEP)).rejects.toThrow(
-      'cluster creation is in progress',
-    );
-    open();
-    await resuming;
-    await drain();
-    expect((await racing.get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Running,
-    );
-
-    reached = hold();
-    const deleting = racing.destroy(actor, cluster.id, KEEP);
-    await reached;
-    await expect(racing.create(actor, request)).rejects.toThrow(
-      'cluster deletion is in progress',
-    );
-    open();
-    await deleting;
-    await drain();
-    expect((await racing.get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Terminated,
-    );
-    expect(fakes.provisioned.size).toBe(0);
-  });
-
   it("fills the hosted API's own record with its address, version and URL", async () => {
     await getPersistence().clusters.recordSelf({
       id: 'cluster-hosted',
@@ -1616,8 +1325,10 @@ describe('kubernetes clusters domain', () => {
     expect(fakes.applied).toHaveLength(1);
 
     // Never Established: the release step fails before the HelmChart exists.
-    await domain().destroy(actor, cluster.id, KEEP);
-    await drain();
+    await getPersistence().clusters.setState(
+      cluster.id,
+      ClusterState.Destroyed,
+    );
     fakes.crdAbsentPolls = Number.POSITIVE_INFINITY;
     fakes.applied = [];
     fakes.helmChart = null;
@@ -1633,22 +1344,6 @@ describe('kubernetes clusters domain', () => {
       'Traefik did not publish the ingressroutes.traefik.io CustomResourceDefinition within 3 minutes (absent); the anycloud-api-ingress HelmChart in kube-system has not installed',
     );
     expect(fakes.applied).toHaveLength(0);
-
-    // An installation that never completed its release has no hosted API to
-    // ask and no pool could exist through it: forget and destroy proceed
-    // without the inventory, even when the hosted API would answer
-    // "unreachable". Asking would resolve the unpublished hostname.
-    fakes.hostedPools = { kind: 'unreachable', reason: 'no such host' };
-    fakes.inventoryCalls = 0;
-    await expect(domain().forget(actor, second.cluster.id)).rejects.toThrow(
-      ClusterVmPresentError,
-    );
-    await domain().destroy(actor, second.cluster.id, KEEP);
-    await drain();
-    expect((await domain().get(actor, second.cluster.id)).cluster.state).toBe(
-      WorkloadState.Terminated,
-    );
-    expect(fakes.inventoryCalls).toBe(0);
   });
 
   it('re-observes and re-compares when the HelmChart moved between comparison and apply', async () => {
@@ -1686,84 +1381,19 @@ describe('kubernetes clusters domain', () => {
     expect(scheduled).toHaveLength(1);
   });
 
-  it('keeps a destroy whose VM release never confirmed in the destroy lane', async () => {
+  it('refuses to create over a record whose delete failed, never provisioning again', async () => {
     const { cluster } = await domain().create(actor, request);
     await drain();
-    const stuck = domain({
-      infrastructure: {
-        ...dependencies.infrastructure!,
-        releaseManagementVm: async () => false,
-      },
-    });
-    await stuck.destroy(actor, cluster.id, KEEP);
-    await drain();
-    const after = await stuck.get(actor, cluster.id);
-    expect(after.cluster.state).toBe(WorkloadState.Failed);
-    // A failed delete says so; a failed create shares the state.
-    expect(after.cluster.lastError).toMatch(/^Delete failed: /);
-    expect(after.cluster.lastError).toContain('not confirmed');
-
-    // The documented recovery for a failed bootstrap does not apply here.
+    await getPersistence().clusters.setState(
+      cluster.id,
+      ClusterState.DestroyFailed,
+      'not confirmed',
+    );
     await expect(domain().create(actor, request)).rejects.toBeInstanceOf(
       ClusterDestroyFailedError,
     );
     expect(scheduled).toHaveLength(0);
     expect(fakes.provisionCalls).toBe(1);
-    expect((await vmRows()).filter((vm) => vm.ended_at === null)).toHaveLength(
-      1,
-    );
-
-    // Only destroy resumes it, and it finishes from the ledger.
-    await domain().destroy(actor, cluster.id, KEEP);
-    await drain();
-    const gone = await domain().get(actor, cluster.id);
-    expect(gone.cluster.state).toBe(WorkloadState.Terminated);
-    expect(fakes.provisioned.size).toBe(0);
-  });
-
-  it('keeps a destroy that failed after the VM was released in the destroy lane and never provisions again', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    let injected = false;
-    const store = dependencies.installations;
-    const setState: typeof store.setState = async (id, state, lastError) => {
-      if (state === ClusterState.Destroyed && !injected) {
-        injected = true;
-        throw new Error('injected record failure');
-      }
-      return store.setState(id, state, lastError);
-    };
-    const broken = domain({
-      installations: new Proxy(store, {
-        get(target, property) {
-          if (property === 'setState') return setState;
-          const value = Reflect.get(target, property) as unknown;
-          return typeof value === 'function' ? value.bind(target) : value;
-        },
-      }),
-    });
-    await broken.destroy(actor, cluster.id, KEEP);
-    await drain();
-    const after = await broken.get(actor, cluster.id);
-    expect(after.cluster.state).toBe(WorkloadState.Failed);
-    expect((await vmRows()).every((vm) => vm.ended_at !== null)).toBe(true);
-
-    await expect(domain().create(actor, request)).rejects.toBeInstanceOf(
-      ClusterDestroyFailedError,
-    );
-    expect(fakes.provisionCalls).toBe(1);
-    expect(await vmRows()).toHaveLength(1);
-
-    await domain().destroy(actor, cluster.id, KEEP);
-    await drain();
-    const gone = await domain().get(actor, cluster.id);
-    expect(gone.cluster.state).toBe(WorkloadState.Terminated);
-    expect(fakes.releaseCalls).toBe(1);
-    const clusterRecords = await getPersistence().clusterRecords.listForScope(
-      { kind: 'api' },
-      { includeDeleted: true },
-    );
-    expect(clusterRecords[0].state).toBe(ClusterState.Destroyed);
   });
 
   it('never provisions for an installation whose ledger already shows a released management VM', async () => {
@@ -1833,14 +1463,14 @@ describe('kubernetes clusters domain', () => {
     expect(fakes.applied).toEqual([]);
   });
 
-  it('retains a user-supplied checkpoint bucket: neither created nor deleted, but it must exist', async () => {
+  it('retains a user-supplied checkpoint bucket: never created, but it must exist', async () => {
     await expect(
       domain().create(actor, {
         ...request,
         checkpointBucket: 'missing-bucket',
       }),
     ).rejects.toThrow('Checkpoint bucket "missing-bucket" was not found');
-    const { cluster } = await domain().create(actor, {
+    await domain().create(actor, {
       ...request,
       checkpointBucket: 'my-api-state',
     });
@@ -1850,24 +1480,6 @@ describe('kubernetes clusters domain', () => {
       backup: { bucket: string };
     };
     expect(values.backup.bucket).toBe('my-api-state');
-    // --delete-buckets never deletes a supplied bucket: it is reported kept.
-    await expect(
-      domain().destroy(actor, cluster.id, DELETE_BUCKETS),
-    ).resolves.toMatchObject({
-      remaining: [
-        {
-          name: 'my-api-state',
-          managed: false,
-          reason: 'supplied',
-          finalBackup: 'taken',
-        },
-      ],
-    });
-    await drain();
-    expect((await domain().get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Terminated,
-    );
-    expect(fakes.bucketDeletes).toEqual([]);
   });
 
   it('restores from a bucket that holds a backup under the backup installation id', async () => {
@@ -2020,14 +1632,17 @@ describe('kubernetes clusters domain', () => {
         checkpointBucket: 'my-api-state',
       });
       await expectFreshRestore(id, 1);
-      await domain().destroy(actor, id, KEEP);
-      await drain();
+      // A delete released the management VM and kept the bucket.
+      const vm = await getPersistence().clusters.getManagementVm(id);
+      await getPersistence().clusters.endManagementVm(id, vm!.id);
+      await getPersistence().clusters.setState(id, ClusterState.Destroyed);
+      fakes.provisioned.clear();
       fakes.helmChart = null;
       await restoring.create(actor, {
         ...request,
         checkpointBucket: 'my-api-state',
       });
-      await expectFreshRestore(id, 2);
+      await expectFreshRestore(id, 1);
     });
 
     it('resumes its own interrupted restore instead of probing the new VM', async () => {
@@ -2257,242 +1872,14 @@ describe('kubernetes clusters domain', () => {
     }
   });
 
-  it('destroys a CPU-only cluster through the real infrastructure adapter and a fake gateway', async () => {
-    const terminated: string[] = [];
-    const released = new Set<string>();
-    const configs: CloudConfig[] = [];
-    const gateway = createCloudCompute({
-      type: CloudType.AWS,
-      region: 'us-east-1',
-      vmType: 't3.medium',
-      rawValidateCredentials: vi.fn(),
-      rawClassifyError: vi.fn(),
-      rawNewVM: vi.fn(),
-      rawRequestVMTermination: vi.fn(async (cloudId: string) => {
-        terminated.push(cloudId);
-        released.add(cloudId);
-      }),
-      rawTerminateNetworking: vi.fn(),
-      rawGetAllVMs: vi.fn().mockResolvedValue([]),
-      rawUpsertFirewall: vi.fn(),
-      observeVMReleaseOnce: vi.fn(async (cloudId: string) =>
-        released.has(cloudId) ? VM_RELEASE_CANDIDATE : VM_PRESENT,
-      ),
-      releaseConfirmWaitMs: 0,
-      resourceScoped: {
-        prepareResourceNetwork: vi.fn(),
-        newResourceVM: vi.fn(),
-        terminateResourceNetwork: vi.fn(),
-      },
-    });
+  it('keeps a restored bucket managed when it is named for the backup cluster', async () => {
     const { cluster } = await domain().create(actor, request);
     await drain();
-    const live = domain({
-      infrastructure: createClusterInfrastructure('0.1.64', {
-        // The real resolver runs on the recorded target (the step that parsed
-        // an empty VM type as a GPU alias); only the SDK client is faked.
-        createCompute: (config, purpose) => {
-          configs.push(resolveComputeConfig(config, purpose ?? 'provisioning'));
-          return gateway;
-        },
-        decryptCredential: async () => ({
-          cloudProvider: CloudType.AWS,
-          accessKeyId: 'AKIA',
-          secretAccessKey: 'secret',
-        }),
-        // The managed checkpoint bucket is already gone; destroy must still
-        // reach the VM release and finish.
-        createStorage: () =>
-          makeMockCloudStorage({
-            rawHasBucket: vi.fn().mockResolvedValue(false),
-          }),
-      }),
-    });
-    await live.destroy(actor, cluster.id, KEEP);
-    await drain();
-    const after = await live.get(actor, cluster.id);
-    expect(after.cluster).toMatchObject({
-      state: WorkloadState.Terminated,
-      lastError: null,
-    });
-    expect(terminated).toEqual([`anycloud-cluster-${cluster.id}`]);
-    expect(configs).toMatchObject([{ vmType: 't3.medium', spot: false }]);
-    expect((await vmRows())[0].ended_at).not.toBeNull();
-  });
-
-  it('destroys independently of the hosted API: releases the VM and DNS record, keeps the managed bucket after a final backup, and forgets the cluster', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-
-    const destroying = await domain().destroy(actor, 'production', KEEP);
-    expect(destroying.cluster.state).toBe(WorkloadState.Terminated);
-    const restoreCommand = `anycloud api create production --cloud aws --region us-east-1 --vm-type t3.medium --checkpoint-bucket ${cluster.id}`;
-    expect(destroying).toMatchObject({
-      deleted: [
-        { kind: 'managementVm', id: `anycloud-cluster-${cluster.id}` },
-        { kind: 'dnsRecord', name: `${cluster.id}.anycloud.sh` },
-      ],
-      remaining: [
-        {
-          kind: 'checkpointBucket',
-          name: cluster.id,
-          managed: true,
-          reason: 'kept',
-          finalBackup: 'taken',
-          backedUpAt: '2026-11-04T18:12:03.000Z',
-          restoreCommand,
-          deleteCommand: `anycloud api delete ${cluster.id} --delete-buckets`,
-        },
-      ],
-    });
-    expect(fakes.backups).toBe(1);
-    await drain();
-
-    const gone = await domain().get(actor, cluster.id);
-    expect(gone.cluster).toMatchObject({
-      state: WorkloadState.Terminated,
-      checkpointBucket: { name: cluster.id, managed: true },
-    });
-    expect(fakes.releaseCalls).toBe(1);
-    expect(fakes.provisioned.size).toBe(0);
-    expect(fakes.bucketDeletes).toEqual([]);
-    expect(fakes.buckets).toEqual([cluster.id]);
-    expect(fakes.dns.slice(-2)).toEqual([
-      `remove-tls ${cluster.id} ${actor.token}`,
-      `remove ${cluster.id} ${actor.token}`,
-    ]);
-    const vms = await vmRows();
-    expect(vms).toHaveLength(1);
-    expect(vms[0].ended_at).not.toBeNull();
-    const clusterRecords = await getPersistence().clusterRecords.listForScope(
-      { kind: 'api' },
-      { includeDeleted: true },
+    await getPersistence().clusters.setState(
+      cluster.id,
+      ClusterState.Destroyed,
     );
-    expect(clusterRecords[0].state).toBe(ClusterState.Destroyed);
-    // Re-running delete reports the kept bucket again and changes nothing.
-    await expect(
-      domain().destroy(actor, cluster.id, KEEP),
-    ).resolves.toMatchObject({
-      deleted: [],
-      remaining: [{ name: cluster.id, finalBackup: 'skipped' }],
-    });
-    expect(scheduled).toEqual([]);
-    // A later bootstrap starts a fresh installation instead of reviving this one.
-    const again = await domain().create(actor, request);
-    expect(again.cluster.id).not.toBe(cluster.id);
-  });
-
-  it('deletes the kept bucket of a destroyed record with --delete-buckets, and a failure keeps the record naming it', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    await domain().destroy(actor, cluster.id, KEEP);
-    await drain();
-
-    fakes.failAt = 'delete-bucket';
-    await expect(
-      domain().destroy(actor, cluster.id, DELETE_BUCKETS),
-    ).rejects.toThrow('injected failure at delete-bucket');
-    expect(
-      (await domain().get(actor, cluster.id)).cluster.checkpointBucket,
-    ).toEqual({ name: cluster.id, managed: true });
-    fakes.failAt = null;
-    await expect(
-      domain().destroy(actor, cluster.id, DELETE_BUCKETS),
-    ).resolves.toMatchObject({
-      cluster: { state: WorkloadState.Terminated, checkpointBucket: null },
-      deleted: [{ kind: 'checkpointBucket', name: cluster.id }],
-      remaining: [],
-    });
-    expect(scheduled).toEqual([]);
-    expect(fakes.bucketDeletes).toEqual([cluster.id]);
-    expect(fakes.buckets).toEqual([]);
-    expect(fakes.backups).toBe(1);
-  });
-
-  it('resumes a delete whose bucket step failed without asking the released hosted API', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    fakes.failAt = 'delete-bucket';
-    await domain().destroy(actor, cluster.id, DELETE_BUCKETS);
-    await drain();
-    expect((await domain().get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Failed,
-    );
-    fakes.failAt = null;
-    const inventoryCalls = fakes.inventoryCalls;
-    fakes.hostedPools = { kind: 'unreachable', reason: 'no such host' };
-    await domain().destroy(actor, cluster.id, DELETE_BUCKETS);
-    await drain();
-    expect((await domain().get(actor, cluster.id)).cluster).toMatchObject({
-      state: WorkloadState.Terminated,
-      checkpointBucket: null,
-    });
-    expect(fakes.inventoryCalls).toBe(inventoryCalls);
-    expect(fakes.bucketDeletes).toEqual([cluster.id]);
-    expect(fakes.releaseCalls).toBe(1);
-  });
-
-  it('with --delete-buckets takes no backup and deletes the bucket after the DNS record', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    const deleting = await domain().destroy(actor, cluster.id, DELETE_BUCKETS);
-    expect(deleting).toMatchObject({
-      deleted: [
-        { kind: 'managementVm' },
-        { kind: 'dnsRecord' },
-        { kind: 'checkpointBucket', name: cluster.id },
-      ],
-      remaining: [],
-    });
-    await drain();
-    expect(fakes.backups).toBe(0);
-    expect(fakes.dns.slice(-3)).toEqual([
-      `remove-tls ${cluster.id} ${actor.token}`,
-      `remove ${cluster.id} ${actor.token}`,
-      `delete-bucket ${cluster.id}`,
-    ]);
-    expect(
-      (await domain().get(actor, cluster.id)).cluster.checkpointBucket,
-    ).toBe(null);
-  });
-
-  it('proceeds when the final backup fails, reporting the newest backup and the error', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    fakes.backupFailure = 'the hosted API answered HTTP 503';
-    const newest = domain({
-      backupManifest: async () => ({
-        version: 1,
-        clusterId: cluster.id,
-        backedUpAt: '2026-11-04T17:00:00.000Z',
-        schemaAppVersion: '0.1.64',
-        databaseSha256: 'a'.repeat(64),
-      }),
-    });
-    await expect(
-      newest.destroy(actor, cluster.id, KEEP),
-    ).resolves.toMatchObject({
-      remaining: [
-        {
-          name: cluster.id,
-          finalBackup: 'failed',
-          error: 'the hosted API answered HTTP 503',
-          backedUpAt: '2026-11-04T17:00:00.000Z',
-        },
-      ],
-    });
-    await drain();
-    expect((await domain().get(actor, cluster.id)).cluster.state).toBe(
-      WorkloadState.Terminated,
-    );
-    expect(fakes.bucketDeletes).toEqual([]);
-  });
-
-  it('keeps a restored bucket managed when it is named for the backup cluster, so --delete-buckets deletes it', async () => {
-    const { cluster } = await domain().create(actor, request);
-    await drain();
-    await domain().destroy(actor, cluster.id, KEEP);
-    await drain();
+    fakes.provisioned.clear();
     const restoring = domain({
       backupManifest: async () => ({
         version: 1,
@@ -2512,9 +1899,5 @@ describe('kubernetes clusters domain', () => {
       id: cluster.id,
       checkpointBucket: { name: cluster.id, managed: true },
     });
-    await drain();
-    await restoring.destroy(actor, cluster.id, DELETE_BUCKETS);
-    await drain();
-    expect(fakes.bucketDeletes).toEqual([cluster.id]);
   });
 });

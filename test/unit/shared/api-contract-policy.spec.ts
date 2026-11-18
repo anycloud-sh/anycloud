@@ -45,8 +45,6 @@ const expectedContractEndpoints = {
   'credentials.delete': ['DELETE', '/credentials/{name}'],
   'clusters.list': ['GET', '/clusters'],
   'clusters.get': ['GET', '/clusters/{id}'],
-  'clusters.destroy': ['DELETE', '/clusters/{id}'],
-  'clusters.forget': ['POST', '/clusters/{id}/forget'],
   'apiAccess.list': ['GET', '/api-access/users'],
   'apiAccess.grant': ['POST', '/api-access/users'],
   'apiAccess.revoke': ['DELETE', '/api-access/users/{userId}'],
@@ -127,7 +125,6 @@ const expectedNonDefaultSuccessStatuses = {
   'credentials.save': 204,
   'credentials.update': 204,
   'credentials.delete': 204,
-  'clusters.destroy': 202,
   'apiAccess.revoke': 204,
   'workloads.terminate': 202,
   'workloads.resubmit': 202,
@@ -171,9 +168,6 @@ const expectedCommandRetrySemantics = {
   'credentials.save': 'idempotent', // identical material short-circuits on the credential hash
   'credentials.update': 'idempotent', // replaying the same fields stores the same merged material
   'credentials.delete': 'idempotent', // absent credential deletes as a no-op 204
-  'clusters.destroy': 'idempotent', // destroying and destroyed installations re-return their current summary
-  'clusters.forget':
-    'conflict — recovery: clusters.get returns 404 once the record is forgotten',
   'apiAccess.grant': 'idempotent', // upsert by resolved GitHub user id
   'apiAccess.revoke': 'idempotent', // removing an absent user still returns 204
   'apiAccess.issueServiceToken':

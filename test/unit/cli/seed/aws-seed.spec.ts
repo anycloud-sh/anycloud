@@ -614,7 +614,7 @@ describe('AWS seed', () => {
   });
 });
 
-describe('cluster create on AWS through the aws CLI', () => {
+describe('api create on AWS through the aws CLI', () => {
   it('drives the stack from rights check to outputs, with the boot script as user-data', async () => {
     const clis = installFakeCloudClis({
       aws: [

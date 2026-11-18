@@ -152,7 +152,7 @@ function bootValues(script: string): string {
   return gunzipSync(Buffer.from(body.replace(/\n/g, ''), 'base64')).toString();
 }
 
-describe('cluster create through the seed', () => {
+describe('api create through the seed', () => {
   it('checks rights, deploys with the resolved release, publishes DNS for bootstrap, and waits for the first backup', async () => {
     const { seed, deployed, events, dependencies, input, status } = harness({
       statuses: [

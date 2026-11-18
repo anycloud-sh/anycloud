@@ -113,7 +113,6 @@ import {
   getDefaultFirstBackupCheck,
   requestApiDatabaseBackup,
 } from './services/api-database-backup-default.js';
-import { createHostedNodePoolInventory } from './services/cluster-hosted-pools.js';
 import {
   createSystemReleaseDomain,
   type HostedSystemReleaseIdentity,
@@ -368,11 +367,6 @@ function clusterDependencies(
       activateTls: activateApiTls,
       removeTls: removeApiTls,
     },
-    // An older hosted API may still run node pools: destroy asks it at the
-    // installation's hostname with the caller's own bearer.
-    hostedPools: createHostedNodePoolInventory({
-      clientVersion: config.currVersion,
-    }),
     resolveApiImage,
     observeKubernetesIdentity: observeClusterIdentity,
     generateId: generateClusterId,

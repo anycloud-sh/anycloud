@@ -131,7 +131,7 @@ async function resourceManager(): Promise<{ url: string; close(): void }> {
   };
 }
 
-describe('compiled seed cluster create', () => {
+describe('compiled seed api create', () => {
   let clis: FakeCloudClis | undefined;
   let home: string | undefined;
   afterEach(() => {

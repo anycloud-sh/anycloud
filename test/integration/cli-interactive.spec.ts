@@ -954,7 +954,7 @@ describe('terminate — multi-select autocomplete (PTY)', () => {
   });
 });
 
-describe('cluster create — management VM pickers (PTY)', () => {
+describe('api create — management VM pickers (PTY)', () => {
   // Never a real cloud: the CLI drives the cloud's own CLI, so `aws` is a
   // fake that is signed out, PATH holds nothing else, and AWS's credential
   // env is cleared. GitHub is a local fake that names the account, so the

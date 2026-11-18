@@ -52,7 +52,7 @@ export const LAYER_MAP = table(String.raw`
   2  shared     src/shared/workload\.ts$
   7  vm         src/shared/(ssh-runtime|docker-)
   1  shared     src/(cli|shared)/|src/api/(rpc|routes)/|python/
-  1  shared     S/(clusters-domain|cluster-delete-report|cluster-errors|workload-management-domain|service-upgrade-domain|spend-controls-domain|quota-domain)\.ts$
+  1  shared     S/(clusters-domain|cluster-errors|workload-management-domain|service-upgrade-domain|spend-controls-domain|quota-domain)\.ts$
   3  shared     S/(retry-backoff|repositories/workload-outcomes)\.ts$
   4  shared     S/(spend-controls|spend-controls-store|request-budget)\.ts$
   5  shared     S/job-spec-admission\.ts$

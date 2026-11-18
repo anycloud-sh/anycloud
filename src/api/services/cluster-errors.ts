@@ -31,69 +31,6 @@ export class ClusterNotFoundError extends Error {
   }
 }
 
-export class ClusterReferencedError extends Error {
-  constructor(
-    message = 'cluster still has active node pools; delete them first',
-  ) {
-    super(message);
-    this.name = 'ClusterReferencedError';
-  }
-}
-
-/** The API's own reason, such as the token exchange refusing a sign-in. */
-function refusalOf(body: string): string {
-  try {
-    const { message } = JSON.parse(body) as { message?: unknown };
-    return typeof message === 'string' && message ? `: ${message}` : '';
-  } catch {
-    return '';
-  }
-}
-
-/** The hosted API answered but refused this account, CLI version or request. */
-export class HostedApiAccessError extends Error {
-  constructor(
-    url: string,
-    readonly status: number,
-    body = '',
-    /** For a version refusal: which side is behind and how to bring it level. */
-    readonly versionFix?: string,
-  ) {
-    super(
-      versionFix
-        ? `The hosted API at ${url} refused this CLI's version: ${versionFix}, then run anycloud api delete again`
-        : status === 400
-          ? `The hosted API at ${url} rejected the node pool check (HTTP 400${body.trim() ? `: ${body.trim().slice(0, 200)}` : ''})`
-          : `The hosted API at ${url} refused this account (HTTP ${status}); the node pools it manages can only be checked by the account that bootstrapped it — sign in as that account (anycloud api use ${url} shows what it admits)${refusalOf(body)}`,
-    );
-    this.name = 'HostedApiAccessError';
-  }
-}
-
-/** Delete needs the hosted API; the message says how to restore or clean up. */
-export class ClusterUnreachableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ClusterUnreachableError';
-  }
-}
-
-/** Forget is only for a cluster whose hosted API no longer answers. */
-export class ClusterReachableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ClusterReachableError';
-  }
-}
-
-/** Forget is only for a cluster whose management VM the cloud shows gone. */
-export class ClusterVmPresentError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ClusterVmPresentError';
-  }
-}
-
 export class ClusterBusyError extends Error {
   constructor(state: string) {
     super(
@@ -125,56 +62,21 @@ export class ClusterReleaseConflictError extends Error {
   }
 }
 
-/** What still holds a cluster: an older hosted API's node pools, and Workloads. */
+/** What still holds a cluster: Workloads not yet ended. */
 export interface ClusterDependents {
-  /** An older hosted API's node pools; this release runs none. */
-  readonly pools?: ReadonlyArray<{ name: string; liveReferences: number }>;
   /** VM Services and Jobs not yet ended, by ID. */
   readonly workloads: readonly string[];
 }
 
-const plural = (count: number, one: string, many: string) =>
-  count === 1 ? one : many;
-
 /**
  * Why `api delete <clusterName>` is refused and what to run first, or
- * null when nothing holds it. `apiUrl` names the hosted API the commands
- * run against when the refusal comes from elsewhere.
+ * null when nothing holds it.
  */
 export function dependentsRefusal(
-  { pools = [], workloads }: ClusterDependents,
+  { workloads }: ClusterDependents,
   clusterName: string,
-  apiUrl?: string,
 ): string | null {
-  // Only an older release still runs node pools, so its own CLI removes them.
-  const cli = pools.length > 0 ? ' with the CLI of its release' : '';
-  const run = apiUrl
-    ? ` Against the hosted API (${apiUrl})${cli}: run`
-    : pools.length > 0
-      ? ` With the CLI of the hosted API's release, run`
-      : ' Run';
-  const again = `then anycloud api delete ${clusterName} again.`;
-  const names = (list: ReadonlyArray<{ name: string }>) =>
-    list.map((pool) => pool.name).join(', ');
-  const referenced = pools.filter((pool) => pool.liveReferences > 0);
-  const idle = pools.filter((pool) => pool.liveReferences === 0);
-  if (referenced.length > 0 || workloads.length > 0) {
-    const held = [
-      referenced.length > 0 &&
-        `Node pool${plural(referenced.length, '', 's')} ${names(referenced)} still ${plural(referenced.length, 'has', 'have')} Deployments or Services.`,
-      workloads.length > 0 &&
-        `Workload${plural(workloads.length, '', 's')} ${workloads.join(', ')} still ${plural(workloads.length, 'runs', 'run')}.`,
-      idle.length > 0 &&
-        `Node pool${plural(idle.length, '', 's')} ${names(idle)} also exist${plural(idle.length, 's', '')}.`,
-    ].filter(Boolean);
-    const release =
-      referenced.length > 0
-        ? 'anycloud deployment delete <id> / anycloud terminate <id>'
-        : 'anycloud terminate <id>';
-    return `${held.join(' ')}${run} ${release}, ${pools.length > 0 ? 'then anycloud node-pool delete <name>, ' : ''}${again}`;
-  }
-  if (pools.length > 0) {
-    return `Node pool${plural(pools.length, '', 's')} ${names(pools)} still exist${plural(pools.length, 's', '')}.${run} anycloud node-pool delete <name>, ${again}`;
-  }
-  return null;
+  if (workloads.length === 0) return null;
+  const one = workloads.length === 1;
+  return `Workload${one ? '' : 's'} ${workloads.join(', ')} still ${one ? 'runs' : 'run'}. Run anycloud terminate <id>, then anycloud api delete ${clusterName} again.`;
 }
