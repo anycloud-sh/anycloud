@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   systemReleaseDrain: vi.fn(async () => ({ jobs: [] })),
   systemReleaseKubernetes: vi.fn(),
   clustersList: vi.fn(),
+  remainingRemovedWorkloads: vi.fn(async (): Promise<unknown[]> => []),
   checkApiHealth: vi.fn(async () => true),
   createApiClientOptions: vi.fn(),
   /** `docker inspect --format {{.RestartCount}}`; null when no container. */
@@ -134,6 +135,14 @@ vi.mock('../../../src/cli/services/api-target.js', async (importActual) => ({
   selectableApiTargets: mocks.selectableApiTargets,
   selectApiTarget: mocks.selectApiTarget,
 }));
+
+vi.mock(
+  '../../../src/cli/use-cases/removed-workloads.js',
+  async (importActual) => ({
+    ...(await importActual()),
+    remainingRemovedWorkloads: mocks.remainingRemovedWorkloads,
+  }),
+);
 
 vi.mock(
   '../../../src/cli/services/local-api-update.js',
@@ -739,6 +748,42 @@ describe('api command', () => {
     expect(mocks.printError).toHaveBeenCalledWith(
       'Hosted API upgrade refused: Release refused: no published API image for version 9.9.9',
     );
+    expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('api upgrade refuses, naming them, while the hosted API runs node pools, Deployments or node pool Services', async () => {
+    useHostedActive();
+    mocks.systemReleaseStatus.mockResolvedValue({
+      servedVersion: '0.0.1',
+      schemaVersion: '0.0.1',
+      upgrade: null,
+      rollout: null,
+    });
+    mocks.remainingRemovedWorkloads.mockResolvedValueOnce([
+      { kind: 'node pool Service', id: 'svc-1', name: 'svc-1' },
+      { kind: 'node pool', id: 'np-1', name: 'gpu' },
+    ]);
+    await expect(runApi(['upgrade', '--json'])).rejects.toThrow(
+      /process\.exit:1/,
+    );
+    // Read with the served version, before the drain or anything else.
+    expect(mocks.remainingRemovedWorkloads).toHaveBeenCalledWith(
+      'https://api-1.anycloud.sh',
+      '0.0.1',
+      'gh-token',
+    );
+    const [document] = logSpy.mock.calls.map(
+      (call) =>
+        JSON.parse(String(call[0])) as {
+          error: { code: string; message: string };
+        },
+    );
+    expect(document!.error.code).toBe('REMOVED_WORKLOADS_REMAIN');
+    expect(document!.error.message).toContain(
+      '  node pool Service svc-1\n  node pool gpu (np-1)\n',
+    );
+    expect(mocks.systemReleaseDrain).not.toHaveBeenCalled();
+    expect(mocks.systemReleaseKubernetes).not.toHaveBeenCalled();
     expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
   });
 
