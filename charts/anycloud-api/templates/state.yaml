@@ -1,0 +1,17 @@
+# Primary API state: SQLite database and cipher key under /mnt/checkpoint.
+# Kept across uninstall and failed releases; deleting it is an explicit
+# operator action, never a side effect of a release operation.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anycloud-api-state
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ['ReadWriteOnce']
+  storageClassName: {{ .Values.state.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.state.size | quote }}

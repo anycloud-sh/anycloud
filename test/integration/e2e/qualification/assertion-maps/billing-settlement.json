@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "member": "billing-settlement",
+  "candidate": "yarn test:billing-settlement:vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "real-settlement-fixture",
+      "requirement": "Seed the production migrations and billing allocator with 45 account/resource groups and 1,119 VM-cost rows, retaining the logical fixture fingerprint.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts seed; billingSeedSchema and assertSettledFixture"
+    },
+    {
+      "id": "interrupt-five-writes",
+      "requirement": "Exit the real child with status 86 after exactly five VM-cost writes inside an open settlement transaction.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts crash; assertBillingInterruption"
+    },
+    {
+      "id": "journal-recovery",
+      "requirement": "Preserve rollback journal or WAL/SHM when reopening the interrupted database; reject every partial billing group.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts recoveryFiles/reopen; assertAtomicSettlement; same runChild owner"
+    },
+    {
+      "id": "complete-resume",
+      "requirement": "Resume settlement and validate every row and original group denominator through the production allocation path.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts resume; assertSettledFixture and existing child.mjs allocator assertions"
+    },
+    {
+      "id": "idempotent-replay",
+      "requirement": "Replaying the fully committed database makes zero billing calls and preserves exact settled row/group counts.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: assertIdempotentReplay"
+    },
+    {
+      "id": "slow-settlement",
+      "requirement": "Inject 75ms of synchronous work into all 45 settlement transactions while preserving billing correctness.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts slow-settlement; assertSlowSettlement"
+    },
+    {
+      "id": "independent-health",
+      "requirement": "Retain raw independent health offers and both one-second measurements and the six-second integration gate; no missing or failed offer becomes success.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: assertResponsiveBilling; shared independent process health sampler"
+    },
+    {
+      "id": "owned-processes-evidence",
+      "requirement": "Bound and reap all database/API children, keep the primary failure and sanitized outcome/health/interruption records, and delete private database copies at fixture disposal.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs billingSettlement and retainBillingRecords; ProcessRunner cancellation; fixture disposal"
+    }
+  ]
+}

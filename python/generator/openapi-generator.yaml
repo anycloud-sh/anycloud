@@ -1,0 +1,12 @@
+generatorName: python
+additionalProperties:
+  buildSystem: hatchling
+  disallowAdditionalPropertiesIfNotPresent: false
+  generateSourceCodeOnly: true
+  hideGenerationTimestamp: true
+  library: httpx
+  packageName: anycloud
+  packageVersion: ${PACKAGE_VERSION}
+  projectName: anycloud-sdk
+  supportHttpxSync: true
+  useOneOfDiscriminatorLookup: true

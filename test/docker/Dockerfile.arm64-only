@@ -1,0 +1,15 @@
+# arm64-only test fixture. Built + pushed as an arm64-only OCI image so the
+# server-side image preflight (inspectImage) returns 'no_amd64' and a submit is
+# rejected before provisioning. Used by test/integration/e2e/specs/image-preflight-invalid.spec.ts.
+#
+# Maintainer one-time build/push (then make the GHCR package PUBLIC):
+#   docker buildx build --platform linux/arm64 \
+#     -t ghcr.io/anycloud-sh/arm64-only-test:latest --push \
+#     -f test/docker/Dockerfile.arm64-only .
+#
+# Verify it's an index with a linux/arm64 entry and NO linux/amd64:
+#   docker manifest inspect ghcr.io/anycloud-sh/arm64-only-test:latest
+# (add `--provenance=true` to the build if buildx emits a bare manifest instead
+# of an index — the preflight needs the index shape to read platforms.)
+FROM mirror.gcr.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+CMD ["true"]

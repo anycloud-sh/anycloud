@@ -1,0 +1,1095 @@
+{
+  "formatVersion": 1,
+  "decision": "No promotion; original qualification outcome unchanged",
+  "diagnosticRunStatus": "complete",
+  "startedAt": "2026-09-13T23:11:41.614Z",
+  "finishedAt": "2026-09-13T23:31:06.326Z",
+  "runtime": {
+    "node": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 25769803776
+  },
+  "sources": {
+    "baselineSha": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+    "baselineBuildSha256": "5b9d9bce8d577e3acb9b46efab8ca78febc4999bda8dfe1f17e0cd3e6ddbd47e",
+    "harnessSha": "ad084905dfaf9ef242d9252a096e81e92454bb5f",
+    "harnessSha256": "7db57c4de2d351eea9e7390ba54a7cbc91ec9fa67f3284b3f256dea45e94f065",
+    "planSha256": "52475732343e16d2ea7bf864e4835c73c7a0130c602af3c3302df22cadd1a1fd",
+    "analyzerSha256": "a90d613f5ef0424cbd37674ecf6177a390741039afd47aaec065223530a55011",
+    "originalQualificationReportSha256": "5c0f256bdab1198e53e12ebda44ada9087250d8a867834e34d742b3084dbc10b"
+  },
+  "plan": {
+    "version": 1,
+    "frozenAt": "2026-09-13T22:52:59.187291+00:00",
+    "purpose": "diagnosis only; no promotion and no added qualification trials",
+    "baselineSource": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+    "bothArmsUse": "baseline",
+    "harnessParent": "e89add119396864d59908130f1ba0835aae640b7",
+    "cases": [
+      {
+        "profile": "sparse",
+        "scope": "user",
+        "lane": "matrix",
+        "pairs": 3
+      },
+      {
+        "profile": "ip-heavy",
+        "scope": "user",
+        "lane": "matrix",
+        "pairs": 3
+      },
+      {
+        "profile": "mixed",
+        "scope": "api",
+        "lane": "matrix",
+        "pairs": 3
+      },
+      {
+        "profile": "mixed",
+        "scope": "user",
+        "lane": "load",
+        "pairs": 1
+      }
+    ],
+    "matrixWarmups": 10,
+    "matrixObservations": 50,
+    "loadPhases": [
+      {
+        "seconds": 30,
+        "rps": 2.4
+      },
+      {
+        "seconds": 60,
+        "rps": 8
+      },
+      {
+        "seconds": 90,
+        "rps": 2.4
+      }
+    ],
+    "healthDeadlineMs": 1000,
+    "workDeadlineMs": 15000,
+    "drainMs": 20000,
+    "childWatchdogMs": 600000,
+    "commandBudgetMs": 1200000,
+    "diagnostics": [
+      "process identity and clocks",
+      "IPC milestones",
+      "CPU/memory/event-loop samples",
+      "garbage collection",
+      "Undici request and connection milestones",
+      "host CPU counters and load"
+    ],
+    "policy": "All original acceptance rules and results remain unchanged; instrumented runs reject six-pair qualification. Counts fixed before measurement. Stop on a run failure; no automatic retries.",
+    "limitations": [
+      "Diagnostics perturb timing; causal attribution requires more than temporal overlap.",
+      "Host sleep cannot be reconstructed from Node traces alone; retain OS power events."
+    ]
+  },
+  "findings": {
+    "watchdog": "913464.825208 ms independent-health gap aligns with recorded macOS maintenance sleep and wake",
+    "calibration": "GC overlap accounts for some fast-control tails; another SQL outlier is dominated by time off CPU. Exact OS/native wait cause remains unresolved.",
+    "load": "1536 offered work requests completed within deadline; historical work timeouts and ETIMEDOUT did not reproduce. Subsecond waits before application receipt remain visible.",
+    "fixtureReplay": "Fresh seeds from the unchanged generator, identical within case arms; full logical hashes differ. Five complete mixed-load response hashes match the original baseline snapshots."
+  },
+  "cases": [
+    {
+      "id": "sparse-user-matrix",
+      "startedAt": "2026-09-13T23:11:41.836Z",
+      "finishedAt": "2026-09-13T23:12:40.108Z",
+      "qualification": "diagnostic-or-partial",
+      "fixtures": {
+        "correctness": {
+          "counts": {
+            "deployments": 1251,
+            "container_specs": 1251,
+            "vms": 14,
+            "deployment_events": 2,
+            "credentials": 2,
+            "workers": 1,
+            "clusters": 1
+          },
+          "vmShape": {
+            "nullIp": 4,
+            "withIp": 10,
+            "emptyIp": 1,
+            "live": 6
+          },
+          "logicalSha256": "8574e60331e46c5f93f5febf9b6844006006c5b8b495365546afdfb5de8d5cca",
+          "originalLogicalSha256": "290e0021517acec6240149d84df9c009d61e01c9deda3738567481b0e8f07aaf"
+        },
+        "sparse": {
+          "counts": {
+            "deployments": 2400,
+            "container_specs": 2400,
+            "vms": 2400,
+            "deployment_events": 9600,
+            "credentials": 2,
+            "workers": 0,
+            "clusters": 0
+          },
+          "vmShape": {
+            "nullIp": 0,
+            "withIp": 2400,
+            "emptyIp": 0,
+            "live": 146
+          },
+          "logicalSha256": "8f16feb8d0ca9ba10953d87f69e2bc61ce354ae9070ef5c43e6d4c88efb2afce",
+          "originalLogicalSha256": "ee12cc5f2360784376f7592974c4168dc0ad3fbbab68f0167d2fe8b17c4e7279"
+        }
+      },
+      "analysisSha256": "bf2a9ba21c560220e8d30481d4ebb8af2d19ef70148cf8902b020b537ce595e3",
+      "trials": [
+        {
+          "runDir": "008-sparse-user-matrix-comparison-1-baseline",
+          "armLabel": "baseline",
+          "repetition": 1,
+          "firstRequestMs": 69.894334,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.896124999999984,
+            "p95Ms": 30.8185840000001,
+            "p99Ms": 32.218583999999964,
+            "maxMs": 37.863625000000184,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.004249999999956344
+          },
+          "health": {
+            "offered": 65,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 75.0,
+          "terminalStatus": {
+            "httpP50Ms": 0.8196660000003249,
+            "httpP95Ms": 1.3250000000007276,
+            "sqlMeanMs": 0.2564492199997767,
+            "gcOverlaps": 5
+          }
+        },
+        {
+          "runDir": "009-sparse-user-matrix-comparison-1-candidate",
+          "armLabel": "candidate",
+          "repetition": 1,
+          "firstRequestMs": 69.919833,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.706625000000031,
+            "p95Ms": 30.53366700000015,
+            "p99Ms": 30.81079200000022,
+            "maxMs": 32.55012500000021,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.014083000000027823
+          },
+          "health": {
+            "offered": 63,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 73.19516129032257,
+          "terminalStatus": {
+            "httpP50Ms": 0.8042499999992287,
+            "httpP95Ms": 1.1970000000001164,
+            "sqlMeanMs": 0.25677153999993607,
+            "gcOverlaps": 4
+          }
+        },
+        {
+          "runDir": "010-sparse-user-matrix-comparison-2-candidate",
+          "armLabel": "candidate",
+          "repetition": 2,
+          "firstRequestMs": 69.849459,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.68266600000004,
+            "p95Ms": 30.54079200000001,
+            "p99Ms": 31.997707999999875,
+            "maxMs": 33.622290999999905,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.004249999999984766
+          },
+          "health": {
+            "offered": 63,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 76.09850439401757,
+          "terminalStatus": {
+            "httpP50Ms": 0.8257499999999709,
+            "httpP95Ms": 1.6376250000002983,
+            "sqlMeanMs": 0.24733095999996293,
+            "gcOverlaps": 5
+          }
+        },
+        {
+          "runDir": "011-sparse-user-matrix-comparison-2-baseline",
+          "armLabel": "baseline",
+          "repetition": 2,
+          "firstRequestMs": 69.292208,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.789790999999923,
+            "p95Ms": 30.725582999999915,
+            "p99Ms": 32.18049999999994,
+            "maxMs": 33.127250000000004,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.01033400000005713
+          },
+          "health": {
+            "offered": 63,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 78.48557358444145,
+          "terminalStatus": {
+            "httpP50Ms": 0.809041999999863,
+            "httpP95Ms": 1.150749999999789,
+            "sqlMeanMs": 0.24995659999985947,
+            "gcOverlaps": 4
+          }
+        },
+        {
+          "runDir": "012-sparse-user-matrix-comparison-3-baseline",
+          "armLabel": "baseline",
+          "repetition": 3,
+          "firstRequestMs": 66.443625,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.677333000000033,
+            "p95Ms": 30.06337500000018,
+            "p99Ms": 30.5329999999999,
+            "maxMs": 35.83858299999997,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.0026250000000800355
+          },
+          "health": {
+            "offered": 62,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 81.3627254509018,
+          "terminalStatus": {
+            "httpP50Ms": 0.8224169999994047,
+            "httpP95Ms": 1.0590830000001006,
+            "sqlMeanMs": 0.2463504799997645,
+            "gcOverlaps": 4
+          }
+        },
+        {
+          "runDir": "013-sparse-user-matrix-comparison-3-candidate",
+          "armLabel": "candidate",
+          "repetition": 3,
+          "firstRequestMs": 69.3995,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 5.693624999999997,
+            "p95Ms": 30.212416000000076,
+            "p99Ms": 30.450250000000324,
+            "maxMs": 30.969749999999976,
+            "responseBytes": 187098050,
+            "maxOfferDelayMs": 0.00891700000011042
+          },
+          "health": {
+            "offered": 63,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 79.03698964193447,
+          "terminalStatus": {
+            "httpP50Ms": 0.7834999999995489,
+            "httpP95Ms": 0.9964579999996204,
+            "sqlMeanMs": 0.2404440799999611,
+            "gcOverlaps": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "ip-heavy-user-matrix",
+      "startedAt": "2026-09-13T23:12:40.407Z",
+      "finishedAt": "2026-09-13T23:19:23.562Z",
+      "qualification": "diagnostic-or-partial",
+      "fixtures": {
+        "correctness": {
+          "counts": {
+            "deployments": 1251,
+            "container_specs": 1251,
+            "vms": 14,
+            "deployment_events": 2,
+            "credentials": 2,
+            "workers": 1,
+            "clusters": 1
+          },
+          "vmShape": {
+            "nullIp": 4,
+            "withIp": 10,
+            "emptyIp": 1,
+            "live": 6
+          },
+          "logicalSha256": "32a118302de199358ce3dbdc88ed7957a68d23acf4e8c606607e8167e5628215",
+          "originalLogicalSha256": "290e0021517acec6240149d84df9c009d61e01c9deda3738567481b0e8f07aaf"
+        },
+        "ip-heavy": {
+          "counts": {
+            "deployments": 2400,
+            "container_specs": 2400,
+            "vms": 281801,
+            "deployment_events": 9600,
+            "credentials": 2,
+            "workers": 0,
+            "clusters": 0
+          },
+          "vmShape": {
+            "nullIp": 2200,
+            "withIp": 279601,
+            "emptyIp": 0,
+            "live": 880
+          },
+          "logicalSha256": "82c4d040476cdbd3d7166e1074b8f3ded95e165b6c75eee57b4674e6485871eb",
+          "originalLogicalSha256": "9369c63157fd7667fcbc478e144e52e957624b01249167a8cf3d29c15c2baf83"
+        }
+      },
+      "analysisSha256": "33833a6294125ae93cc9d4d4436070213eee46f12f641bd1324fa1231b6c28b7",
+      "trials": [
+        {
+          "runDir": "008-ip-heavy-user-matrix-comparison-1-baseline",
+          "armLabel": "baseline",
+          "repetition": 1,
+          "firstRequestMs": 498.51558300000005,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 36.00858399999561,
+            "p95Ms": 294.42695900000035,
+            "p99Ms": 366.1909999999989,
+            "maxMs": 444.5329579999998,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.010750000001280569
+          },
+          "health": {
+            "offered": 619,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 78.16906540353435,
+          "terminalStatus": {
+            "httpP50Ms": 2.2577499999970314,
+            "httpP95Ms": 4.083749999997963,
+            "sqlMeanMs": 0.9288233199992101,
+            "gcOverlaps": 22
+          }
+        },
+        {
+          "runDir": "009-ip-heavy-user-matrix-comparison-1-candidate",
+          "armLabel": "candidate",
+          "repetition": 1,
+          "firstRequestMs": 331.698292,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 35.41504200000054,
+            "p95Ms": 294.3597499999996,
+            "p99Ms": 342.895500000006,
+            "maxMs": 499.5549170000013,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.010666999998647952
+          },
+          "health": {
+            "offered": 601,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 80.52208835341365,
+          "terminalStatus": {
+            "httpP50Ms": 2.4575000000040745,
+            "httpP95Ms": 4.95850000000064,
+            "sqlMeanMs": 1.1534126000000107,
+            "gcOverlaps": 18
+          }
+        },
+        {
+          "runDir": "010-ip-heavy-user-matrix-comparison-2-candidate",
+          "armLabel": "candidate",
+          "repetition": 2,
+          "firstRequestMs": 343.618584,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 36.44100000000003,
+            "p95Ms": 315.9802499999987,
+            "p99Ms": 483.25533299999915,
+            "maxMs": 2678.547125,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.009624999998777639
+          },
+          "health": {
+            "offered": 655,
+            "misses": 56
+          },
+          "hostIdleMedianPercent": 76.70682730923694,
+          "terminalStatus": {
+            "httpP50Ms": 1.5629579999949783,
+            "httpP95Ms": 2.4339580000014394,
+            "sqlMeanMs": 0.6514775799997733,
+            "gcOverlaps": 38
+          }
+        },
+        {
+          "runDir": "011-ip-heavy-user-matrix-comparison-2-baseline",
+          "armLabel": "baseline",
+          "repetition": 2,
+          "firstRequestMs": 331.82500000000005,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 35.23333299999649,
+            "p95Ms": 290.6348340000004,
+            "p99Ms": 304.27691700000287,
+            "maxMs": 437.4147499999999,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.006041999999979453
+          },
+          "health": {
+            "offered": 592,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 83.63273453093812,
+          "terminalStatus": {
+            "httpP50Ms": 2.2337079999997513,
+            "httpP95Ms": 5.295292000002519,
+            "sqlMeanMs": 0.9771540400013328,
+            "gcOverlaps": 18
+          }
+        },
+        {
+          "runDir": "012-ip-heavy-user-matrix-comparison-3-baseline",
+          "armLabel": "baseline",
+          "repetition": 3,
+          "firstRequestMs": 327.74258299999997,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 34.50054199999431,
+            "p95Ms": 289.1742090000007,
+            "p99Ms": 332.7247500000012,
+            "maxMs": 419.565290999999,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.004957999997714069
+          },
+          "health": {
+            "offered": 593,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 82.03592814371258,
+          "terminalStatus": {
+            "httpP50Ms": 2.3794590000034077,
+            "httpP95Ms": 4.256917000006069,
+            "sqlMeanMs": 0.9601908199995524,
+            "gcOverlaps": 18
+          }
+        },
+        {
+          "runDir": "013-ip-heavy-user-matrix-comparison-3-candidate",
+          "armLabel": "candidate",
+          "repetition": 3,
+          "firstRequestMs": 331.131416,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 34.830000000001746,
+            "p95Ms": 292.07654100000036,
+            "p99Ms": 308.405667,
+            "maxMs": 457.19787499999984,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.019874999998137355
+          },
+          "health": {
+            "offered": 591,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 83.06772908366534,
+          "terminalStatus": {
+            "httpP50Ms": 2.271333999997296,
+            "httpP95Ms": 6.023458000003302,
+            "sqlMeanMs": 0.950456740000518,
+            "gcOverlaps": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "mixed-api-matrix",
+      "startedAt": "2026-09-13T23:19:23.925Z",
+      "finishedAt": "2026-09-13T23:24:06.270Z",
+      "qualification": "diagnostic-or-partial",
+      "fixtures": {
+        "correctness": {
+          "counts": {
+            "deployments": 1251,
+            "container_specs": 1251,
+            "vms": 14,
+            "deployment_events": 2,
+            "credentials": 2,
+            "workers": 1,
+            "clusters": 1
+          },
+          "vmShape": {
+            "nullIp": 4,
+            "withIp": 10,
+            "emptyIp": 1,
+            "live": 6
+          },
+          "logicalSha256": "05988127483f807d9faeabd0808ba74fd725297620282909b63af7ae6fe40487",
+          "originalLogicalSha256": "290e0021517acec6240149d84df9c009d61e01c9deda3738567481b0e8f07aaf"
+        },
+        "mixed": {
+          "counts": {
+            "deployments": 18664,
+            "container_specs": 18664,
+            "vms": 285564,
+            "deployment_events": 1994751,
+            "credentials": 2,
+            "workers": 0,
+            "clusters": 0
+          },
+          "vmShape": {
+            "nullIp": 217436,
+            "withIp": 68128,
+            "emptyIp": 0,
+            "live": 880
+          },
+          "logicalSha256": "cc6cc0498b5a95632e9dd85f362d778f5afe6ba0ef99cd95258996a4c1d1766b",
+          "originalLogicalSha256": "7ee05390561747e6e1b20667720e204ad8a869b8f812423079048871a32a6044"
+        }
+      },
+      "analysisSha256": "088411c6bb8a5e1ca822858fffb91fef8915e7bacf0b134ee649b467f2ad7241",
+      "trials": [
+        {
+          "runDir": "008-mixed-api-matrix-comparison-1-baseline",
+          "armLabel": "baseline",
+          "repetition": 1,
+          "firstRequestMs": 171.038417,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 20.985333000000537,
+            "p95Ms": 128.97162500000013,
+            "p99Ms": 164.20424999999977,
+            "maxMs": 311.4177920000002,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.0030829999996058177
+          },
+          "health": {
+            "offered": 345,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 82.4174244904151,
+          "terminalStatus": {
+            "httpP50Ms": 2.047459000001254,
+            "httpP95Ms": 2.6445410000014817,
+            "sqlMeanMs": 0.6783810200002336,
+            "gcOverlaps": 21
+          }
+        },
+        {
+          "runDir": "009-mixed-api-matrix-comparison-1-candidate",
+          "armLabel": "candidate",
+          "repetition": 1,
+          "firstRequestMs": 167.11575000000002,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 20.964082999999846,
+            "p95Ms": 124.27695900000072,
+            "p99Ms": 155.47654200000034,
+            "maxMs": 227.640625,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.005124999999679858
+          },
+          "health": {
+            "offered": 332,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 83.09999159969759,
+          "terminalStatus": {
+            "httpP50Ms": 2.0242079999989073,
+            "httpP95Ms": 2.890541000000667,
+            "sqlMeanMs": 0.664962740001647,
+            "gcOverlaps": 22
+          }
+        },
+        {
+          "runDir": "010-mixed-api-matrix-comparison-2-candidate",
+          "armLabel": "candidate",
+          "repetition": 2,
+          "firstRequestMs": 221.660417,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 21.299166000000696,
+            "p95Ms": 127.00666699999965,
+            "p99Ms": 178.4120839999996,
+            "maxMs": 223.15066699999988,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.006834000003436813
+          },
+          "health": {
+            "offered": 341,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 78.64271457085829,
+          "terminalStatus": {
+            "httpP50Ms": 1.995374999998603,
+            "httpP95Ms": 2.71379199999501,
+            "sqlMeanMs": 0.6585975599999074,
+            "gcOverlaps": 20
+          }
+        },
+        {
+          "runDir": "011-mixed-api-matrix-comparison-2-baseline",
+          "armLabel": "baseline",
+          "repetition": 2,
+          "firstRequestMs": 165.494333,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 21.361375000000407,
+            "p95Ms": 121.38141700000051,
+            "p99Ms": 123.96012500000052,
+            "maxMs": 130.93299999999908,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.005125000000589353
+          },
+          "health": {
+            "offered": 324,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 83.2,
+          "terminalStatus": {
+            "httpP50Ms": 2.122292000000016,
+            "httpP95Ms": 3.956540999999561,
+            "sqlMeanMs": 0.6994392599993443,
+            "gcOverlaps": 21
+          }
+        },
+        {
+          "runDir": "012-mixed-api-matrix-comparison-3-baseline",
+          "armLabel": "baseline",
+          "repetition": 3,
+          "firstRequestMs": 169.95737499999998,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 20.995625000000018,
+            "p95Ms": 122.08108300000094,
+            "p99Ms": 134.91979100000026,
+            "maxMs": 269.6259579999987,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.007249999998748535
+          },
+          "health": {
+            "offered": 332,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 82.3115399222645,
+          "terminalStatus": {
+            "httpP50Ms": 2.4215000000003783,
+            "httpP95Ms": 3.6157920000005106,
+            "sqlMeanMs": 0.7708418199999142,
+            "gcOverlaps": 20
+          }
+        },
+        {
+          "runDir": "013-mixed-api-matrix-comparison-3-candidate",
+          "armLabel": "candidate",
+          "repetition": 3,
+          "firstRequestMs": 181.560375,
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 21.393790999999965,
+            "p95Ms": 132.36141700000007,
+            "p99Ms": 179.802166999998,
+            "maxMs": 309.8025829999988,
+            "responseBytes": 210834950,
+            "maxOfferDelayMs": 0.008874999999989086
+          },
+          "health": {
+            "offered": 342,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 79.31726907630522,
+          "terminalStatus": {
+            "httpP50Ms": 2.071624999996857,
+            "httpP95Ms": 3.138833999997587,
+            "sqlMeanMs": 0.696104300001316,
+            "gcOverlaps": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": "mixed-user-load",
+      "startedAt": "2026-09-13T23:24:06.624Z",
+      "finishedAt": "2026-09-13T23:31:06.184Z",
+      "qualification": "diagnostic-or-partial",
+      "fixtures": {
+        "correctness": {
+          "counts": {
+            "deployments": 1251,
+            "container_specs": 1251,
+            "vms": 14,
+            "deployment_events": 2,
+            "credentials": 2,
+            "workers": 1,
+            "clusters": 1
+          },
+          "vmShape": {
+            "nullIp": 4,
+            "withIp": 10,
+            "emptyIp": 1,
+            "live": 6
+          },
+          "logicalSha256": "6360ea4911a4d3c1d38230a8e8fdc7d932063b6cfc20d7cbe98d6aa8b4b6e3b8",
+          "originalLogicalSha256": "290e0021517acec6240149d84df9c009d61e01c9deda3738567481b0e8f07aaf"
+        },
+        "mixed": {
+          "counts": {
+            "deployments": 18664,
+            "container_specs": 18664,
+            "vms": 285564,
+            "deployment_events": 1994751,
+            "credentials": 2,
+            "workers": 0,
+            "clusters": 0
+          },
+          "vmShape": {
+            "nullIp": 217436,
+            "withIp": 68128,
+            "emptyIp": 0,
+            "live": 880
+          },
+          "logicalSha256": "4f0434e008b5047dc68a7a2d0b9fadfc84af4cfc44df74eeb247ee25fd75c706",
+          "originalLogicalSha256": "7ee05390561747e6e1b20667720e204ad8a869b8f812423079048871a32a6044"
+        }
+      },
+      "analysisSha256": "6ee960afbd04c1e1b5f5b598318e25dea027a304e88e9d7513fe948f7fbf3198",
+      "trials": [
+        {
+          "runDir": "008-mixed-user-load-comparison-1-baseline",
+          "armLabel": "baseline",
+          "repetition": 1,
+          "firstRequestMs": 289.06425,
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 768,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 159.55574999999953,
+            "p95Ms": 342.9257920000018,
+            "p99Ms": 609.2489999999962,
+            "maxMs": 1340.590167000002,
+            "responseBytes": 533993906,
+            "maxOfferDelayMs": 5.400792333355639
+          },
+          "health": {
+            "offered": 1815,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 85.48707753479125,
+          "terminalStatus": null
+        },
+        {
+          "runDir": "009-mixed-user-load-comparison-1-candidate",
+          "armLabel": "candidate",
+          "repetition": 1,
+          "firstRequestMs": 241.47791600000002,
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 768,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 147.6148749999993,
+            "p95Ms": 208.8878750000149,
+            "p99Ms": 303.8760000000002,
+            "maxMs": 440.74274999999034,
+            "responseBytes": 533993906,
+            "maxOfferDelayMs": 2.8110840000008466
+          },
+          "health": {
+            "offered": 1813,
+            "misses": 0
+          },
+          "hostIdleMedianPercent": 85.81417165668663,
+          "terminalStatus": null
+        }
+      ]
+    }
+  ],
+  "artifactAudit": {
+    "verifiedAt": "2026-09-13T23:32:17.389Z",
+    "method": "Copy only upload-eligible extensions to a fresh directory; validate hashes, decode gzip, verify complete responses, requests, health, server observations, process journals, lifecycle, raw metrics, paired trials and unchanged manifests.",
+    "planSha256": "52475732343e16d2ea7bf864e4835c73c7a0130c602af3c3302df22cadd1a1fd",
+    "harnessSource": "ad084905dfaf9ef242d9252a096e81e92454bb5f",
+    "cases": [
+      {
+        "id": "sparse-user-matrix",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "dba88d0f4c4c5695f951b94086036e3ec41de3f29a39a2add495d7affc28f3dd",
+        "reportSha256": "b6cfafa2d32b3e4b1d162ae01dea29508bd40403871c0442a58f920b898b6158",
+        "files": 271,
+        "bytes": 19287178,
+        "jsonlFiles": 60,
+        "compressedResponses": 134,
+        "diagnosticJournals": 36,
+        "trials": 6,
+        "correctnessResponses": 74
+      },
+      {
+        "id": "ip-heavy-user-matrix",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "d217c3f788b77bb076b2acff65a3e2e6967f4f61da8214d0d51bd5af794692dd",
+        "reportSha256": "eb18ceea6f33eed0cf329feecf27dca80358c0b58b6d34d47e277a8dc231ee02",
+        "files": 271,
+        "bytes": 25664751,
+        "jsonlFiles": 60,
+        "compressedResponses": 134,
+        "diagnosticJournals": 36,
+        "trials": 6,
+        "correctnessResponses": 74
+      },
+      {
+        "id": "mixed-api-matrix",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "b63b03574637c4a54380935d8247dc30a7612cfea7c65149c2a0907e25dd8c63",
+        "reportSha256": "55cb899c668820bbe36ae2602709af0b917969c29fd61c5acf6bf6d46e0799fe",
+        "files": 273,
+        "bytes": 21365918,
+        "jsonlFiles": 60,
+        "compressedResponses": 136,
+        "diagnosticJournals": 36,
+        "trials": 6,
+        "correctnessResponses": 76
+      },
+      {
+        "id": "mixed-user-load",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "85ade3bc4230224579fe977d87289b2e8427a07e4b5b4ecca21d3fd21e913034",
+        "reportSha256": "77fb5bd76b4aa27f4debc2d4c3a65d0e67db614f9e87ee905d723575967a0bec",
+        "files": 173,
+        "bytes": 16246429,
+        "jsonlFiles": 36,
+        "compressedResponses": 84,
+        "diagnosticJournals": 24,
+        "trials": 2,
+        "correctnessResponses": 74
+      }
+    ]
+  },
+  "verification": {
+    "runnerFocusedTests": 44,
+    "analyzerFocusedTests": 6,
+    "longHistorySixSecondGate": "passed",
+    "diagnosticWorktreeVerify": {
+      "status": "failed",
+      "passedTests": 9169,
+      "failedTests": 4,
+      "reason": "Existing published GCP catalog expectations; all four failures reproduce on untouched pinned baseline"
+    },
+    "evidenceWorktreeVerify": {
+      "status": "failed",
+      "passedTests": 9168,
+      "failedTests": 4,
+      "testFiles": 374,
+      "reason": "The same four GCP catalog failures reproduced on the untouched pinned baseline; build, boundaries, types, lint and formatting passed"
+    },
+    "cachedGcpCatalogSha256": "aa05100a716789412b3aae04bb74019c74aee07fd1557bfb5c9c8e065673a0e0"
+  },
+  "limitations": [
+    "Instrumented, diagnostic sample sizes; no qualification gates or extra official repetitions.",
+    "Freshly seeded databases; no claim of original byte-for-byte database replay or cold OS caches.",
+    "Single Mac on battery, without CPU affinity, thermal or scheduler control; host aggregate idle does not establish process scheduling.",
+    "GC overlap is correlation; exact native wait and historical transport causes need further diagnosis."
+  ]
+}

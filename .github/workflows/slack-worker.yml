@@ -1,0 +1,59 @@
+name: Slack Worker
+
+# Manually promotes slack-worker/ to slack.anycloud.sh after verification.
+# Production deployment is restricted to the main branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify Slack Worker
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Run Worker tests
+        run: yarn vitest run slack-worker/src/index.spec.ts
+
+      - name: Type-check Worker
+        run: yarn tsc -p slack-worker/tsconfig.json
+
+      - name: Dry-run Worker deploy
+        working-directory: slack-worker
+        run: npx --yes wrangler@^4.0.0 deploy --dry-run
+
+  deploy:
+    name: Deploy Slack Worker
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloudflare-deploy
+    steps:
+      - uses: actions/checkout@v5
+
+      # wrangler-action installs with npm, which backmesh's image lacks.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: slack-worker
+          wranglerVersion: '4'
+          command: deploy
+
+      - name: Smoke-test Slack Worker
+        run: curl --fail --silent --show-error https://slack.anycloud.sh/health | jq --exit-status '.ok == true'

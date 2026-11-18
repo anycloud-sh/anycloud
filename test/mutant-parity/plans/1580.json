@@ -1,0 +1,47 @@
+{
+  "base": "06cec4c66144c3a1ca358d09b2a27500b3b76e26",
+  "head": "75c67c1eb81c495f8e8c5fa5d67a5cbc3027fa72",
+  "moves": [
+    {
+      "from": "src/api/services/workload-store.ts",
+      "to": "src/api/services/repositories/workload-creation.ts",
+      "symbols": [
+        "serializeStringOrArray",
+        ["WorkloadStore.createWorkload", "createWorkload"]
+      ]
+    },
+    {
+      "from": "src/api/services/workload-store.ts",
+      "to": "src/api/services/repositories/workload-lifecycle.ts",
+      "symbols": [
+        [
+          "WorkloadStore.beginServiceUpgrade",
+          "WorkloadLifecycleStore.beginServiceUpgrade"
+        ]
+      ]
+    },
+    {
+      "from": "src/api/services/workload-store.ts",
+      "to": "src/api/services/persistence.ts",
+      "symbols": [["WorkloadStore.recordApiVersion", "recordApiVersion"]]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/helpers/workload-store.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/persistence.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts",
+      "test/unit/services/workload-store.spec.ts"
+    ],
+    "head": [
+      "test/unit/helpers/workload-store.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/persistence.spec.ts",
+      "test/unit/services/repositories/workload-creation.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts"
+    ]
+  }
+}

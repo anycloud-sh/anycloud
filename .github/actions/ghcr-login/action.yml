@@ -1,0 +1,31 @@
+name: GHCR login (retry)
+description: >-
+  Log in to ghcr.io with bounded retry, mirroring the test suite's
+  `retry_cmd 3 15` so a transient registry timeout (context deadline
+  exceeded) on the login step doesn't fail the whole job.
+
+# NOTE: this is a *local* composite action, so it is only available after
+# `actions/checkout` has run. Every current caller logs in post-checkout; a
+# caller that logs in before checkout must inline the login instead.
+
+inputs:
+  token:
+    description: Token to authenticate to ghcr.io (typically secrets.GITHUB_TOKEN)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GHCR_TOKEN: ${{ inputs.token }}
+      run: |
+        for attempt in 1 2 3; do
+          if echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin; then
+            exit 0
+          fi
+          echo "GHCR login attempt ${attempt}/3 failed" >&2
+          [ "$attempt" -lt 3 ] && sleep 15
+        done
+        echo "GHCR login failed after 3 attempts" >&2
+        exit 1

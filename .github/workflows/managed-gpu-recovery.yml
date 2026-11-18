@@ -1,0 +1,113 @@
+name: Manual Managed GPU Recovery
+
+# Managed GPU recovery requires a completed original qualification and its
+# authority uploaded before provisioning. The optional Azure reader only observes
+# its original Job identity. Neither route starts automatically or unlocks retries.
+on:
+  workflow_dispatch:
+    inputs:
+      original_run_id:
+        description: Completed managed GPU qualification run to recover
+        type: string
+        required: true
+      original_run_attempt:
+        description: Exact original attempt to recover
+        type: string
+        required: true
+      azure_identity_readback:
+        description: Exact Azure Job identity request JSON; selects readback only
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: managed-gpu-recovery-${{ inputs.original_run_id }}-${{ inputs.original_run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: inputs.azure_identity_readback == ''
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-od-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      E2E_SERVE_GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+      ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+      ORIGINAL_RUN_ATTEMPT: ${{ inputs.original_run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - name: Recover the exact completed qualification attempt
+        run: |
+          timeout --foreground --kill-after=30s 3600s yarn tsx ci/cleanup/managed-gpu-run.ts \
+            cleanup "$ORIGINAL_RUN_ID" "$ORIGINAL_RUN_ATTEMPT" recovery/managed-gpu-recovery.json
+      - name: Retain manual recovery proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-gpu-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: recovery/managed-gpu-recovery.json
+          if-no-files-found: error
+          retention-days: 30
+
+  azure-job-identity-readback:
+    if: inputs.azure_identity_readback != ''
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-2' }}
+    environment: cloud-e2e
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    concurrency:
+      group: azure-onboarding-e2e
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install runner tools
+        timeout-minutes: 5
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: bash scripts/ci-install-dependencies.sh
+      - name: Read back an original Azure Job identity
+        timeout-minutes: 3
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+          E2E_AZURE_JOB_IDENTITY_READBACK: ${{ inputs.azure_identity_readback }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          ORIGINAL_RUN_ATTEMPT: ${{ inputs.original_run_attempt }}
+        run: yarn inspect:azure-job-identity
+      - name: Retain exact Azure Job identity readback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-azure-identity-readback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/azure-job-identity-readback/${{ github.run_id }}-${{ github.run_attempt }}/receipt.json
+          retention-days: 30
+          if-no-files-found: error

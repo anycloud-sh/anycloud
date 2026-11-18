@@ -1,0 +1,293 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "clusterId": { "type": "string" },
+    "vmSize": { "type": "string" },
+    "imageSku": { "type": "string" },
+    "zone": { "type": "string", "defaultValue": "" },
+    "customData": { "type": "securestring" },
+    "adminPublicKey": { "type": "string" },
+    "deployVm": { "type": "bool" },
+    "cloudflareRanges": { "type": "array" },
+    "storageResourceGroup": { "type": "string" },
+    "storageAccount": { "type": "string" },
+    "checkpointContainer": { "type": "string" },
+    "createCheckpointContainer": { "type": "bool" },
+    "checkpointManaged": { "type": "bool" },
+    "tags": { "type": "object" }
+  },
+  "variables": {
+    "name": "[concat('anycloud-cluster-', parameters('clusterId'))]",
+    "location": "[resourceGroup().location]",
+    "contributorRole": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+    "identityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('name'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceGroup().id, variables('identityId'), variables('contributorRole'))]",
+      "dependsOn": ["[variables('identityId')]"],
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('contributorRole'))]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(variables('name'), '-checkpoint')]",
+      "resourceGroup": "[parameters('storageResourceGroup')]",
+      "dependsOn": ["[variables('identityId')]"],
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": { "scope": "inner" },
+        "parameters": {
+          "account": { "value": "[parameters('storageAccount')]" },
+          "container": { "value": "[parameters('checkpointContainer')]" },
+          "create": { "value": "[parameters('createCheckpointContainer')]" },
+          "managed": { "value": "[parameters('checkpointManaged')]" },
+          "principalId": {
+            "value": "[reference(variables('identityId'), '2023-01-31').principalId]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "account": { "type": "string" },
+            "container": { "type": "string" },
+            "create": { "type": "bool" },
+            "managed": { "type": "bool" },
+            "principalId": { "type": "string" }
+          },
+          "variables": {
+            "blobDataContributorRole": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+            "containerId": "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('account'), 'default', parameters('container'))]"
+          },
+          "resources": [
+            {
+              "condition": "[parameters('create')]",
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-01-01",
+              "name": "[concat(parameters('account'), '/default/', parameters('container'))]",
+              "properties": { "publicAccess": "None" }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('account'), '/blobServices/default/containers/', parameters('container'))]",
+              "name": "[guid(variables('containerId'), parameters('principalId'), variables('blobDataContributorRole'))]",
+              "dependsOn": ["[variables('containerId')]"],
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('blobDataContributorRole'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ],
+          "outputs": {
+            "roleAssignmentId": {
+              "type": "string",
+              "value": "[extensionResourceId(variables('containerId'), 'Microsoft.Authorization/roleAssignments', guid(variables('containerId'), parameters('principalId'), variables('blobDataContributorRole')))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "Allow6443InBound",
+            "properties": {
+              "description": "Kubernetes API",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "6443",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 101,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "Allow80InBound",
+            "properties": {
+              "description": "AnyCloud API through Cloudflare",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "80",
+              "sourceAddressPrefixes": "[parameters('cloudflareRanges')]",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 102,
+              "direction": "Inbound"
+            }
+          },
+          {
+            "name": "Allow443InBound",
+            "properties": {
+              "description": "AnyCloud API through Cloudflare",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "443",
+              "sourceAddressPrefixes": "[parameters('cloudflareRanges')]",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 103,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "addressSpace": { "addressPrefixes": ["10.0.0.0/16"] },
+        "subnets": [
+          {
+            "name": "[variables('name')]",
+            "properties": { "addressPrefix": "10.0.0.0/16" }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": { "name": "Standard" },
+      "zones": "[if(empty(parameters('zone')), json('null'), createArray(parameters('zone')))]",
+      "properties": { "publicIPAllocationMethod": "Static" }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('name'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('name'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('name'))]"
+      ],
+      "properties": {
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('name'))]"
+        },
+        "ipConfigurations": [
+          {
+            "name": "[variables('name')]",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('name'), variables('name'))]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('name'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "condition": "[parameters('deployVm')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('name')]",
+      "location": "[variables('location')]",
+      "tags": "[parameters('tags')]",
+      "zones": "[if(empty(parameters('zone')), json('null'), createArray(parameters('zone')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('name'))]",
+        "[resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, variables('identityId'), variables('contributorRole')))]",
+        "[resourceId(parameters('storageResourceGroup'), 'Microsoft.Resources/deployments', concat(variables('name'), '-checkpoint'))]"
+      ],
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": { "[variables('identityId')]": {} }
+      },
+      "properties": {
+        "hardwareProfile": { "vmSize": "[parameters('vmSize')]" },
+        "userData": "[base64(reference(resourceId('Microsoft.Network/publicIPAddresses', variables('name')), '2023-09-01').ipAddress)]",
+        "osProfile": {
+          "computerName": "[variables('name')]",
+          "adminUsername": "anycloud",
+          "customData": "[parameters('customData')]",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": true,
+            "ssh": {
+              "publicKeys": [
+                {
+                  "path": "/home/anycloud/.ssh/authorized_keys",
+                  "keyData": "[parameters('adminPublicKey')]"
+                }
+              ]
+            }
+          }
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "canonical",
+            "offer": "ubuntu-24_04-lts",
+            "sku": "[parameters('imageSku')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "FromImage",
+            "deleteOption": "Delete",
+            "managedDisk": { "storageAccountType": "Standard_LRS" }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('name'))]",
+              "properties": { "primary": true, "deleteOption": "Delete" }
+            }
+          ]
+        },
+        "diagnosticsProfile": { "bootDiagnostics": { "enabled": true } }
+      }
+    }
+  ],
+  "outputs": {
+    "publicIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('name')), '2023-09-01').ipAddress]"
+    },
+    "instanceId": { "type": "string", "value": "[variables('name')]" },
+    "bucket": {
+      "type": "string",
+      "value": "[parameters('checkpointContainer')]"
+    },
+    "identity": {
+      "type": "string",
+      "value": "[reference(variables('identityId'), '2023-01-31').clientId]"
+    }
+  }
+}

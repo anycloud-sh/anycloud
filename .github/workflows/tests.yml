@@ -1,0 +1,329 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    # Only paths no unit spec reads. Specs read docs/, other Markdown files,
+    # and every workflow, so those changes still run the tests.
+    paths-ignore:
+      - 'website/**'
+      - 'anycloud-skills/**'
+      - 'ci/skills/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    needs: generated-sdk
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Download generated Python SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-python-sdk
+          path: python/generated/anycloud
+
+      - name: Install Python SDK
+        run: pip install ./python
+
+      - name: Build
+        run: yarn build
+
+      - name: Run unit tests (API service)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_BACKEND: ${{ vars.CI_BACKEND }}
+        run: |
+          if [ "${CI_BACKEND:-backmesh}" = hosted ]; then
+            yarn test
+          else
+            yarn test:ci-backmesh
+          fi
+
+      - name: Run Python fixture tests
+        run: |
+          pip install 'pytest>=8.0' numpy
+          python -m pytest test/unit/test_submission_response_loss.py test/unit/test_voice_session.py -q -p no:cacheprovider
+
+      - name: Verify Python API wire compatibility
+        run: yarn test:python-api-wire
+
+  generated-sdk:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache OpenAPI Generator
+        if: vars.CI_BACKEND == 'hosted'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/anycloud/openapi-generator/openapi-generator-cli-7.24.0.jar
+          key: openapi-generator-7.24.0-4b83ccc6fd43056c8
+
+      - name: Install dependencies
+        run: |
+          bash scripts/ci-install-dependencies.sh
+          python -m pip install \
+            'httpx>=0.28.1,<1' \
+            'pydantic>=2.11,<3' \
+            'python-dateutil>=2.8.2,<3' \
+            'typing-extensions>=4.12.2,<5'
+
+      - name: Generate deterministic Python SDK
+        env:
+          PYTHON_BIN: python
+        run: yarn generate:python-sdk
+
+      - name: Upload generated Python SDK
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-python-sdk
+          path: python/generated/anycloud
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compile, import, and qualify generated models
+        env:
+          PYTHON_BIN: python
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: yarn test:generated-python-sdk
+
+      - name: Run generated client contract test
+        env:
+          PYTHON_BIN: python
+        run: yarn test:generated-python-sdk-wire
+
+  test-sdk:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    needs: generated-sdk
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download generated Python SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-python-sdk
+          path: python/generated/anycloud
+
+      - name: Install build dependencies
+        run: python -m pip install 'build>=1.2,<2'
+
+      - name: Build wheel and source distribution
+        run: python -m build --outdir python/dist python
+
+      - name: Inspect package contents
+        run: >-
+          python test/integration/fixtures/qualify-python-sdk-artifacts.py
+          python/dist/*.whl python/dist/*.tar.gz
+
+      - name: Upload Python SDK distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sdk-distributions
+          path: python/dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  installed-sdk:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    needs: test-sdk
+    env:
+      PYTHONPATH: ''
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+        distribution: [wheel, sdist]
+        include:
+          - distribution: wheel
+            package_pattern: '*.whl'
+          - distribution: sdist
+            package_pattern: '*.tar.gz'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          bash scripts/ci-install-dependencies.sh
+          mkdir -p python/dist
+
+      - name: Download Python SDK distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-sdk-distributions
+          path: python/dist
+
+      - name: Create isolated SDK environment
+        run: |
+          sdk_venv="$(mktemp -d "$RUNNER_TEMP/anycloud-sdk-venv.XXXXXX")"
+          python -m venv "$sdk_venv"
+          echo "PYTHON_BIN=$sdk_venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Install tested ${{ matrix.distribution }}
+        run: '"$PYTHON_BIN" -m pip install python/dist/${{ matrix.package_pattern }}'
+
+      - name: Compile, import, and qualify installed models
+        env:
+          ANYCLOUD_EXPECT_INSTALLED: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: '"$PYTHON_BIN" test/integration/fixtures/generated-python-sdk-models.py'
+
+      - name: Qualify installed workflow extension
+        env:
+          ANYCLOUD_EXPECT_INSTALLED: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: '"$PYTHON_BIN" test/integration/fixtures/qualify-python-sdk-extensions.py'
+
+      - name: Run installed client contract test
+        env:
+          ANYCLOUD_WHEEL_TEST: '1'
+        run: yarn test:generated-python-sdk-wire
+
+  credentials-integration:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - name: Check cloud toolchain
+        run: bash ci/check-cloud-tools.sh
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run credentials integration tests
+        run: npx vitest run test/integration/credentials.test.ts
+
+  agent-session-title:
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - agent: claude
+            cli: '@anthropic-ai/claude-code'
+          - agent: codex
+            cli: '@openai/codex'
+    # Drift canary: verify upstream title formats with the latest agent CLIs.
+    # Fork and Dependabot PRs cannot access the API key on either backend.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Install agent CLI
+        # Latest on purpose: detect upstream format drift.
+        run: npm install -g '${{ matrix.cli }}@latest'
+
+      - name: Run Claude session-title drift canary
+        if: matrix.agent == 'claude'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npx vitest run test/integration/agent-session-title.spec.ts -t '^claude ' --reporter=verbose
+
+      - name: Run Codex session-title drift canary
+        if: matrix.agent == 'codex'
+        run: npx vitest run test/integration/agent-session-title.spec.ts -t '^codex ' --reporter=verbose

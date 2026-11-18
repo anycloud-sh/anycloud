@@ -1,0 +1,77 @@
+{
+  "base": "545e8d6687176c47d141f90e7f475ca121827a22",
+  "head": "36d382014d2d64df44f83775d0a9fd2d7ccd8aa5",
+  "moves": [
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/workload-workflows/retry-recovery.ts",
+      "symbols": [
+        "claimRecovering",
+        "teardownForRecovery",
+        "transitionToRecovering",
+        "allLiveVMsArePreempted",
+        "claimAllPreemptedVMRecovery",
+        "PREEMPTION_POLL_INTERVAL_MS",
+        "PREEMPTION_VM_CONCURRENCY",
+        "reconcilePreemptionCandidate",
+        "reconcileRetryCandidate",
+        "JOB_COMPLETION_POLL_INTERVAL_MS",
+        "JOB_UNREACHABLE_RECOVERY_MS",
+        "jobUnreachableStates",
+        "handleUnreachableJob"
+      ]
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/host-runtime/vm-release-observer.ts",
+      "symbols": [
+        "VM_RELEASE_PROVIDER_DEADLINE_MS",
+        "VM_RELEASE_MONITOR_TIMEOUT_MS",
+        "vmReleaseChecks",
+        "vmReleaseConfirmers",
+        "confirmedReleasedVMs",
+        "CONFIRMED_RELEASED_TTL_MS",
+        "vmReleaseCheckKey",
+        "rememberConfirmedRelease",
+        "clearVMReleaseTracking",
+        "checkVMRelease",
+        "isVmSshReachable"
+      ]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/resolve-workload-price.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts"
+    ],
+    "head": [
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/resolve-workload-price.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts"
+    ]
+  }
+}

@@ -1,0 +1,262 @@
+{
+  "kubernetesDeployment": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "annotations": {
+        "anycloud.sh/deployment-id": "target-a",
+        "anycloud.sh/generation": "2",
+        "anycloud.sh/owner-api": "00000000000000000000000000000001",
+        "anycloud.sh/template-hash": "05f78afe63cac13a",
+        "anycloud.sh/user-id": "user-a"
+      },
+      "labels": {
+        "anycloud.sh/deployment-hash": "272847e37a778e5a",
+        "app.kubernetes.io/component": "kubernetes-deployment",
+        "app.kubernetes.io/managed-by": "anycloud"
+      },
+      "name": "anycloud-deployment-target-a-272847e37a",
+      "namespace": "pool-ns"
+    },
+    "spec": {
+      "replicas": 1,
+      "revisionHistoryLimit": 1,
+      "selector": {
+        "matchLabels": {
+          "anycloud.sh/deployment-hash": "272847e37a778e5a",
+          "app.kubernetes.io/component": "kubernetes-deployment",
+          "app.kubernetes.io/managed-by": "anycloud"
+        }
+      },
+      "strategy": {
+        "type": "Recreate"
+      },
+      "template": {
+        "metadata": {
+          "annotations": {
+            "anycloud.sh/deployment-id": "target-a",
+            "anycloud.sh/generation": "2",
+            "anycloud.sh/owner-api": "00000000000000000000000000000001",
+            "anycloud.sh/user-id": "user-a"
+          },
+          "finalizers": [
+            "anycloud.sh/outcome"
+          ],
+          "labels": {
+            "anycloud.sh/deployment-hash": "272847e37a778e5a",
+            "app.kubernetes.io/component": "kubernetes-deployment",
+            "app.kubernetes.io/managed-by": "anycloud"
+          }
+        },
+        "spec": {
+          "affinity": {
+            "nodeAffinity": {
+              "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                  {
+                    "matchExpressions": [
+                      {
+                        "key": "node-restriction.kubernetes.io/anycloud-node-pool",
+                        "operator": "In",
+                        "values": [
+                          "node-pool-a"
+                        ]
+                      },
+                      {
+                        "key": "anycloud.sh/cluster",
+                        "operator": "In",
+                        "values": [
+                          "cluster-a"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "args": [
+                "serve",
+                "--port",
+                "8000"
+              ],
+              "env": [
+                {
+                  "name": "WORKLOAD_ID",
+                  "value": "target-a"
+                },
+                {
+                  "name": "DEPLOYMENT_ID",
+                  "value": "target-a"
+                },
+                {
+                  "name": "ANYCLOUD_API_URL",
+                  "value": "https://api.example"
+                },
+                {
+                  "name": "ANYCLOUD_DEPLOYMENT_ID",
+                  "value": "target-a"
+                },
+                {
+                  "name": "ANYCLOUD_WORKLOAD_TOKEN_FILE",
+                  "value": "/var/run/secrets/anycloud/token"
+                }
+              ],
+              "envFrom": [
+                {
+                  "secretRef": {
+                    "name": "anycloud-deployment-target-a-application-env-272847e37a"
+                  }
+                }
+              ],
+              "image": "ghcr.io/acme/model@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "name": "workload",
+              "readinessProbe": {
+                "exec": {
+                  "command": [
+                    "ready"
+                  ]
+                },
+                "periodSeconds": 5
+              },
+              "resources": {
+                "limits": {
+                  "cpu": "4",
+                  "memory": "8Gi",
+                  "nvidia.com/gpu": "2"
+                },
+                "requests": {
+                  "cpu": "4",
+                  "memory": "8Gi",
+                  "nvidia.com/gpu": "2"
+                }
+              },
+              "securityContext": {
+                "allowPrivilegeEscalation": false,
+                "seccompProfile": {
+                  "type": "RuntimeDefault"
+                }
+              },
+              "volumeMounts": [
+                {
+                  "mountPath": "/dev/shm",
+                  "name": "dev-shm"
+                },
+                {
+                  "mountPath": "/scratch",
+                  "name": "scratch-0"
+                },
+                {
+                  "mountPath": "/var/run/secrets/anycloud",
+                  "name": "anycloud-runtime-identity",
+                  "readOnly": true
+                }
+              ]
+            }
+          ],
+          "dnsPolicy": "Default",
+          "imagePullSecrets": [
+            {
+              "name": "anycloud-deployment-target-a-registry-auth-272847e37a"
+            }
+          ],
+          "nodeSelector": {
+            "node-restriction.kubernetes.io/anycloud-node-pool": "node-pool-a"
+          },
+          "restartPolicy": "Always",
+          "runtimeClassName": "nvidia",
+          "serviceAccountName": "anycloud-deployment-target-a-272847e37a",
+          "terminationGracePeriodSeconds": 30,
+          "tolerations": [
+            {
+              "effect": "NoSchedule",
+              "key": "anycloud.sh/node-pool",
+              "operator": "Equal",
+              "value": "node-pool-a"
+            }
+          ],
+          "volumes": [
+            {
+              "emptyDir": {
+                "medium": "Memory",
+                "sizeLimit": "1Gi"
+              },
+              "name": "dev-shm"
+            },
+            {
+              "emptyDir": {},
+              "name": "scratch-0"
+            },
+            {
+              "name": "anycloud-runtime-identity",
+              "projected": {
+                "sources": [
+                  {
+                    "serviceAccountToken": {
+                      "audience": "anycloud-runtime",
+                      "expirationSeconds": 3600,
+                      "path": "token"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "secrets": [
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {
+        "annotations": {
+          "anycloud.sh/deployment-id": "target-a",
+          "anycloud.sh/generation": "2",
+          "anycloud.sh/owner-api": "00000000000000000000000000000001",
+          "anycloud.sh/user-id": "user-a"
+        },
+        "labels": {
+          "anycloud.sh/deployment-hash": "272847e37a778e5a",
+          "app.kubernetes.io/component": "kubernetes-deployment",
+          "app.kubernetes.io/managed-by": "anycloud"
+        },
+        "name": "anycloud-deployment-target-a-registry-auth-272847e37a",
+        "namespace": "pool-ns"
+      },
+      "stringData": {
+        ".dockerconfigjson": "{\"auths\":{\"ghcr.io\":{\"username\":\"x-access-token\",\"password\":\"ghp_token\",\"auth\":\"eC1hY2Nlc3MtdG9rZW46Z2hwX3Rva2Vu\"}}}"
+      },
+      "type": "kubernetes.io/dockerconfigjson"
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {
+        "annotations": {
+          "anycloud.sh/deployment-id": "target-a",
+          "anycloud.sh/generation": "2",
+          "anycloud.sh/owner-api": "00000000000000000000000000000001",
+          "anycloud.sh/user-id": "user-a"
+        },
+        "labels": {
+          "anycloud.sh/deployment-hash": "272847e37a778e5a",
+          "app.kubernetes.io/component": "kubernetes-deployment",
+          "app.kubernetes.io/managed-by": "anycloud"
+        },
+        "name": "anycloud-deployment-target-a-application-env-272847e37a",
+        "namespace": "pool-ns"
+      },
+      "stringData": {
+        "DB_PASSWORD": "secret",
+        "GITHUB_TOKEN": "user-value",
+        "MODEL": "small"
+      },
+      "type": "Opaque"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+# coding: utf-8
+
+# flake8: noqa
+
+{{>partial_header}}
+
+
+__version__ = "{{packageVersion}}"
+
+# Define package exports
+__all__ = [
+    "AsyncClient",
+    "Client",
+    {{#apiInfo}}{{#apis}}"{{classname}}",
+    {{/apis}}{{/apiInfo}}"ApiResponse",
+    "ApiClient",
+    "Configuration",
+    "OpenApiException",
+    "ApiTypeError",
+    "ApiValueError",
+    "ApiKeyError",
+    "ApiAttributeError",
+    "ApiException",
+    {{#hasHttpSignatureMethods}}"HttpSigningConfiguration",
+    {{/hasHttpSignatureMethods}}{{#models}}{{#model}}"{{classname}}"{{^-last}},
+    {{/-last}}{{#-last}},{{/-last}}{{/model}}{{/models}}
+]
+
+{{^lazyImports}}
+{{>exports_package}}
+{{/lazyImports}}
+{{#lazyImports}}if __import__("typing").TYPE_CHECKING:
+    {{>exports_package}}
+else:
+    from lazy_imports import LazyModule, as_package, load
+
+    load(
+        LazyModule(
+            *as_package(__file__),
+            ("__version__", __version__),
+            ("__all__", __all__),
+            """{{>exports_package}}""",
+            name=__name__,
+            doc=__doc__,
+        )
+    )
+{{/lazyImports}}
+{{#recursionLimit}}
+
+__import__('sys').setrecursionlimit({{{.}}})
+{{/recursionLimit}}
+
+# Public workflow clients compose generated operations and load only on request.
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
+if _TYPE_CHECKING:
+    from anycloud_workflows import AsyncClient as AsyncClient
+    from anycloud_workflows import Client as Client
+
+
+def __getattr__(name: str) -> object:
+    if name == "AsyncClient":
+        from anycloud_workflows import AsyncClient
+
+        globals()[name] = AsyncClient
+        return AsyncClient
+    if name == "Client":
+        from anycloud_workflows import Client
+
+        globals()[name] = Client
+        return Client
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | {"AsyncClient", "Client"})

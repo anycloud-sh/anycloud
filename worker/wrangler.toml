@@ -1,0 +1,31 @@
+name = "dns-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Serializes edits to the API-TLS bridge rule's host list (the API-TLS rollout's step 1b).
+[[durable_objects.bindings]]
+name = "BRIDGE_RULE"
+class_name = "BridgeRule"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BridgeRule"]
+
+# Who got the first API certificate for each subdomain, kept forever; only they
+# may claim it again.
+[[durable_objects.bindings]]
+name = "CERTIFICATE_OWNER"
+class_name = "CertificateOwner"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CertificateOwner"]
+
+# Secrets (set via `wrangler secret put`):
+#   CLOUDFLARE_API_TOKEN — Cloudflare API token: Zone DNS Edit, Zone SSL and
+#                          Certificates Edit, Zone Config Rules Edit
+#   CLOUDFLARE_ZONE_ID   — anycloud.sh zone ID
+# Optional; each feature is off while its secret is unset:
+#   API_TLS_BRIDGE_RULE  — `<ruleset id>/<rule id>` of the Full (strict) bridge rule
+#   ORIGIN_PULL_CERT_ID  — uploaded per-hostname origin pull certificate id
+#   ORIGIN_PULL_CA       — PEM of the CA that signed it, handed to origins

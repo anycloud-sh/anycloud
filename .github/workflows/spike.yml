@@ -1,0 +1,99 @@
+name: Spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: Directory name under experiments/ (for example azure-spot-restart-race)
+        required: true
+        type: string
+      source_sha:
+        description: Full commit SHA containing the experiment and runner
+        required: true
+        type: string
+      arguments:
+        description: JSON array of literal arguments (for example ["preflight"])
+        type: string
+        default: '[]'
+      cleanup_arguments:
+        description: JSON argument array for an always-run cleanup invocation; empty for read-only experiments
+        type: string
+        default: ''
+
+run-name: 'Spike: ${{ inputs.experiment }} @ ${{ inputs.source_sha }}'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spike-${{ inputs.experiment }}
+  cancel-in-progress: false
+
+jobs:
+  experiment:
+    name: 'Spike: ${{ inputs.experiment }}'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 120
+    steps:
+      - name: Require an immutable source revision
+        env:
+          SPIKE_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: '[[ "$SPIKE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+      # Cloud CLIs, which an experiment may use.
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - name: Run experiment
+        timeout-minutes: 85
+        env: &spike-environment
+          SPIKE_EXPERIMENT: ${{ inputs.experiment }}
+          SPIKE_SOURCE_SHA: ${{ inputs.source_sha }}
+          SPIKE_ARGUMENTS: ${{ inputs.arguments }}
+          SPIKE_CLEANUP_ARGUMENTS: ${{ inputs.cleanup_arguments }}
+          SPIKE_OUTPUT_DIR: ${{ runner.temp }}/spike-evidence
+          # Every cloud credential CI holds (AWS, Azure, GCP, and Lambda named as
+          # in integration.yml), so a new experiment never needs a workflow
+          # change for credentials.
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+          LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          # The API-TLS origin-pull CA certificate; public. The CA's key
+          # and the client certificate stay in repository secrets no workflow
+          # reads.
+          ORIGIN_PULL_CA: ${{ secrets.ORIGIN_PULL_CA }}
+        run: yarn tsx ci/run-spike.ts run
+      - name: Run owned cleanup
+        if: always() && inputs.cleanup_arguments != ''
+        timeout-minutes: 20
+        env: *spike-environment
+        run: yarn tsx ci/run-spike.ts cleanup
+      - name: Retain experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-spike-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/spike-evidence/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,32 @@
+block-beta
+  columns 4
+  hd0[" "] hda["Batch-customer Jobs · M4"] hdk["Customer sessions · M2"] hds["Open-model serving · M3"]
+  b1["Shared by every substrate · layers 1–4"]:4
+  l1["1 Surface"] sh1["one Job noun; one status, attempts and --json shape; logs, terminate, wait"]:3
+  space a1["job IMAGE --node-pool"] k1["AsyncClient.submit(deployment=…)"] s1["deployment create --port"]
+  l2["2 Records"] sh2["workloads and the state machine; workload_attempts, an execution row per claim; the retry budget; pool_occupancy"]:3
+  space a2["deployments.managed"] space s2["no row per request"]
+  l3["3 Outcome policy"] sh3["Cause → the policy chosen by deployments.managed → recordAttemptOutcome"]:3
+  space a3["batchPolicy over the runner's report"] k3["DEPLOYMENT_POLICY (warm)"] space
+  l4["4 Contracts"] sh4["each substrate's classifier returns a Cause; the log tail; the share and the per-scope findBlockingCap charge; SLOT"]:3
+  b2["Pool runtime · layers 5–8"]:4
+  l5["5 Admission"] sh5["node-pool-admission.ts: one pool verdict, per-noun rules"]:3
+  space a5["find or create the managed Deployment"] space space
+  l6["6 Loop"] sh6["pool-reconciler.ts: one watch, 60 s resync"]:3
+  space space space s6["repairs the Service and IngressRoute"]
+  l7["7 Execution"] sh7["the Deployment owner: generation, drain, replicas, RA min/max; the claim queue (deployment-workload-domain.ts, TokenReview and Pod UID)"]:3
+  space a7["the runner: claim payload, stage, run, upload, reset"] k7["next_job() in their image"] s7["Service, IngressRoute, Traefik"]
+  space a7b["session check at the claim; RA from zero"] k7b["targeted Jobs ungated"] s7b["a fixed replica count; KEDA scale-to-zero, Later"]
+  l8["8 Capacity"] sh8["node-pool-controller.ts: Nodes from demand; pool-fit.ts and demand(); launch-targets.ts; spot; busy-Node scale-in"]:3
+  classDef sh fill:#e3eefa,stroke:#2f6db3,color:#151d24
+  classDef ang fill:#f7ebde,stroke:#b0601c,color:#151d24
+  classDef kf fill:#eee8f8,stroke:#6a4cb5,color:#151d24
+  classDef srv fill:#e2f2ec,stroke:#1f7a5c,color:#151d24
+  classDef ln fill:#ffffff,stroke:#ffffff,color:#151d24
+  classDef band fill:#ffffff,stroke:#d3dae0,color:#56616b
+  class sh1,sh2,sh3,sh4,sh5,sh6,sh7,sh8 sh
+  class hda,a1,a2,a3,a5,a7,a7b ang
+  class hdk,k1,k3,k7,k7b kf
+  class hds,s1,s2,s6,s7,s7b srv
+  class hd0,l1,l2,l3,l4,l5,l6,l7,l8 ln
+  class b1,b2 band

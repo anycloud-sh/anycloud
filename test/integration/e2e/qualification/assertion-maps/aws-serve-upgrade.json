@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "member": "aws-serve-upgrade",
+  "candidate": "e2e.sh aws-serve-upgrade --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "tracked-before-create",
+      "requirement": "Arm Workload cleanup and native verification before resource creation; every CLI mutation requires that exact tracked reference.",
+      "candidateEvidence": "contracts/serve.ts submitServe; service-cleanup.ts reserve; persistent-vm-cleanup.ts reserveWithProfile and creationStarted; workload-mutations.ts trackedCliMutations."
+    },
+    {
+      "id": "accepted-service-identity",
+      "requirement": "Submission succeeds and status belongs to the exact Service ID, canonical Service type and submitted image.",
+      "candidateEvidence": "contracts/serve.ts submitServe/assertServeStatus; targets/public-cloud-serve.ts or targets/local-smolvm-serve.ts. Human CLI presentation stays in test/unit/cli/serve-command.spec.ts; the candidate reads typed persisted identity and DNS instead of parsing logs."
+    },
+    {
+      "id": "running-capacity",
+      "requirement": "Reach persisted Running with exactly one live backing VM, preserving its native ID, region and zone.",
+      "candidateEvidence": "contracts/serve.ts awaitServeReady/serveBackingHosts; vm-ledger.ts snapshotStatusVmLedger and liveVmCount; persistent-vm-cleanup.ts retains every database attempt."
+    },
+    {
+      "id": "terminal-cleanup-order",
+      "requirement": "Explicit Terminated and finite ordered completedAt/cleanedAt values precede release.",
+      "candidateEvidence": "contracts/serve.ts observeServeTermination/assertServeCleanupRecorded; service-cleanup.ts independent cleanupApi terminal readback before fallback release; workloads.ts waitForCleanupRecorded and release."
+    },
+    {
+      "id": "cleared-vm-ledger",
+      "requirement": "No live capacity row remains before tracking is released.",
+      "candidateEvidence": "contracts/serve.ts observeServeTermination; vm-ledger.ts assertCleared; workloads.ts bound cleanup and ledger proofs."
+    },
+    {
+      "id": "all-native-attempts",
+      "requirement": "Independently prove every historical, ended, replaced and partially observed native identity absent using its original credential, region and zone; unknown or synthetic reservations retain obligations.",
+      "candidateEvidence": "persistent-vm-cleanup.ts complete database capture, original credential binding and verify; transports/public-cloud-vm-host-presence.ts strict observations or transports/local-smolvm.ts exact/owned inventory. AWS exact ClientToken inventories preserve original region/zone and partial page discoveries; historical adoption requires the original ledger row plus independent native-ID absence. Empty inventory stability requires two complete observations at least ten seconds apart."
+    },
+    {
+      "id": "failure-cleanup-evidence",
+      "requirement": "The before-finalize fault captures the completed journey, then diagnostics precede independent LIFO cleanup; primary and cleanup failures survive and unresolved resources remain tracked.",
+      "candidateEvidence": "contracts/serve.ts serviceCleanupFault; context.ts finalizeE2ELifecycle/dispose; cleanup.ts CleanupStack; service-cleanup.ts; e2e-fixture.spec.ts forced GPU cancellation/readback controls. helpers/common.sh mark_e2e_cleanup_workload_done preserves candidate tracking through outer API-only cleanup."
+    },
+    {
+      "id": "single-completion",
+      "requirement": "Only the finalizer publishes success after required evidence, child cleanup and Workload release; no failed or concurrent finalizer can complete twice.",
+      "candidateEvidence": "contracts/serve-baseline.ts privately owned WeakMap phases and finish; Local/AWS upgrade run finalizers release children before kernel.release and result artifacts."
+    },
+    {
+      "id": "persisted-public-dns",
+      "requirement": "Persist the Service DNS record ID and use exactly https://<Workload ID>.anycloud.sh.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve.ts; test/integration/e2e/internal/targets/serve-types.ts; test/integration/e2e/internal/targets/public-cloud-serve.ts: dnsUnmet requires the persisted dnsRecordId; assertReadyIdentity requires the exact publicServeUrl and the DNS-observation invariant its exact hostname; observeEndpoint observes that endpoint."
+    },
+    {
+      "id": "direct-https-markers",
+      "requirement": "The direct public endpoint returns HTTP 200 and every expected startup marker; redirects never establish the endpoint identity.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve.ts; test/integration/e2e/internal/transports/public-cloud-serve.ts; test/integration/e2e/internal/transports/http.ts: waitForReadyObservation requires a ready (HTTP 200) observation with no missingMarkers; observeEndpoint probes with redirect: 'error', and the HTTP transport rejects any redirect."
+    },
+    {
+      "id": "authoritative-dns-absence",
+      "requirement": "Every distinct delegated authority must return an exact negative A answer for the original hostname after native termination; empty, unavailable, foreign or partial evidence is not absence.",
+      "candidateEvidence": "transports/service-dns.ts ServiceDnsProbe/ServiceDnsTransport; service-cleanup.ts verifies exact authority coverage before release; contracts/serve.ts absence assertions."
+    },
+    {
+      "id": "public-url-version-continuity",
+      "requirement": "Serve v1, accept upgrade, persist serve-upgrade and return to Running on a distinct host while the exact same public URL returns v2.",
+      "candidateEvidence": "contracts/serve-upgrade.ts plain and checkpointed; contracts/serve.ts upgradeServe, replacement ID, persisted image and marker observation."
+    },
+    {
+      "id": "held-restart-checkpoint",
+      "requirement": "Hold checkpoint upload on the exact old VM, restart the same API container after accepted Recovering, and preserve command, image, DNS, bucket/region and old execution-event identity across restart.",
+      "candidateEvidence": "contracts/serve-upgrade.ts acceptedUpgradeCheckpoint/run; probes/serve-upgrade-recovery.ts; transports/local-api-restart.ts. serve-upgrade-before-restart/after-restart receipts bind facts."
+    },
+    {
+      "id": "old-capacity-before-new-termination",
+      "requirement": "Verify the old VM is independently gone while the replacement still serves; release the checkpoint bucket before final Workload release.",
+      "candidateEvidence": "contracts/serve-upgrade.ts awaitOldHostAbsent, recovery.releaseBucket and kernel.release; probes/serve-upgrade-recovery.ts bucket cleanup."
+    },
+    {
+      "id": "checkpointless-upgrade",
+      "requirement": "Upgrade a Service that has no checkpoint bucket to a new image: persist the image and serve-upgrade, return to Running on a distinct host whose v2 marker answers HTTP 200 at the same URL, and prove the old VM absent before termination.",
+      "candidateEvidence": "contracts/serve-upgrade.ts plain (run before checkpointed) and awaitOldHostAbsent; contracts/serve.ts upgradeServe."
+    },
+    {
+      "id": "retained-comparison-metadata",
+      "requirement": "Retain exact revision, observed image digest/profile/host coordinates and actual cleanup facts on successful and failed comparisons for at least 30 days; preserve prior observations and explicit unknowns.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve-upgrade.ts; test/integration/e2e/internal/contracts/serve.ts; .github/workflows/e2e-serve.yml: service-finalization-boundary and serve-upgrade phase and result artifacts, Service/native cleanup and fixture records; the protected service-comparison-evidence-cloud upload in e2e-serve.yml."
+    }
+  ]
+}

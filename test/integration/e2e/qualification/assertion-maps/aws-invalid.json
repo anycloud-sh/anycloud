@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "member": "aws-invalid",
+  "candidate": "e2e.sh aws-invalid --vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "The four closed kind/target selections use target capabilities and fixed member cases. Specs only select the member and assert its completion.",
+      "candidateEvidence": "test/integration/e2e/internal/: job-policy.ts; targets/job-profiles.ts; closed-spec ESLint and discovery regressions."
+    },
+    {
+      "id": "all-original-cases",
+      "requirement": "Every case has a distinct original Workload reference, profile and generation. Completion requires every expected outcome; copied, foreign, missing, early and reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.#invalidAdmissionMember; JobRecords.admission/claimAdmission; family and record regressions."
+    },
+    {
+      "id": "credential-before-mutation",
+      "requirement": "Register original API credential and Workload cleanup intent before import or submit. Retain the original controller, credential material and explicit placement through cleanup.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobAuthorization bootstrap mode; PersistentVmCleanup.reserveWithProfile original-controller binding; kernel ownership regressions."
+    },
+    {
+      "id": "complete-pre-send-inventory",
+      "requirement": "Await the shared complete zero-resource baseline fence before one actual SDK create request for each case. Partial, truncated, nonempty, foreign or stale-controller evidence cannot authorize the send.",
+      "candidateEvidence": "test/integration/e2e/internal/: PublicCloudJobTransport.submitAdmission; WorkloadMutationTransport; shared PersistentVmCleanup owner; real SDK/database regression harness."
+    },
+    {
+      "id": "actual-rejection",
+      "requirement": "Only the actual decoded SDK WORKLOAD_ADMISSION_REJECTED with status 400 and the case-specific message establishes rejection. Authentication, redirect, schema, lost-reply and other errors preserve an armed registration and cannot be reported as non-creation.",
+      "candidateEvidence": "test/integration/e2e/internal/: PersistentVmCleanup.recordAdmissionRejection; actual ApiClient SDK error regression controls in e2e-job-public-transport.spec.ts."
+    },
+    {
+      "id": "no-native-resource",
+      "requirement": "Shared native verification requires complete original-identity pre/post counts and full Workload/event/VM history. A rejected request leaves no Workload row; an acknowledged Invalid guard leaves zero VM rows and never enters provisioning, retry or runtime.",
+      "candidateEvidence": "test/integration/e2e/internal/: PersistentVmCleanup.verify and recordAdmissionStatus; exact actual request/response bindings, guard event and terminal time; incomplete-history and foreign-identity controls."
+    },
+    {
+      "id": "independent-release",
+      "requirement": "Only the family finalizer releases each reference after shared native verification. Rejected requests require a fresh original-controller API absence read; acknowledged Invalid requests retain persisted cleanup. Cleanup cancellation/deadlines are independent, and uncertain evidence stays registered.",
+      "candidateEvidence": "test/integration/e2e/internal/: WorkloadKernel.releaseUncreated or waitForCleanupRecorded/release; single-use typed substrate proof; controller/generation/read-failure/concurrent-cleanup regressions."
+    },
+    {
+      "id": "no-provision-failure-evidence",
+      "requirement": "After all cases prove no native resources, record exact Not applicable for forced provisioning cleanup. A forced provisioning input rejects before preparation, and partial or failed members emit no completion.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: DedicatedJobContract.#invalidAdmissionMember invalid-admission branch writes the dedicated-job-result artifact with failureCleanup Not applicable; family regressions."
+    },
+    {
+      "id": "source-run-retention",
+      "requirement": "Retain compact success/failure records for at least 30 days, binding exact source, fixed or observed profile, run, attempt, case/reference/generation and duration. Keep original failures and uncertain cleanup visible.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing Integration no-provision job, source SHA, e2e-run, fixture/profile/native/cleanup/result records and protected job-comparison-evidence prefix; existing workflow regression."
+    },
+    {
+      "id": "reserved-bucket",
+      "requirement": "Reject the sthree-reserved-test- input bucket with nginx:alpine and t3.small before creating storage or compute.",
+      "candidateEvidence": "test/integration/e2e/internal/: reserved-bucket capability and exact bucket-bound message; actual SDK rejection."
+    },
+    {
+      "id": "unknown-vm",
+      "requirement": "Reject totally_fake_nonexistent_vm in explicitly pinned us-east-1 with the provider-specific not-available/not-offered message.",
+      "candidateEvidence": "test/integration/e2e/internal/: unknown-vm capability; exact original VM/region request and message."
+    }
+  ]
+}

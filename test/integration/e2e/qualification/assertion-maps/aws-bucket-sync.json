@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "member": "aws-bucket-sync",
+  "candidate": "e2e.sh aws-bucket-sync --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "The spec selects only its registered member and cannot supply lifecycle callbacks, placement overrides or completion evidence.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: job-policy.ts capturedMember/JOB_TARGET_PROFILES; closed-spec ESLint and Vitest discovery controls; thin dedicated-job spec."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a complete new inventory fence precede every send; original controller incarnation, credential, placement and provisional/native histories survive failures and resubmission.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger with before/after controller checks; JobNativeCleanup.creationStarted/capture; submitJob and direct final-send controller guard; kernel.reserveWithCleanupVerification; original private process environment."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup and zero live rows are prerequisites; independent native absence of every owned attempt is required before release, with uncertain history retained.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobNativeCleanup with independent cleanup readers/signal/deadline; historical attempt ledger; DedicatedJobContract.#finalize; no API-only manifest discharge."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims completion once, after exact run/reference/generation-bound progress, all required extension/terminal records and release of every child and shared resource.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobRecords begin/progress/extension/terminal/claim; DedicatedJobContract.#finalize; missing/copied/reused/early evidence regressions."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "A named forced failure leaves no completion; automatic cleanup and raw unresolved registrations are inspected independently, preserving primary and secondary errors and 30-day compact success/failure records.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: E2E_JOB_FORCE_CLEANUP in DedicatedJobContract; cleanup stack/native/storage/authorization records; common.sh manifest guard; protected job-comparison-evidence uploads; source/run/attempt metadata."
+    },
+    {
+      "id": "credential-intent-and-readback",
+      "requirement": "API and native credential intent precedes creation/import. Original account/principal/project identity, canonical credential hash and original controller remain pinned through complete absence readback.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization; job-aws-credential.ts, job-azure-credential.ts, job-gcp-credential.ts reuse onboarding owners; Azure acknowledged application-ID observations retain partial exact IDs and retry only complete missing directory reads within 60 seconds/remaining deadline; independent cleanup scope can finish binding after cancellation; directory cleanup uses the original isolated tenant session while only ARM role operations receive the subscription flag. ApiClient and complete credential database inventory; controller/send and alias-adoption regressions."
+    },
+    {
+      "id": "private-authentication",
+      "requirement": "Actual child environments exclude ambient credentials/endpoints/profiles. Secret-producing commands suppress artifacts before redaction; native authentication, fetch/body and cleanup remain within their independent deadlines.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobPrivateCommands recognizes both complete AWS error formats under unchanged truncation/authentication/privacy guards; isolatedJobEnvironment; JobCloudSession; private HTTP/error boundaries; command/session/credential privacy controls."
+    },
+    {
+      "id": "bucket-intent-and-native-scope",
+      "requirement": "Every explicit/automatic bucket has pre-mutation intent, exact API/native readback and immutable owner metadata. Empty contents never prove absence; malformed, foreign, truncated, unauthorized or redirected observations retain intent.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobCloudStorage reserve/create/beginAutomatic/observe/remove; one complete reread only for a previously unadopted automatic creation race, retaining both contradictory reads under the original deadline; JobBucketNativeReader original S3 account/region, GCS project number/location and Azure subscription/account/container; complete paginated Azure parent/container witnesses."
+    },
+    {
+      "id": "dependent-resource-lifetime",
+      "requirement": "All native children and owned storage must be absent before generated credentials are removed; uncertain or lost replies cannot adopt foreign resources or clear registrations.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport shared group childrenAbsent/dependentsAbsent; JobCloudStorage and JobAuthorization single-use lifetime; independent cleanup after cancellation and failed partial group setup."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Active evidence binds requested image/selectors, actual Docker configuration digest, API manifest observation, original native attempt, credential and exact resolved live VM coordinates to the owning run; global placement and ordered fallback selectors remain distinct from resolved placement.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#cloudProgress; PublicCloudJobTransport.imageConfigDigest; active-baseline/profile/credential-binding artifacts; absent optional API zones normalize to the original null zone, while known-zone mismatches still fail; actual manifest absence stays explicit."
+    },
+    {
+      "id": "profile-and-target-fallback",
+      "requirement": "Use the original pinned MACE image, disk/spot settings, fake-target admission fallback followed by ordered real types, and declared region policy.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: job-profiles.ts; jobMemberProfile; PublicCloudJobAdapter.submit ordered repeated --vm-type flags and fixed payload."
+    },
+    {
+      "id": "bucket-discovery",
+      "requirement": "The created input bucket appears in the complete CLI bucket inventory.",
+      "candidateEvidence": "test/integration/e2e/internal/job-cloud-storage.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers listedBucket; JobCloudStorage.buckets strict complete/unique schema; DedicatedJobContract.#cloudMember assertion."
+    },
+    {
+      "id": "hierarchical-listing",
+      "requirement": "Upload the ten-molecule input at cluster and nested paths; preserve root object, nested prefix, literal prefix and recursive object-only listings.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/job-profiles.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers rootObject/nestedPrefix/literalPrefix/recursiveObjects; JobCloudStorage.entries; JOB_BUCKET_MOLECULES."
+    },
+    {
+      "id": "active-before-extension",
+      "requirement": "Observe one live Running attempt with exact provider/type/region/credential before extensions; terminal-before-active cannot satisfy resource extensions.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#cloudProgress and JobRecords.progress/extension; default 3600-second Running budget."
+    },
+    {
+      "id": "storage-placement",
+      "requirement": "Same-cloud automatic output/checkpoint storage follows observed compute placement; declared cross-cloud credentials and fixed storage region remain independent.",
+      "candidateEvidence": "test/integration/e2e/internal/job-cloud-storage.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobMemberProfile storageFollowsCompute/crossCloudStorageCredential; PublicCloudJobAdapter.submit; JobCloudStorage native identity and #regionFor; actual composition placement regression."
+    },
+    {
+      "id": "organic-input-output-environment",
+      "requirement": "MACE reads the uploaded molecule list and writes nonempty finite-energy output with the exact run label; all names belong to the ten-molecule fixture.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#waitMolecules; job-observations.ts exact run label/finite values; PublicCloudJobTransport.results/runtime."
+    },
+    {
+      "id": "input-readonly-once",
+      "requirement": "Input is readable but not writable and a post-start upload remains absent in the guest after 15 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport.runtime inputReadOnly/lateInputAbsent and literal single-object late-input deletion; actual private guest commands; family required facts; public transport and existing CLI option validation regressions."
+    },
+    {
+      "id": "continuous-output",
+      "requirement": "Output molecule count grows after the first observation within the existing 180-second growth budget.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#waitMolecules compares organic and continuous observations and records both."
+    },
+    {
+      "id": "container-and-persisted-logs",
+      "requirement": "The Docker log follower is active and nonempty persisted container logs are read under the original VM IP within 120 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport.runtime/logs; DedicatedJobContract persisted log wait and byte/IP evidence."
+    },
+    {
+      "id": "natural-completion-and-final-output",
+      "requirement": "The Job reaches Completed with exit code zero and preserves every one of the ten finite molecule results and exact run label in final output.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract terminal wait/#assertExit/#finalMolecules; final-contents and finalizer records."
+    },
+    {
+      "id": "recursive-root",
+      "requirement": "Recursive transfer preserves root file contents.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.rootContents using real local files."
+    },
+    {
+      "id": "recursive-nested-hidden",
+      "requirement": "Recursive transfer preserves nested and hidden file contents.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.nestedContents/hiddenContents."
+    },
+    {
+      "id": "recursive-existing-mode",
+      "requirement": "Replacing an existing recursive download preserves mode 0600.",
+      "candidateEvidence": "src/cli/commands/bucket/download.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.existingMode; public writeStreamAtomically file-operation regression."
+    },
+    {
+      "id": "recursive-new-mode",
+      "requirement": "A new recursive download uses 0666 masked by the actual process umask.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.newMode."
+    },
+    {
+      "id": "single-download-mode",
+      "requirement": "An ordinary download preserves both contents and existing mode 0640.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.singleContents/singleMode."
+    },
+    {
+      "id": "collision-before-write",
+      "requirement": "Legal object keys that collide as a local file/directory fail specifically and leave the destination untouched.",
+      "candidateEvidence": "test/integration/e2e/internal/job-cloud-storage.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobCloudStorage.rejectsFileDirectoryCollision strict ordinary failure and original-controller send fence; prepareJobTransfers empty destination assertion."
+    },
+    {
+      "id": "recursive-removal-scope",
+      "requirement": "Recursive --yes deletion with concurrency two removes both exact prefixes and retains the sibling prefix.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: prepareJobTransfers recursive.deletedPrefix/retainedSibling and bounded concurrency arguments; actual public batch fixture regression."
+    },
+    {
+      "id": "checkpoint-ready-and-upload",
+      "requirement": "The automatic checkpoint bucket is ready within 300 seconds and contains nonempty validated checkpoint results before recovery.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract checkpoint-ready wait/#recover; JobCloudStorage automatic intent before create; typed beforeRecovery record requires one to nine molecules."
+    },
+    {
+      "id": "pre-fault-identity-order",
+      "requirement": "Persist original source-bound native VM and root/OS disk identity plus checkpoint and event history before sending the recovery fault.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#recover pre-fault artifact; JobRecoveryTransport.identity; JobRecords.beforeRecovery/recoveryFault; identity reread immediately before stop."
+    },
+    {
+      "id": "exact-vm-and-boot-disk",
+      "requirement": "Recovery ends the original attempt and starts a new row while preserving original credential, VM, boot disk, placement and type; copied/missing/foreign/early/reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobRecoveryTransport AWS instance/EBS, Azure VM/managed OS disk and GCP instance/boot disk protocols; JobRecords.recovered equality and retained historical row fields; negative record/native tests."
+    },
+    {
+      "id": "recovery-watchdogs",
+      "requirement": "Observe a fresh recovery event within 600 seconds and the next Running attempt within 2400 seconds using existing production timing.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#recover event-ID/workload gating and replacement-attempt Running wait; no accelerated production watchdog."
+    },
+    {
+      "id": "checkpoint-retention-and-resume",
+      "requirement": "Checkpoint names and energies survive the fault, and resumed computation increases the count within 2400 seconds without losing prior values.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: retainedJobMolecules; DedicatedJobContract.#recover after/resumed contents and post-fault artifact."
+    },
+    {
+      "id": "final-checkpoint-contents",
+      "requirement": "The final checkpoint retains all ten finite molecule results and the original run label.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#finalMolecules checkpoint and final-contents artifact."
+    },
+    {
+      "id": "automatic-checkpoint-removal",
+      "requirement": "Automatic checkpoint absence is verified after native cleanup within 60 seconds. Rescue deletion cannot erase a failed automatic-removal assertion.",
+      "candidateEvidence": "test/integration/e2e/internal/job-cloud-storage.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobCloudStorage.requireAutomaticAbsence sticky failed assertion; DedicatedJobContract.#finalize automaticCheckpointAbsence before release; native/API readback."
+    },
+    {
+      "id": "cli-status-logs-wait",
+      "requirement": "While the Job runs, `anycloud status --json` reports its checkpoint bucket, mount, retention and health read from the bucket, and `anycloud logs --follow 2>&1 | grep -m1` exits 0 once grep matches; after completion, `anycloud wait` exits 0 with a succeeded result and `status` shows the container finished with exit 0.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/cli-observations.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#cloudMember checks statusCheckpoint and logsStopWithTheirReader before the bucket-storage extension and completedByCli after the exit-code check; job-<id>-bucket-active artifact cliCheckpoint and cliLogsPipe."
+    },
+    {
+      "id": "launched-vm-type",
+      "requirement": "Status reports only listed VM types, never the refused fake head, and reports each live VM as the type its native read shows it launched as, before and after in-place recovery.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudMember status type check; #recover reportsLaunchedType."
+    }
+  ]
+}

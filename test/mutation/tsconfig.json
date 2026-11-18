@@ -1,0 +1,16 @@
+{
+  "extends": "../integration/tsconfig.json",
+  "include": [
+    "../integration/e2e/internal/cleanup.ts",
+    "../integration/e2e/internal/wait.ts",
+    "../integration/e2e/internal/controller-session.ts",
+    "../integration/e2e/internal/persistent-vm-submission.ts",
+    "../integration/e2e/internal/contracts/persistent-vm-policy.ts",
+    "../integration/e2e/internal/contracts/persistent-vm-running.ts",
+    "../unit/e2e-fixture.spec.ts",
+    "../unit/e2e-persistent-vm-boundaries.spec.ts",
+    "../unit/e2e-persistent-vm-contract.spec.ts",
+    "../unit/e2e-persistent-vm-host-loss-contract.spec.ts",
+    "../vitest.d.ts"
+  ]
+}

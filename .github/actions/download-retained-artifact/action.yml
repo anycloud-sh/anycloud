@@ -1,0 +1,29 @@
+name: Download retained CI artifact
+description: Download the original bytes and explain the retry window when unavailable
+inputs:
+  name:
+    description: Artifact name
+    required: true
+  path:
+    description: Destination directory
+  run-id:
+    description: Source workflow run
+    default: ${{ github.run_id }}
+  github-token:
+    description: Token for downloads from another run
+runs:
+  using: composite
+  steps:
+    - id: download
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+    - if: ${{ !cancelled() && steps.download.outcome == 'failure' }}
+      shell: bash
+      run: |
+        echo '::error::Required CI artifact could not be downloaded. If its retry window ended or storage cleanup removed it, start a fresh workflow dispatch. Do not rebuild bytes inside a retry.'
+        exit 1

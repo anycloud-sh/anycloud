@@ -1,0 +1,273 @@
+name: API Performance
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Baseline revision
+        default: main
+        type: string
+      candidate_ref:
+        description: Candidate revision (blank uses the selected workflow revision)
+        default: ''
+        type: string
+      profile:
+        description: Fixture profile
+        type: choice
+        options: [all, standard, backlog3, oversized, smoke]
+        default: all
+      response:
+        description: Provider bills
+        type: choice
+        options: [all, empty, mixed]
+        default: all
+      boundary:
+        description: Provider response timing
+        type: choice
+        options: [all, immediate, yield]
+        default: all
+      repetitions:
+        description: Paired trials per case
+        type: string
+        default: '6'
+
+concurrency:
+  group: api-performance-${{ github.event_name }}-${{ inputs.candidate_ref || github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Pin comparison revisions
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      baseline-sha: ${{ steps.revisions.outputs.baseline-sha }}
+      candidate-sha: ${{ steps.revisions.outputs.candidate-sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Resolve source commits once for every case
+        id: revisions
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { writeFileSync } = require('node:fs');
+            const { resolve } = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const helper = pathToFileURL(resolve('ci/api-responsiveness-revisions.mjs'));
+            const { resolveComparisonRevisions } = await import(helper.href);
+            const revisions = await resolveComparisonRevisions({ github, context });
+            for (const arm of ['baseline', 'candidate']) {
+              core.setOutput(arm + '-sha', revisions[arm].sha);
+            }
+            writeFileSync('comparison-revisions.json', JSON.stringify(revisions, null, 2) + '\n');
+            await core.summary.addHeading('Comparison revisions').addTable([
+              [{ data: 'Arm', header: true }, { data: 'Requested revision', header: true }, { data: 'Commit', header: true }],
+              ...['baseline', 'candidate'].map(arm => [arm, revisions[arm].ref, revisions[arm].sha]),
+            ]).write();
+
+      - name: Retain revision selection
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-responsiveness-revisions
+          path: comparison-revisions.json
+          retention-days: 7
+          if-no-files-found: error
+
+  compare:
+    name: Compare (${{ matrix.profile }}, ${{ matrix.response }}, ${{ matrix.boundary }})
+    needs: resolve
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-od-4' }}
+    timeout-minutes: ${{ matrix.profile == 'backlog3' && matrix.response == 'mixed' && 240 || 120 }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        profile: ${{ fromJSON((!inputs.profile || inputs.profile == 'all') && '["standard", "backlog3", "oversized"]' || format('["{0}"]', inputs.profile)) }}
+        response: ${{ fromJSON((!inputs.response || inputs.response == 'all') && '["empty", "mixed"]' || format('["{0}"]', inputs.response)) }}
+        boundary: ${{ fromJSON((!inputs.boundary || inputs.boundary == 'all') && '["immediate", "yield"]' || format('["{0}"]', inputs.boundary)) }}
+    permissions:
+      contents: read
+    env:
+      BENCH_OUTPUT: ${{ github.workspace }}/api-responsiveness-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.profile }}-${{ matrix.response }}-${{ matrix.boundary }}
+      BENCH_PROFILE: ${{ matrix.profile }}
+      BENCH_RESPONSE: ${{ matrix.response }}
+      BENCH_BOUNDARY: ${{ matrix.boundary }}
+      BENCH_REPETITIONS: ${{ inputs.repetitions || '6' }}
+      BENCH_TIMEOUT_MS: '1800000'
+    steps:
+      # Keep the measurement code pinned to this workflow revision even when
+      # manual dispatch compares builds from before the harness existed.
+      - name: Checkout measurement harness
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - name: Checkout pinned candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.candidate-sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Checkout pinned baseline
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.baseline-sha }}
+          path: baseline
+          persist-credentials: false
+
+      - uses: ./harness/.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+          cache-dependency-path: |
+            baseline/yarn.lock
+            candidate/yarn.lock
+
+      - name: Install baseline dependencies
+        working-directory: baseline
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build baseline
+        working-directory: baseline
+        run: yarn build
+
+      - name: Install candidate dependencies
+        working-directory: candidate
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build candidate
+        working-directory: candidate
+        run: yarn build
+
+      - name: Compare actual production builds
+        working-directory: harness
+        timeout-minutes: ${{ matrix.profile == 'backlog3' && matrix.response == 'mixed' && 240 || 120 }}
+        run: >-
+          node benchmarks/api-responsiveness.mjs
+          --base-dir ../baseline
+          --candidate-dir ../candidate
+          --profile "$BENCH_PROFILE"
+          --response "$BENCH_RESPONSE"
+          --boundary "$BENCH_BOUNDARY"
+          --repetitions "$BENCH_REPETITIONS"
+          --timeout-ms "$BENCH_TIMEOUT_MS"
+          --output "$BENCH_OUTPUT"
+
+      - name: Publish comparison summary
+        if: always()
+        run: |
+          if [ -f "$BENCH_OUTPUT/summary.md" ]; then
+            cat "$BENCH_OUTPUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Benchmark did not produce a report; inspect the failed setup/build step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload measurements and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-responsiveness-${{ matrix.profile }}-${{ matrix.response }}-${{ matrix.boundary }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ env.BENCH_OUTPUT }}/**/*.json
+            ${{ env.BENCH_OUTPUT }}/**/*.md
+            ${{ env.BENCH_OUTPUT }}/**/*.log
+
+      - name: Remove this run's synthetic state
+        if: always()
+        run: |
+          case "$BENCH_OUTPUT" in
+            "$GITHUB_WORKSPACE"/api-responsiveness-*)
+              rm -rf -- "$BENCH_OUTPUT"
+              ;;
+            *)
+              printf '%s\n' 'Unexpected benchmark output path; leaving it untouched.' >&2
+              exit 1
+              ;;
+          esac
+
+  report:
+    name: Complete comparison report
+    needs: compare
+    if: ${{ !cancelled() }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BENCH_PROFILE: ${{ inputs.profile || 'all' }}
+      BENCH_RESPONSE: ${{ inputs.response || 'all' }}
+      BENCH_BOUNDARY: ${{ inputs.boundary || 'all' }}
+      BENCH_REPETITIONS: ${{ inputs.repetitions || '6' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Download case reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: api-responsiveness-*-*-*
+          path: comparison-cases
+
+      - name: Validate complete matrix and publish summary
+        if: always()
+        run: >-
+          node ci/api-responsiveness-report.mjs
+          --input comparison-cases
+          --profile "$BENCH_PROFILE"
+          --response "$BENCH_RESPONSE"
+          --boundary "$BENCH_BOUNDARY"
+          --repetitions "$BENCH_REPETITIONS"
+          --output comparison-report
+
+      - name: Upload combined report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-responsiveness-report
+          retention-days: 7
+          if-no-files-found: error
+          path: comparison-report/
+
+  notify-slack:
+    needs: [resolve, compare, report]
+    if: ${{ !cancelled() && contains(needs.*.result, 'failure') }}
+    permissions: {}
+    uses: ./.github/workflows/notify-slack.yml
+    with:
+      message: >-
+        API Performance failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    secrets:
+      SLACK_CI_WEBHOOK_URL: ${{ secrets.SLACK_CI_WEBHOOK_URL }}

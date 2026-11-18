@@ -1,0 +1,39 @@
+// Type-checks the unit suite, which no project covered before.
+//
+// Four options differ from the base build config, each because a check over
+// test/ is not a build of src/:
+//   rootDir  - the base pins "src", so including test/** without widening it
+//              fails every spec with TS6059 before any real check runs.
+//   noEmit   - a check should not write compiled output into the tree.
+//   target   - the base targets ES2020; helpers under test/ use later APIs.
+//              test/integration/tsconfig.json sets the same for the same reason.
+//   allowJs  - some specs drive .mjs helpers under test/integration/helpers.
+//              checkJs stays off: those files are not the subject here, and
+//              their JSDoc is read for types either way.
+//
+// There is no exclusion list. Every unit spec is checked, so a new one is
+// checked the day it lands rather than the day someone gets to it.
+//
+// test/unit/e2e-*.spec.ts are excluded because typecheck:e2e already covers
+// them, with the lib target and vitest context types they need.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals", "node"],
+    "rootDir": ".",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "target": "ES2023",
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "test/unit/**/*",
+    "test/experiments/**/*",
+    "test/helpers/**/*",
+    "test/global-setup.ts",
+    "test/vitest.d.ts",
+    "src/**/*"
+  ],
+  "exclude": ["node_modules", "test/unit/e2e-*.spec.ts"]
+}

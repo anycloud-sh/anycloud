@@ -1,0 +1,40 @@
+{
+  "base": "49dfbdd3edc7a5ef9ef34f2b1509adc2dc4aa2e2",
+  "head": "39ea22f338f48e87c6100b5607300917bca9c925",
+  "moves": [
+    {
+      "from": "src/api/services/notifications-digest.ts",
+      "to": "src/api/services/notifications-digest-format.ts",
+      "symbols": [
+        "typeHasActivity",
+        "formatDigestNotification",
+        "buildDigestView",
+        "DIGEST_DEPLOYMENT_DETAIL_LIMIT",
+        "buildDeploymentJobBreakdown",
+        "formatDeploymentJobActivity",
+        "formatDigestSpendLine",
+        "formatDigestText",
+        "formatDigestSlackBlocks",
+        "richTextSection",
+        "richTextList",
+        "emptyDigestTypeSummary",
+        "emptyDigestUserSummary",
+        "emptyDigestTypeSpend",
+        "emptyDigestUserSpend",
+        "buildDigestSection",
+        "formatDuration"
+      ]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/notifications-digest.spec.ts"
+    ],
+    "head": [
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/notifications-digest-format.spec.ts",
+      "test/unit/services/notifications-digest.spec.ts"
+    ]
+  }
+}

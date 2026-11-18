@@ -1,0 +1,236 @@
+{
+  "formatVersion": 1,
+  "decision": "no-promotion",
+  "fullRunStatus": "failed",
+  "qualification": "invalid-evidence",
+  "startedAt": "2026-09-12T21:14:33.358Z",
+  "finishedAt": "2026-09-12T23:31:00.894Z",
+  "scope": "Provisional B-only qualification against the approved merge pin; no implementation PR",
+  "revisions": {
+    "baseline": {
+      "sourceSha": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+      "sourceDirty": false,
+      "buildSha256": "5b9d9bce8d577e3acb9b46efab8ca78febc4999bda8dfe1f17e0cd3e6ddbd47e",
+      "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+      "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+      "version": "0.1.63"
+    },
+    "candidate": {
+      "sourceSha": "e89add119396864d59908130f1ba0835aae640b7",
+      "sourceDirty": false,
+      "buildSha256": "203b4e69a556fd0f1634b03026cc5c2dcb9105c15fb1f562ee668a88fc7e14ce",
+      "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+      "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+      "version": "0.1.63"
+    }
+  },
+  "runtime": {
+    "node": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 25769803776
+  },
+  "harnessSha256": "7e16dca48957bf48c0e54775c9490a73d6876f361ef7deefedb94081fc4fb806",
+  "acceptanceSha256": "649ffb932a12bc466f1321b9340a737217e53a8c09dea96302f67120a6bcf5e1",
+  "inventorySha256": "bfab8e7111b4ab9d9083b37c7e8b45794c0b169fe542e838083ce359fc12b516",
+  "policy": {
+    "version": 1,
+    "repetitions": 6,
+    "confidence": 0.95,
+    "bootstrap": "all 6^6 ordered complete-pair resamples; jointly across metrics",
+    "timingEstimator": "exp(mean(log(candidate / baseline)))",
+    "rateEstimator": "mean(candidate - baseline), percentage points",
+    "quantile": "nearest-rank",
+    "calibrationRatio": [0.95, 1.05],
+    "controlRatio": 1.05,
+    "benefitRatio": 0.9,
+    "rateMarginPp": 1,
+    "workDeadlineMs": 15000,
+    "healthDeadlineMs": 1000,
+    "healthIntervalMs": 100,
+    "drainMs": 20000,
+    "maximumLagMs": 100,
+    "maximumInFlight": 128
+  },
+  "qualificationComparisonTrials": 0,
+  "completedCalibrationTrials": 151,
+  "plannedCalibrationTrials": 168,
+  "cases": [
+    {
+      "id": "sparse-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 12,
+      "gates": 30
+    },
+    {
+      "id": "sparse-api-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 5,
+      "gates": 30
+    },
+    {
+      "id": "retry-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 9,
+      "gates": 30
+    },
+    {
+      "id": "retry-api-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 5,
+      "gates": 30
+    },
+    {
+      "id": "ip-heavy-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 10,
+      "gates": 30
+    },
+    {
+      "id": "ip-heavy-api-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 10,
+      "gates": 30
+    },
+    {
+      "id": "events-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 9,
+      "gates": 30
+    },
+    {
+      "id": "events-api-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 10,
+      "gates": 30
+    },
+    {
+      "id": "history-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 8,
+      "gates": 30
+    },
+    {
+      "id": "history-api-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 9,
+      "gates": 30
+    },
+    {
+      "id": "mixed-user-matrix",
+      "decision": "inconclusive",
+      "uncalibratedGates": 13,
+      "gates": 30
+    },
+    {
+      "id": "mixed-user-load",
+      "decision": "inconclusive",
+      "uncalibratedGates": 31,
+      "gates": 48
+    },
+    {
+      "id": "mixed-api-matrix",
+      "decision": "incomplete",
+      "completedTrials": 7,
+      "expectedCalibrationTrials": 12,
+      "failedTrial": "176-mixed-api-matrix-calibration-4-baseline"
+    },
+    {
+      "id": "mixed-api-load",
+      "decision": "not-run",
+      "completedTrials": 0,
+      "expectedCalibrationTrials": 12
+    }
+  ],
+  "correctness": {
+    "userCases": 37,
+    "apiCases": 38,
+    "builds": 2,
+    "completeResponses": 150,
+    "result": "passed"
+  },
+  "completedMatrixTrials": {
+    "offered": 69500,
+    "admitted": 69500,
+    "completed": 69500,
+    "timedOut": 0,
+    "deadlineMisses": 0,
+    "httpErrors": 0,
+    "transportErrors": 0,
+    "bodyLimits": 0,
+    "schedulingSkipped": 0,
+    "admissionSkipped": 0,
+    "unfinished": 0,
+    "responseBytes": 27552802250
+  },
+  "completedUserLoadTrials": {
+    "offered": 9216,
+    "admitted": 9213,
+    "completed": 9175,
+    "timedOut": 31,
+    "deadlineMisses": 31,
+    "httpErrors": 0,
+    "transportErrors": 7,
+    "bodyLimits": 0,
+    "schedulingSkipped": 3,
+    "admissionSkipped": 0,
+    "unfinished": 0,
+    "responseBytes": 6380543853,
+    "healthOffers": 21725,
+    "healthMisses": 1123,
+    "healthOtherFailures": 0,
+    "allDrained": true
+  },
+  "failedTrial": {
+    "directory": "176-mixed-api-matrix-calibration-4-baseline",
+    "exitCode": null,
+    "failure": "Child exceeded 600000ms",
+    "allOffered": 256,
+    "offered": 205,
+    "admitted": 205,
+    "completed": 204,
+    "timedOut": 0,
+    "deadlineMisses": 0,
+    "httpErrors": 0,
+    "transportErrors": 0,
+    "bodyLimits": 0,
+    "schedulingSkipped": 0,
+    "admissionSkipped": 0,
+    "unfinished": 1,
+    "p50Ms": 42.63383299999987,
+    "p95Ms": 316.60712499999863,
+    "p99Ms": 437.7960409999996,
+    "maxMs": 496.22479099999873,
+    "responseBytes": 90356724,
+    "maxOfferDelayMs": 0.0025829999999587017
+  },
+  "artifacts": {
+    "root": ".context/list-qualification/provisional-20260912-1",
+    "downloadCopy": ".context/list-qualification/download-provisional-1",
+    "audit": ".context/list-qualification/provisional-audit.json",
+    "files": 3098,
+    "bytesIncludingInventory": 356579478,
+    "gzipResponses": 1605,
+    "canonicalResponsesVerifiedFromCompleteTrials": 1600,
+    "completeRequestsVerifiedIncludingWarmupsAndCorrectness": 92965,
+    "completeHealthOffersVerified": 57919,
+    "integrity": "passed",
+    "completeness": "rejected"
+  },
+  "checks": {
+    "focused": "460 tests across 11 files passed",
+    "verify": "9173 tests across 373 files passed; eight existing lint warnings, zero errors",
+    "longHistory": "3700 deployments passed; six-second gate unchanged",
+    "automaticSmoke": "16 trials and 64 scheduled traffic seconds passed in 111.772 seconds",
+    "billingSmoke": "empty/yield compatibility pair passed; diagnostic only",
+    "artifactFaults": "missing trace and corrupt gzip each rejected with exit1"
+  },
+  "limitations": [
+    "Full manual protocol did not complete.",
+    "No A/B qualification estimates were collected.",
+    "The cause of the stalled trial was not established by the retained logs.",
+    "Local Darwin arm64 results do not establish Linux CI performance or cold OS-cache behavior."
+  ]
+}

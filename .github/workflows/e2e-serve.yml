@@ -1,0 +1,241 @@
+name: E2E Serve Tests
+
+# DNS-dependent real-cloud e2es. These tests publish *.anycloud.sh records
+# through the DNS Worker using E2E_SERVE_GITHUB_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      force_service_cleanup:
+        description: Fail Service cells before finalization to inspect native, DNS and secret cleanup
+        type: boolean
+        default: false
+
+concurrency:
+  # Ref-scoped: one run per ref.
+  group: e2e-serve-${{ github.ref }}
+  # Queue every dispatch; never replace a pending run.
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Class 1 — workload-on-remote. `anycloud service <user-image>` deploys a user
+  # container to the VM; our API stays local (built from the checkout, run via
+  # `api start`), so nothing of ours is pushed. packages: read is only for
+  # resolve-deps-image.sh to inspect the prebuilt deps base. Every cell blocks.
+  e2e-serve-vitest:
+    name: e2e-serve-vitest / ${{ matrix.test }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    # Forced-cleanup dispatches fail on purpose and stay advisory.
+    continue-on-error: ${{ inputs.force_service_cleanup }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        test:
+          [aws-serve, aws-serve-upgrade, azure-serve, gcp-serve, lambda-serve]
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      E2E_TEST_TIMEOUT_SECONDS: '6600'
+      RESULTS_DIR: /tmp/e2e-results-${{ matrix.test }}-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_SERVE_FORCE_FAILURE_BEFORE_FINALIZE: ${{ inputs.force_service_cleanup && '1' || '' }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: ./.github/actions/serve-e2e-setup
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+
+      - name: Run Vitest Serve - ${{ matrix.test }}
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/service-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.test }} --vitest
+
+      - name: Retain Service comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-comparison-evidence-cloud-${{ matrix.test }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/service-comparison-source-sha.txt
+            /tmp/e2e-results-${{ matrix.test }}-*/e2e-run.json
+            /tmp/e2e-results-${{ matrix.test }}-*/workloads-to-clean
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/*cleanup-observations*.json
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/*native-*.json
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/*service-*.json
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/*serve-result*.json
+            /tmp/e2e-results-${{ matrix.test }}-*/vitest-fixture/**/*serve-upgrade-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Vitest Serve logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-e2e-serve-vitest-${{ matrix.test }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  post-cleanup-aws:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-serve-vitest]
+    if: always() && !cancelled()
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
+
+  post-cleanup-azure:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-serve-vitest]
+    if: always() && !cancelled()
+
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run current-run serve cleanup
+        continue-on-error: true
+        run: npx tsx ci/cleanup/azure-serve-run.ts
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
+
+  post-cleanup-gcp:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-serve-vitest]
+    if: always() && !cancelled()
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
+
+  post-cleanup-lambda:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-serve-vitest]
+    if: always() && !cancelled()
+
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/lambda.ts

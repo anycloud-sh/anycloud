@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "member": "azure-mace-full-pull",
+  "candidate": "e2e.sh azure-mace-full-pull --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "Specs select only the closed member and assert its completion; capabilities, profile resolution and lifecycle policy remain in the existing family.",
+      "candidateEvidence": "test/integration/e2e/internal/: job-policy.ts; targets/job-profiles.ts; closed-spec ESLint and discovery regressions."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and complete inventory fencing precede every actual CLI create. Preserve original controller, credential, placement, legal provisional transitions, ended attempts, partial history and lost replies; never replay an unknown send.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobAttemptLedger; JobNativeCleanup; PublicCloudJobTransport; WorkloadMutationTransport; actual CLI parser and partial-history regressions."
+    },
+    {
+      "id": "active-baseline",
+      "requirement": "Require an original live Running record and native attempt, requested and resolved placement, and the actual Docker image configuration before extension work. Terminal-before-active evidence cannot satisfy these resource-dependent extensions.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.#cloudProgress; JobRecords.progress; exact native credential/identity and imageConfigDigest reader; terminal/foreign/optional placement regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims each original run/reference/generation-bound progress and required extension once, then releases all children and resources and emits one completion. Copied, missing, mismatched, early and reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobRecords begin/progress/extension/terminal/claim and DedicatedJobContract.#finalize; existing ownership and finalizer controls."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Require persisted terminal cleanup, complete native history and exact provider absence before release. Independent teardown cancellation and remaining deadlines retain primary and secondary failures. Credentials outlive their dependent resources; rescue cannot replace failed automatic-cleanup proof.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing JobNativeCleanup, credential/session owners and cleanup stack; raw fixture-record, cleanup-observations, attempt/native/resource readback regressions."
+    },
+    {
+      "id": "private-credentials-and-output",
+      "requirement": "Register original bootstrap API credential intent before import. Sanitize actual child environments and suppress secret-producing output before artifact recording; exact original-controller API absence gates credential release. No unrelated storage credential is acquired for members without storage.",
+      "candidateEvidence": "test/integration/e2e/internal/: PublicCloudJobTransport; JobAuthorization; JobPrivateCommands/isolatedJobEnvironment; real Lambda MACE no-AWS preparation; redaction and original-controller controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named live forced failure produces no completion. Retain compact success and failure records at least 30 days with exact source/profile/run/attempt/generation and durations; inspect inner outcomes and raw cleanup registrations before cleanup backstops.",
+      "candidateEvidence": "test/integration/e2e/internal/: GPU/GHCR Job workflow cells, unchanged companion/backstop authority and protected job-comparison-evidence prefix; workflow/retention regressions. No live result or formal qualification is claimed by this map."
+    },
+    {
+      "id": "pinned-provider-profile",
+      "requirement": "Preserve the pinned MACE image, original on-demand VM type, disk tier/size, placement defaults and validated overrides. Never add storage for a MACE-only profile; Lambda does not require an AWS credential.",
+      "candidateEvidence": "test/integration/e2e/internal/: jobMemberProfile registered maceFullPull capability; prepare storageProvider=none; real CLI/provider profile regressions."
+    },
+    {
+      "id": "shared-cuda-payload",
+      "requirement": "Use the unchanged test/docker/mace-first-inference.py payload with --gpus all, the original Job-specific AC_TIMING_RUN_ID and AC_TIMING_HOLD_SECONDS=0.",
+      "candidateEvidence": "test/integration/e2e/internal/: PublicCloudJobTransport reads shared payload; PublicCloudJobAdapter emits original arguments; real CLI parsing compares payload bytes and flags."
+    },
+    {
+      "id": "observer-before-submit",
+      "requirement": "Arm the existing schema-2 observer before create within its original 100 by 100 ms gate, binding original Workload/run IDs and current arm time. Reject early, stale, reused, malformed, unauthenticated and foreign receipts.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobMaceTransport original API container, private output path, pre-spawn cleanup and actual observer process; family pre-submit arm predicate and real HTTP/observer regression."
+    },
+    {
+      "id": "cuda-inference-binding",
+      "requirement": "Require the original schema/source/run/arm record and one first_inference_done marker after this submission, with device=cuda and finite energy, within the original observer deadline. Join and require the original process exit receipt; later waits cannot reset its deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.#maceMember; existing Waiter with injected clock; JobMaceTransport observation/finish; CPU/foreign/early/changed-arm/process-failure controls."
+    },
+    {
+      "id": "completed-pinned-image",
+      "requirement": "Require Completed, exit code zero and the original pinned manifest digest before accepting the MACE extension.",
+      "candidateEvidence": "test/integration/e2e/internal/: Family exact terminal/exit/digest checks, original active record and finalizer; digest and terminal-before-active controls."
+    },
+    {
+      "id": "image-delivery-path",
+      "requirement": "Accept successful containerd transfer, or both an explicit unavailable/failed-transfer Docker fallback and successful Docker pull, for this exact Job on its original API container. Unknown or unrelated log messages cannot satisfy delivery.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobMaceTransport.pullLogMessages filters original-container JSON by exact ID; family path predicate; real private Docker argument and fallback controls."
+    },
+    {
+      "id": "shared-report-and-process-cleanup",
+      "requirement": "Reuse the existing schema-2 MACE report on success and failure, retaining original observer/process receipts and phase timing. Reap the owned observer before native cleanup after cancellation; remove its private files without granting Workload release authority.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobMaceTransport.writeReport reuses helpers/mace-report.ts; independent cleanup registration/join; family preserves primary/report failures and report identity controls."
+    }
+  ]
+}

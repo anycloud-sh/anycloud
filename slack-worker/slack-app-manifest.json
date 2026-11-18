@@ -1,0 +1,33 @@
+{
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
+  "display_information": {
+    "name": "Anycloud",
+    "description": "GPU cost alerts and daily summaries in Slack",
+    "background_color": "#0891b2"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Anycloud",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "redirect_urls": ["https://slack.anycloud.sh/oauth/callback"],
+    "scopes": {
+      "bot": ["incoming-webhook"]
+    },
+    "pkce_enabled": false
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false,
+    "incoming_webhooks": {
+      "incoming_webhooks_enabled": true
+    },
+    "is_mcp_enabled": false
+  }
+}

@@ -1,0 +1,82 @@
+name: Actions Artifact Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete eligible artifacts (otherwise preview only)
+        type: boolean
+        default: false
+      run_id:
+        description: Optional completed workflow run to clean
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      apply:
+        type: boolean
+        default: true
+      hosted:
+        description: Run on a GitHub-hosted runner whatever CI_BACKEND says, as Release does
+        type: boolean
+        default: false
+      run_id:
+        type: string
+        default: ''
+  schedule:
+    - cron: '17 * * * *'
+  workflow_run:
+    workflows:
+      - CI
+      - API Performance
+      - Integration Tests
+      - Release
+      - Build API deps base
+      - E2E Job Tests
+      - E2E Serve Tests
+      - E2E VM Tests
+      - E2E GPU Qualification
+      - Spike
+      - E2E Lambda boot failover
+      - E2E Cluster Tests
+      - E2E Claim Burst
+      - Manual Managed GPU Recovery
+      - Mutation Harness
+      - Mutant Parity
+      - Mutant Survivors
+      - Nuke Stress Test
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    # A fork's or Dependabot's run never starts a backmesh runner.
+    runs-on: ${{ (inputs.hosted || vars.CI_BACKEND == 'hosted' || github.event_name == 'workflow_run' && (github.event.workflow_run.head_repository.full_name != github.repository || github.event.workflow_run.actor.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-2' }}
+    timeout-minutes: 10
+    steps:
+      # A workflow_run from a PR must never select executable cleanup code.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Reclaim completed-run artifacts
+        # A script failure must not block the caller's release/qualification;
+        # an infrastructure failure (checkout, setup, timeout) fails this job,
+        # and the release stops before its tag push.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ inputs.apply || github.event_name == 'schedule' || github.event_name == 'workflow_run' }}
+          RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.run_id || '' }}
+        shell: bash
+        run: |
+          args=()
+          if [ "$APPLY" = true ]; then args+=(--apply); fi
+          if [ -n "$RUN_ID" ]; then args+=(--run-id "$RUN_ID"); fi
+          node ci/cleanup/actions-artifacts.mjs "${args[@]}"

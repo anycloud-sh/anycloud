@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "member": "azure-job-host-unreachable",
+  "candidate": "e2e.sh azure-job-host-unreachable --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "A closed kind/target selects the fixed registered capability and profile; specs cannot inject lifecycle callbacks, placement or evidence.",
+      "candidateEvidence": "contracts/job-policy.ts and targets/job-profiles.ts; closed-spec ESLint and ordinary Vitest discovery controls."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a fresh complete inventory fence precede each send. Original controller, credential, explicit and resolved placement, provisional transitions and every validated attempt prefix survive missing replies or later failures.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger, JobNativeCleanup, public-cloud-job adapter and original-controller Workload mutation hook; strict inventory/provisional/lost-reply regressions."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; cleanup uses its original identity, independent cancellation scope and remaining deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; JobNativeCleanup and independent native readers; cancellation, partial-history and failed automatic-cleanup regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer consumes exact run/reference/generation-bound active and required extension evidence once, then releases children and shared resources before its sole completion result. Terminal-only, copied, mismatched, missing, early or reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: begin/progress/extension/terminal/claim; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; evidence ownership and finalizer controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named forced failure produces no completion. Preserve primary and cleanup failures and inspect raw native/resource registrations before rescue. Compact records retain source/profile/run/attempt/generation and durations for at least 30 days.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: E2E_JOB_FORCE_CLEANUP; fixture-record/cleanup-observations/native records; existing e2e-job comparison artifact uploads and retention policy."
+    },
+    {
+      "id": "original-credential-and-private-commands",
+      "requirement": "Register imported API credential intent before mutation, bind its original controller and provider identity, sanitize actual child environments and suppress secret-producing output before recording artifacts. Complete API absence readback precedes credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/job-authorization.ts; test/integration/e2e/internal/transports/job-command.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization bootstrap owner and JobPrivateCommands; isolatedJobEnvironment, JobCloudSession and ApiClient readback; original-controller, deadline, schema and redaction controls."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Bind the requested profile and observed image configuration/API manifest to the original active attempt and exact resolved placement. An omitted zone is accepted only for an originally null zone; explicit or known placement mismatches reject.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudProgress Running baseline; imageConfigDigest and original VmLedgerProbe/JobAttemptLedger observations."
+    },
+    {
+      "id": "live-original-host",
+      "requirement": "Observe a live Running original host within 900 seconds and persist its exact native VM/boot-disk, credential, attempt history and event boundary before deleting it.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-recovery.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember; JobRecords.beforeHostRecovery; JobRecoveryTransport.identity and exact pre-send identity reread."
+    },
+    {
+      "id": "cloud-confirmed-host-recovery",
+      "requirement": "Delete only the original host, observe a new recovery event within 180 seconds, and preserve the original ended attempt with the cloud-confirmed VM termination reason.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-recovery.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember; JobRecords.hostRecoveryFault/hostRecovered; original event ID/time and retained ended-row validation."
+    },
+    {
+      "id": "distinct-replacement",
+      "requirement": "The next Running attempt arrives within 1200 seconds with distinct row, cloud VM and native identity; original credential/profile and earlier history remain intact.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-recovery.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember; JobRecords.hostRecovered; copied, same-host, foreign-placement and lost-history controls."
+    },
+    {
+      "id": "both-hosts-cleaned",
+      "requirement": "Retain both original and replacement attempts until persisted cleanup and independent native absence; forced failure occurs only after the replacement and any checkpoint restoration.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember forced boundary; JobNativeCleanup complete historical ownership; family finalizer and resource lifetime guards."
+    },
+    {
+      "id": "checkpoint-intent-and-placement",
+      "requirement": "Register one explicit eastus checkpoint bucket before creation on the selected Azure compute identity, without a separate checkpoint storage credential.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: jobMemberProfile hostRecovery.checkpointRegion; PublicCloudJobTransport.prepare; JobCloudStorage intent/native/API binding; PublicCloudJobAdapter.submit."
+    },
+    {
+      "id": "checkpoint-before-host-deletion",
+      "requirement": "Write the exact Workload marker and observe its uploaded bucket contents within 180 seconds before recording and sending host deletion.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember writeHostCheckpoint/hostCheckpoint; JobRecords.beforeHostRecovery refuses missing or mismatched checkpoint proof."
+    },
+    {
+      "id": "checkpoint-restored",
+      "requirement": "After the distinct replacement reaches Running, read the exact original marker in its checkpoint mount within 90 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hostRecoveryMember hostCheckpoint container read; JobRecords.hostRecovered exact contents and ownership."
+    },
+    {
+      "id": "explicit-checkpoint-absence",
+      "requirement": "After all owned hosts are absent, delete the explicit bucket and require exact native and API absence before releasing its credential. Uncertain observations retain intent.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobCloudStorage release/remove and original Azure account/container inventory; #finalize dependent-resource ordering."
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+name: Base Image Canary
+
+# Fails LOUDLY (red) if a base image anycloud depends on has been silently
+# removed by its upstream owner — the acute risk being the competitor-owned,
+# hardcoded dstack Azure community-gallery images (dstack-cuda-0.14 /
+# dstack-grid-0.14) that every Azure GPU deploy defaults to. When dstack retires
+# that pin the id 404s and Azure GPU deploys break terminally, so we want CI to
+# tell us first.
+#
+# Resolve-only: NO VM is ever provisioned (DescribeImages / getFromFamily /
+# communityGalleryImages reads), so the job is fast and free. AWS + GCP checks
+# are best-effort and skip themselves when that cloud's secret isn't configured,
+# so the canary still passes/fails purely on Azure.
+on:
+  workflow_dispatch:
+  pull_request:
+    # Run as a visible PR check whenever image/catalog code changes, so a
+    # vanished (or region-drifted) base image reds the PR — not only the daily
+    # schedule. Resolve-only, so it's cheap.
+    paths:
+      - 'src/api/services/gateways/**'
+      - 'src/shared/catalog/**'
+      - 'ci/canary/**'
+      - '.github/workflows/base-image-canary.yml'
+  schedule:
+    # Daily at 13:00 UTC.
+    - cron: '0 13 * * *'
+
+concurrency:
+  group: base-image-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  base-image-canary:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 15
+
+    env:
+      # Azure (required) — same secret fallbacks as e2e-job-gpu-azure.yml.
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      # AWS (best-effort) — canary skips these if the secrets are absent.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      # GCP (best-effort) — canary skips these if the secrets are absent.
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Resolve base images (no VM provisioned)
+        run: npx tsx ci/canary/base-image-canary.ts

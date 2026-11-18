@@ -1,0 +1,62 @@
+{
+  "base": "467852c73364b67ace1301d0c1db712981325528",
+  "head": "5356a3434e66d829b511dfc51612c742df185279",
+  "moves": [
+    {
+      "from": "src/api/services/vm-compute.ts",
+      "to": "src/api/services/vm-compute.ts",
+      "symbols": ["loadWorkloadVmCompute"]
+    },
+    {
+      "from": "src/api/services/host-runtime/termination.ts",
+      "to": "src/api/services/host-runtime/termination.ts",
+      "symbols": ["prepareTermination", "terminateStep", "terminateBoundVMs"]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/deploy.spec.ts",
+      "test/unit/services/gateways/gcp-lifecycle-placement.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/host-runtime/terminate.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/service-checkpoint-lifecycle.spec.ts",
+      "test/unit/services/vm-compute.spec.ts",
+      "test/unit/services/vm-runtime-storage.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/persistent-vm-repair.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/workload-pipeline.spec.ts"
+    ],
+    "head": [
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/deploy.spec.ts",
+      "test/unit/services/gateways/gcp-lifecycle-placement.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/host-runtime/terminate.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/service-checkpoint-lifecycle.spec.ts",
+      "test/unit/services/vm-compute.spec.ts",
+      "test/unit/services/vm-runtime-storage.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/persistent-vm-repair.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/workload-pipeline.spec.ts"
+    ]
+  }
+}

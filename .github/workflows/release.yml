@@ -1,0 +1,742 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+    inputs:
+      hosted_gate_waiver:
+        description: Owner-only break-glass (RELEASE.md, Release gate). The reason to release without a green hosted_stage run on this tree; agents never set it
+        type: string
+        default: ''
+
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+
+permissions: {}
+
+# Every job, the artifact cleanup it calls included, runs on GitHub-hosted
+# runners whatever CI_BACKEND says: a release is how a broken backmesh or
+# runner image gets fixed, so it must run while backmesh is down. backmesh's
+# own release.yml and ci-install.yml stay hosted for the same reason.
+jobs:
+  artifact-cleanup:
+    permissions:
+      contents: read
+      actions: write
+    uses: anycloud-sh/anycloud/.github/workflows/actions-storage.yml@main
+    with:
+      hosted: true
+
+  prepare:
+    needs: artifact-cleanup
+    # Cleanup's script is already continue-on-error, so this job fails only
+    # on infrastructure. Stop here then: prepare pushes the tag, and a failure
+    # above it would skip every publish job after it.
+    if: ${{ !cancelled() && needs.artifact-cleanup.result == 'success' }}
+    name: Prepare release
+    permissions:
+      contents: write # Need write to push version bump and tags
+      actions: read # Find the hosted_stage run on this tree
+    outputs:
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Do not persist the ephemeral token: it cannot push the validated
+          # release commit through main's required status checks.
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # The run summary records that the gate was waived, never the reason:
+      # the run is public. The reason goes on the release tracker.
+      - name: Record the hosted gate waiver
+        if: inputs.hosted_gate_waiver != ''
+        env:
+          REASON: ${{ inputs.hosted_gate_waiver }}
+        run: |
+          [ -n "${REASON//[[:space:]]/}" ] || { echo "::error::hosted_gate_waiver needs a reason"; exit 1; }
+          echo 'Hosted gate waived; the reason is on the release tracker.' >> "$GITHUB_STEP_SUMMARY"
+
+      # Only e2e-cluster-cloud's hosted_stage runs the CLI inside the API
+      # image, which is how a CLI crash there once shipped; the release needs it green on the
+      # tree it publishes (RELEASE.md, Release gate).
+      - name: Require a green hosted_stage run on this tree
+        if: inputs.hosted_gate_waiver == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          # Fetched first, so an API failure fails here rather than reading as
+          # "no run found".
+          shas="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/e2e-cluster-cloud.yml/runs?status=success&event=workflow_dispatch&per_page=100" \
+            --jq '.workflow_runs[] | select(.display_title | endswith("[hosted_stage]")) | .head_sha')"
+          for sha in $(sort -u <<<"$shas"); do
+            if [ "$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$sha" --jq .tree.sha)" = "$tree" ]; then
+              echo "hosted_stage passed on $sha, whose tree is $tree"
+              exit 0
+            fi
+          done
+          echo "::error::No successful e2e-cluster-cloud hosted_stage run has tree $tree; dispatch one on this commit (RELEASE.md, Release gate)"
+          exit 1
+
+      - name: Bump version
+        id: release
+        run: |
+          # The client window admits the release this one replaces.
+          npm pkg set previousVersion="$(node -p "require('./package.json').version")"
+          npm version patch --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" python/pyproject.toml
+          # Keep the Claude plugin skill (anycloud-skills/) in lockstep with the product version.
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/g" anycloud-skills/.claude-plugin/plugin.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/g" anycloud-skills/.claude-plugin/marketplace.json
+          yarn generate:python-sdk
+          git add package.json python/pyproject.toml anycloud-skills/.claude-plugin/plugin.json anycloud-skills/.claude-plugin/marketplace.json
+          # This job already runs the full release gate. Suppress push-triggered
+          # workflows; the skill publish is dispatched explicitly after publish.
+          git commit -m "Bump version to ${VERSION} [skip ci]"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release state
+        run: node scripts/verify-release-state.js
+
+      - name: Prepare release notes
+        run: yarn release:notes --version "${{ steps.release.outputs.version }}" --output release-notes.md
+
+      - name: Build
+        run: yarn build
+
+      # A hosted runner imports the suite several times slower than CI's
+      # runners, so the heaviest specs and hooks need more than the 30 s default.
+      - name: Run unit tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: yarn test --testTimeout=120000 --hookTimeout=120000
+
+      - name: Build CLI binaries
+        run: yarn build:binaries
+
+      # The publish path must execute the artifact, not just build it: run the
+      # published linux-x64 tarball, unpacked into a dir with no node_modules
+      # reachable (a real install's condition). A bun --compile binary that
+      # failed to embed a module only crashes here, never in the repo checkout
+      # — this is the gate the 0.1.21 "Cannot find module
+      # 'prompts/lib/elements/...'" crash slipped.
+      - name: Smoke-test linux-x64 tarball in clean room (blocks publish on crash)
+        run: |
+          set -euo pipefail
+          SMOKE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/anycloud-smoke.XXXXXX")"
+          tar -xzf binaries/anycloud-linux-x64.tar.gz -C "$SMOKE_DIR"
+          cd "$SMOKE_DIR"   # cwd outside the repo: no node_modules reachable upward
+          OUT="$(./anycloud --version 2>&1)" && STATUS=0 || STATUS=$?
+          echo "$OUT"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::anycloud --version exited $STATUS in clean room"
+            exit 1
+          fi
+          if echo "$OUT" | grep -Eqi "Cannot find module|^error:|panic|uncaught exception"; then
+            echo "::error::anycloud binary printed an error marker (un-embedded module?)"
+            exit 1
+          fi
+          echo "Binary smoke test passed in clean room."
+
+      - name: Pack CLI binary artifacts
+        run: tar -czf /tmp/cli-binary-artifacts.tgz binaries/*.tar.gz release-notes.md
+
+      - name: Upload CLI binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binary-artifacts
+          path: /tmp/cli-binary-artifacts.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Tag validated release commit
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git tag -a "v${VERSION}" -m "v${VERSION}"
+          node scripts/verify-release-state.js --require-tag
+
+      - name: Push version bump
+        env:
+          RELEASE_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          # The release token belongs to a branch-protection bypass actor. Push
+          # the validated commit and tag atomically so neither can land alone.
+          git push --atomic \
+            "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            HEAD:main "v${VERSION}"
+
+  sdk-build:
+    name: Build Python SDK distributions
+    needs: prepare
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: |
+          bash scripts/ci-install-dependencies.sh
+          python -m pip install 'build>=1.2,<2'
+
+      - name: Generate source from immutable commit
+        run: yarn generate:python-sdk
+
+      - name: Build SDK once
+        run: python -m build --outdir python/dist python
+
+      - name: Inspect package contents
+        run: >-
+          python test/integration/fixtures/qualify-python-sdk-artifacts.py
+          python/dist/*.whl python/dist/*.tar.gz
+
+      - name: Upload Python SDK distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-python-sdk-distributions
+          path: python/dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sdk-qualify:
+    name: Qualify Python SDK (${{ matrix.python-version }}, ${{ matrix.distribution }})
+    needs: [prepare, sdk-build]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ''
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+        distribution: [wheel, sdist]
+        include:
+          - distribution: wheel
+            package_pattern: '*.whl'
+          - distribution: sdist
+            package_pattern: '*.tar.gz'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install repository dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Download exact Python SDK distributions
+        uses: anycloud-sh/anycloud/.github/actions/download-retained-artifact@main
+        with:
+          name: release-python-sdk-distributions
+          path: python/dist
+
+      - name: Create isolated SDK environment
+        run: |
+          sdk_venv="$(mktemp -d "$RUNNER_TEMP/anycloud-sdk-venv.XXXXXX")"
+          python -m venv "$sdk_venv"
+          echo "PYTHON_BIN=$sdk_venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Install exact ${{ matrix.distribution }}
+        run: '"$PYTHON_BIN" -m pip install python/dist/${{ matrix.package_pattern }}'
+
+      - name: Qualify installed modules and models
+        env:
+          ANYCLOUD_EXPECT_INSTALLED: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: '"$PYTHON_BIN" test/integration/fixtures/generated-python-sdk-models.py'
+
+      - name: Qualify installed workflow extension
+        env:
+          ANYCLOUD_EXPECT_INSTALLED: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: '"$PYTHON_BIN" test/integration/fixtures/qualify-python-sdk-extensions.py'
+
+      - name: Qualify installed sync and async HTTP
+        env:
+          ANYCLOUD_WHEEL_TEST: '1'
+        run: yarn test:generated-python-sdk-wire
+
+  sdk:
+    name: Publish Python SDK
+    needs: [prepare, docker-merge, sdk-qualify]
+    permissions:
+      contents: read
+      id-token: write # OIDC for PyPI trusted publishing
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: Download tested Python SDK distributions
+        uses: anycloud-sh/anycloud/.github/actions/download-retained-artifact@main
+        with:
+          name: release-python-sdk-distributions
+          path: python/dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
+
+  # The API chart, published before the image that names it by digest.
+  chart:
+    name: Publish API chart
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      reference: ${{ steps.publish.outputs.reference }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish chart
+        id: publish
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          reference="$(yarn -s chart:publish "$VERSION")"
+          echo "reference=$reference" >> "$GITHUB_OUTPUT"
+          echo "API chart: \`$reference\`" >> "$GITHUB_STEP_SUMMARY"
+
+  docker:
+    name: Build API (${{ matrix.platform }})
+    needs: [prepare, chart]
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          fetch-depth: 0
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get image name
+        id: version
+        run: echo "image=$(node -p "require('./package.json').apiImage")" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Reuse the prebuilt deps base for this yarn.lock hash (built by
+      # build-deps-base.yml) so the release skips the ~5 min yarn install +
+      # native compile. Falls back to inline installs when no base exists for
+      # the hash (e.g. a release right after a dependency change, before the
+      # base finishes building). Requires the GHCR login above.
+      - name: Resolve deps base images
+        id: deps
+        run: |
+          FULL=$(bash scripts/resolve-deps-image.sh full)
+          PROD=$(bash scripts/resolve-deps-image.sh prod)
+          echo "full=$FULL" >> "$GITHUB_OUTPUT"
+          echo "prod=$PROD" >> "$GITHUB_OUTPUT"
+          if [ "$FULL" = "deps-full-inline" ] || [ "$PROD" = "deps-prod-inline" ]; then
+            echo "::warning::API image fell back to inline deps install (no prebuilt base for this yarn.lock hash). On a version-only release this is unexpected — check the build-deps-base workflow."
+            echo "⚠️ deps base: **fell back to inline install** (full=\`$FULL\`, prod=\`$PROD\`)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ deps base: reused prebuilt (full=\`$FULL\`, prod=\`$PROD\`)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          sbom: false
+          labels: |
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.commit_sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          build-args: |
+            DEPS_FULL_IMAGE=${{ steps.deps.outputs.full }}
+            DEPS_PROD_IMAGE=${{ steps.deps.outputs.prod }}
+            API_CHART=${{ needs.chart.outputs.reference }}
+          outputs: type=image,name=${{ steps.version.outputs.image }},push-by-digest=true,name-canonical=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 7
+
+  docker-merge:
+    name: Publish multi-arch API manifest
+    needs: [prepare, docker, sdk-qualify]
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          fetch-depth: 0
+      - name: Download amd64 digest
+        uses: anycloud-sh/anycloud/.github/actions/download-retained-artifact@main
+        with:
+          name: digest-amd64
+          path: /tmp/digests
+
+      - name: Download arm64 digest
+        uses: anycloud-sh/anycloud/.github/actions/download-retained-artifact@main
+        with:
+          name: digest-arm64
+          path: /tmp/digests
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        run: |
+          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+          echo "image=$(node -p "require('./package.json').apiImage")" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }} \
+            -t ${{ steps.version.outputs.image }}:latest \
+            $(printf '${{ steps.version.outputs.image }}@sha256:%s ' *)
+
+  cli-release:
+    name: Publish public CLI release
+    needs: [prepare, docker-merge]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: Download CLI binary artifacts
+        uses: anycloud-sh/anycloud/.github/actions/download-retained-artifact@main
+        with:
+          name: cli-binary-artifacts
+          path: /tmp/cli-binary-artifacts
+
+      - name: Unpack binaries
+        run: tar -xzf /tmp/cli-binary-artifacts/cli-binary-artifacts.tgz
+
+      - name: Package public CLI release assets
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          mkdir -p release-assets
+          # The tarballs the build job smoke-tested, published unchanged.
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            cp "binaries/anycloud-${platform}.tar.gz" release-assets/
+          done
+
+          cd release-assets
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Publish public CLI release
+        env:
+          GH_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TAG="v${VERSION}"
+          REPO="anycloud-sh/releases"
+
+          gh release create "$TAG" release-assets/* \
+            --repo "$REPO" \
+            --title "anycloud ${TAG}" \
+            --notes-file release-notes.md
+
+  published-cli-canary:
+    # Journey: common.published-canary
+    name: Verify published CLI wizard
+    needs: [prepare, cli-release]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    environment: cloud-e2e
+    timeout-minutes: 20
+    concurrency:
+      group: aws-onboarding-e2e
+      queue: max
+      cancel-in-progress: false
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build test harness
+        run: yarn build
+
+      - name: Install the exact published version from get.anycloud.sh
+        id: install
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          CANARY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/anycloud-published-canary.XXXXXX")"
+          INSTALL_DIR="$CANARY_ROOT/bin"
+          mkdir -p "$INSTALL_DIR"
+          curl -fsSL https://get.anycloud.sh -o "$CANARY_ROOT/install.sh"
+          sh "$CANARY_ROOT/install.sh" --version "$VERSION" --install-dir "$INSTALL_DIR"
+          ACTUAL_VERSION="$($INSTALL_DIR/anycloud --version)"
+          if [ "$ACTUAL_VERSION" != "$VERSION" ]; then
+            echo "Expected published anycloud $VERSION, got $ACTUAL_VERSION" >&2
+            exit 1
+          fi
+          echo "binary=$INSTALL_DIR/anycloud" >> "$GITHUB_OUTPUT"
+          echo "root=$CANARY_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Sweep stale AWS onboarding identities
+        run: yarn cleanup:aws-onboarding-e2e --suite onboarding --sweep
+
+      - name: Generate, authenticate, and clean through the published wizard
+        env:
+          ANYCLOUD_TEST_CLI_BINARY: ${{ steps.install.outputs.binary }}
+        run: yarn test:aws-onboarding-e2e
+
+      - name: Sweep AWS onboarding identities after the canary
+        if: always()
+        run: yarn cleanup:aws-onboarding-e2e --suite onboarding --sweep
+
+      - name: Remove canary installation
+        if: always()
+        env:
+          CANARY_ROOT: ${{ steps.install.outputs.root }}
+        run: |
+          if [ -n "${CANARY_ROOT:-}" ]; then
+            rm -rf "$CANARY_ROOT"
+          fi
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: [prepare, published-cli-canary]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update formula
+        env:
+          GH_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TAG="v${VERSION}"
+          BASE_URL="https://github.com/anycloud-sh/releases/releases/download/${TAG}"
+          WORK_DIR="$(mktemp -d)"
+          trap 'rm -rf "$WORK_DIR"' EXIT
+
+          curl -fsSLo "$WORK_DIR/checksums.txt" "${BASE_URL}/checksums.txt"
+          darwin_arm64="$(awk '$2 == "anycloud-darwin-arm64.tar.gz" { print $1 }' "$WORK_DIR/checksums.txt")"
+          darwin_x64="$(awk '$2 == "anycloud-darwin-x64.tar.gz" { print $1 }' "$WORK_DIR/checksums.txt")"
+          linux_arm64="$(awk '$2 == "anycloud-linux-arm64.tar.gz" { print $1 }' "$WORK_DIR/checksums.txt")"
+          linux_x64="$(awk '$2 == "anycloud-linux-x64.tar.gz" { print $1 }' "$WORK_DIR/checksums.txt")"
+
+          for checksum in "$darwin_arm64" "$darwin_x64" "$linux_arm64" "$linux_x64"; do
+            if [ -z "$checksum" ]; then
+              echo "Missing checksum in ${BASE_URL}/checksums.txt" >&2
+              exit 1
+            fi
+          done
+
+          git clone https://github.com/anycloud-sh/homebrew-tap.git "$WORK_DIR/homebrew-tap"
+          cd "$WORK_DIR/homebrew-tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/anycloud-sh/homebrew-tap.git"
+
+          mkdir -p Formula
+          cat > Formula/anycloud.rb <<EOF
+          class Anycloud < Formula
+            desc "Run AI workloads on any cloud account to find the cheapest GPU"
+            homepage "https://anycloud.sh"
+            version "${VERSION}"
+            license "Apache-2.0"
+
+            if OS.mac? && Hardware::CPU.arm?
+              url "${BASE_URL}/anycloud-darwin-arm64.tar.gz"
+              sha256 "${darwin_arm64}"
+            elsif OS.mac?
+              url "${BASE_URL}/anycloud-darwin-x64.tar.gz"
+              sha256 "${darwin_x64}"
+            elsif Hardware::CPU.arm?
+              url "${BASE_URL}/anycloud-linux-arm64.tar.gz"
+              sha256 "${linux_arm64}"
+            else
+              url "${BASE_URL}/anycloud-linux-x64.tar.gz"
+              sha256 "${linux_x64}"
+            end
+
+            def install
+              bin.install "anycloud"
+              prefix.install "LICENSE", "NOTICE"
+            end
+
+            def caveats
+              <<~EOS
+                If a local API server is running, run:
+                  anycloud upgrade
+              EOS
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/anycloud --version")
+            end
+          end
+          EOF
+
+          ruby -c Formula/anycloud.rb
+          if git diff --quiet -- Formula/anycloud.rb; then
+            echo "Homebrew formula already current."
+            exit 0
+          fi
+
+          git add Formula/anycloud.rb
+          git commit -m "Update anycloud to ${TAG}"
+          git push origin main
+
+  skill:
+    name: Publish skill
+    needs: [prepare, sdk, cli-release, homebrew]
+    permissions:
+      contents: read
+      actions: write # dispatch skills.yml after the [skip ci] release bump
+    runs-on: ubuntu-latest
+    steps:
+      # The release bump touches anycloud-skills/**, but its [skip ci] commit
+      # suppresses push-triggered workflows — including skills.yml's `on: push`
+      # publish. workflow_dispatch is exempt, so dispatch the publish explicitly
+      # only after the API image, CLI release assets, and Python SDK have shipped.
+      - name: Publish skill at the new version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Dispatch on `main`, NOT the v* tag: skills.yml's preflight/publish jobs
+        # are gated `if: github.ref == 'refs/heads/main'`, so a tag ref silently
+        # runs only `validate` and never syncs the mirror. By now the bump commit
+        # is already on main (prepare pushed it), so main HEAD has the new version.
+        run: gh workflow run skills.yml --repo "${{ github.repository }}" --ref main

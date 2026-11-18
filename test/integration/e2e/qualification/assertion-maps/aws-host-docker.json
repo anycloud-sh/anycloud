@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "member": "aws-host-docker",
+  "candidate": "e2e.sh aws-host-docker --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "nested-host-docker-job",
+      "requirement": "A listener Job submitted with --host-docker and --require-nested-virtualization on a nested-capable type completes with exit 0, its probe passing every check as the image's non-root user.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember; test/integration/e2e/internal/targets/public-cloud-job.ts: the host-docker argv."
+    },
+    {
+      "id": "docker-through-host-socket",
+      "requirement": "docker run, a docker build and a two-service docker compose up with name resolution run through the host's socket, and an inner bind mount of $PWD sees the Job's /workspace.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: docker_run, docker_build, compose and bind_mount checks."
+    },
+    {
+      "id": "kvm-guest",
+      "requirement": "/dev/kvm opens read-write, KVM_GET_API_VERSION is 12 and a real-mode guest runs to its marker and halt.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: kvm check."
+    },
+    {
+      "id": "unprivileged-container",
+      "requirement": "The host's docker inspect of the Job container shows Privileged false, no added capabilities, no security options and /dev/kvm as its device.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: unprivileged check."
+    },
+    {
+      "id": "host-daemon-defaults",
+      "requirement": "The host daemon has mirror.gcr.io configured as its registry mirror, and a plain Docker Hub name pulls; a plainly published port is reached from a bridge container at host.docker.internal (host-gateway), as a container: job's service, and from a --network host container on localhost, as a workflow's services: ports.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: mirror, host_gateway and network_host_loopback checks."
+    },
+    {
+      "id": "peer-isolation",
+      "requirement": "The listener first publishes one port plainly (0.0.0.0, Docker's default) and serves another on the host network, and its own VM reaches both. A prober Job in the same region and network, submitted once the listener runs (the prober's own boot takes minutes, so both ports are up by then) and on a different private address, finds both closed at the listener's private IP while SSH answers, so the path routes. The host-network port never passes DOCKER-USER, so its refusal is the cloud's network rules alone; the published port's refusal is those rules and the host's DOCKER-USER drop together.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember; test/integration/e2e/internal/targets/host-docker-probe.ts: listener check and HOST_DOCKER_PEER_PROBE; test/integration/e2e/internal/job-attempt-ledger.ts: private_ip; targets/job-profiles.ts: hostDocker.peer."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; only one family completion follows.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; test/integration/e2e/internal/job-native-cleanup.ts."
+    },
+    {
+      "id": "gp3-performance",
+      "requirement": "The listener's native root volume is gp3 with the IOPS and MiB/s the Job requested, neither gp3's baseline nor a disk tier's.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember diskTier read; test/integration/e2e/internal/transports/job-recovery.ts awsRootDisk."
+    }
+  ]
+}

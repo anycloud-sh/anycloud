@@ -1,0 +1,74 @@
+{
+  "base": "39ea22f338f48e87c6100b5607300917bca9c925",
+  "head": "6211119254c819e1a3394f2ebbc3e9fe1266168a",
+  "moves": [
+    {
+      "from": "src/api/services/spend-controls-store.ts",
+      "to": "src/api/services/repositories/workload-spend.ts",
+      "symbols": [["spendAggregateSql", "windowedVmSpendSql"]]
+    },
+    {
+      "from": "src/api/services/spend-controls-store.ts",
+      "to": "src/api/services/spend-controls-store.ts",
+      "symbols": [["spendVmWindowCtes", "SpendControlsStore.computeSpend"]]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/routes/cost.spec.ts",
+      "test/unit/routes/job-change-waits.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/rpc/spend-controls.spec.ts",
+      "test/unit/services/api-ownership-backfill.spec.ts",
+      "test/unit/services/billing-monitor.spec.mjs",
+      "test/unit/services/billing-repository.spec.mjs",
+      "test/unit/services/cost-calculation/monitor.spec.ts",
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/notifications-digest.spec.ts",
+      "test/unit/services/persistence.spec.ts",
+      "test/unit/services/repositories/db.spec.ts",
+      "test/unit/services/repositories/deployment-executions.spec.ts",
+      "test/unit/services/repositories/deployment-submission-recovery.spec.ts",
+      "test/unit/services/repositories/migrations-upgrade-path.spec.ts",
+      "test/unit/services/repositories/workload-outcomes.spec.ts",
+      "test/unit/services/repositories/workload-queries.spec.ts",
+      "test/unit/services/repositories/workload-spend.spec.ts",
+      "test/unit/services/spend-controls-store.spec.ts",
+      "test/unit/services/spend-controls.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts",
+      "test/unit/services/workload-reconciler.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts"
+    ],
+    "head": [
+      "test/unit/routes/cost.spec.ts",
+      "test/unit/routes/job-change-waits.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/rpc/spend-controls.spec.ts",
+      "test/unit/services/api-ownership-backfill.spec.ts",
+      "test/unit/services/billing-monitor.spec.mjs",
+      "test/unit/services/billing-repository.spec.mjs",
+      "test/unit/services/cost-calculation/monitor.spec.ts",
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/notifications-digest.spec.ts",
+      "test/unit/services/persistence.spec.ts",
+      "test/unit/services/repositories/db.spec.ts",
+      "test/unit/services/repositories/deployment-executions.spec.ts",
+      "test/unit/services/repositories/deployment-submission-recovery.spec.ts",
+      "test/unit/services/repositories/migrations-upgrade-path.spec.ts",
+      "test/unit/services/repositories/workload-outcomes.spec.ts",
+      "test/unit/services/repositories/workload-queries.spec.ts",
+      "test/unit/services/repositories/workload-spend.spec.ts",
+      "test/unit/services/spend-controls-store.spec.ts",
+      "test/unit/services/spend-controls.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts",
+      "test/unit/services/workload-reconciler.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts"
+    ]
+  }
+}

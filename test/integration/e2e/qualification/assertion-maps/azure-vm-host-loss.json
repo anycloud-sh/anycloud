@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "member": "azure-vm-host-loss",
+  "candidate": "e2e.sh azure-vm-host-loss --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "profile-submission",
+      "requirement": "Use the canonical VM CLI, an explicit tracked Workload ID, the declared provider/VM types/placement/disk profile, a named secret, and the environment marker. Cloud submission must use the saved original credential; Local uses its credentialless capability.",
+      "candidateEvidence": "test/integration/e2e/internal/persistent-vm-submission.ts::submitPersistentVm; profiles.ts; context.ts::submitPersistentVmRequest; vm-ledger.ts::credentialName."
+    },
+    {
+      "id": "running-identity",
+      "requirement": "Reach exact Running within the existing target deadline, retain Workload type vm and exact provider, have no DNS record, and expose one live status VM and one live database row with the same nonempty cloud ID and valid SSH coordinates.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm-ledger.ts::snapshot/liveEntries/liveVmMetadata/liveVmCount. Strict complete reads reject missing, duplicate, foreign, malformed, truncated, failed, or cancelled rows."
+    },
+    {
+      "id": "runtime-shape",
+      "requirement": "Inspect exactly one Running container named for the Workload, with /bin/sh, the exact sleep-loop argument array, an explicit empty image-default user, and /workspace working directory. Non-string arguments and missing/non-string users fail.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm.ts::inspectWorkload retains its strict argument and user checks. Host-loss additionally executes this common setup."
+    },
+    {
+      "id": "runtime-permissions",
+      "requirement": "Require workspace mode 777, a numeric Docker socket GID included in supplementary groups, init enabled, unless-stopped restart policy, and zero published ports. Port bindings must be an object or explicit null.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm.ts::inspectWorkload retains its strict port-binding parser."
+    },
+    {
+      "id": "runtime-ownership-mounts",
+      "requirement": "Require managed=true, role=workload, and the historical Workload-ID label; exactly one writable /workspace bind and one writable Docker socket bind; /workspace PWD, writable workspace, and readable/writable socket.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm.ts::inspectWorkload validates mounts and runtime paths. The historical sh.anycloud.deployment-id label spelling is preserved."
+    },
+    {
+      "id": "container-ssh",
+      "requirement": "Container SSH access succeeds and identifies the exact Workload and live host/port/username with a private key present; the key is consumed without retaining it as comparison metadata.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; api.ts::sshAccessSummary and context.ts SSH capability validate the response. Host-loss additionally exercises container SSH."
+    },
+    {
+      "id": "environment-secret",
+      "requirement": "Inside the workload image, require /workspace, an environment value exactly matching its marker, and a named secret whose SHA-256 equals the expected digest.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm.ts::probeWorkloadFixture requires a successful command and all five strict fixture booleans. Only the digest leaves the fixture."
+    },
+    {
+      "id": "host-docker",
+      "requirement": "Host SSH reaches the Docker socket and a working daemon and returns the exact host marker.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; vm.ts::verifyHostDocker. Host-loss additionally runs this assertion."
+    },
+    {
+      "id": "snapshot-rejection",
+      "requirement": "Snapshot SSH is rejected with HTTP 400 and the exact unsupported-VM message.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts::provisionRunningPersistentVm; api.ts::sshAccessRejection additionally requires WORKLOAD_MANAGEMENT_REQUEST_INVALID."
+    },
+    {
+      "id": "tracked-fallback-cleanup",
+      "requirement": "Arm cleanup before creation, bind original credentials and every provisioning attempt/placement, and retain status identities and partial observations. Submission loss, primary cancellation, unknown presence, or cleanup failure must retain the Workload registration and durable manifest and preserve both failures.",
+      "candidateEvidence": "test/integration/e2e/internal/persistent-vm-cleanup.ts::reserve/creationStarted/capture/verify/recordObservations; workloads.ts; cleanup.ts; context.ts::dispose; fixture.ts."
+    },
+    {
+      "id": "host-loss-exact-fault",
+      "requirement": "Capture the complete pre-fault cloud-ID multiset and event baseline, then externally delete the exact original provider host in its original region/zone.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-host-loss.ts::run; vm-ledger.ts; targets/persistent-vm.ts::deleteHost; transports/public-cloud-vm-host-deletion.ts or transports/local-smolvm.ts."
+    },
+    {
+      "id": "host-loss-failed-cleanup",
+      "requirement": "Reach exact Failed within the existing deadline; retain VM type/provider and numeric completedAt/cleanedAt with cleanup no earlier than completion.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-host-loss.ts::run; workloads.ts::waitForState/waitForCleanupRecorded."
+    },
+    {
+      "id": "host-loss-no-replacement",
+      "requirement": "Keep the complete cloud-ID multiset unchanged and exactly one original cloud-ID row whose endedAt is at least completedAt. Require no new Recovering, Queued, or Provisioning events and zero live VM rows.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-host-loss.ts::run; vm-ledger.ts::assertUnchangedSince/entriesForCloudId/assertCleared. Pre-Running retries remain in history."
+    },
+    {
+      "id": "host-loss-event",
+      "requirement": "Emit exactly one new Failed event with the original cloud ID and the exact reason: Cloud provider confirms VM host no longer exists; Anycloud cannot recover its local /workspace.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-host-loss.ts::run; workloads.ts::eventsSince."
+    },
+    {
+      "id": "native-release",
+      "requirement": "Before releasing tracking, require complete original-credential/placement-bound absence for every known native identity, including ended attempts. Authentication, malformed or foreign/duplicate identities, unavailable inventories, and inconclusive termination never count as absence.",
+      "candidateEvidence": "test/integration/e2e/internal/persistent-vm-cleanup.ts::verify; transports/public-cloud-vm-host-presence.ts::observe; transports/local-smolvm.ts::observeLocalSmolvmHost/ownedSmolvmMachines. Lifecycle also requires contracts/persistent-vm.ts::observePersistentVmTerminated."
+    },
+    {
+      "id": "completion-and-release",
+      "requirement": "Delete the named secret, release the exact tracked Workload only after persisted cleanup, cleared ledger, and independent native absence, and return the exact conclusive completion record. Cleanup failure cannot become contract success.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-host-loss.ts::run; secrets.ts; workloads.ts::release. The target spec asserts every completion field."
+    },
+    {
+      "id": "cli-wait-ready-then-exec",
+      "requirement": "`anycloud wait <vm> --json` exits 0 with a ready state record once the VM is running, and `anycloud exec <vm> true` run immediately afterwards succeeds (RFC 0041: Running means exec works).",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/persistent-vm-running.ts; test/integration/e2e/internal/cli-observations.ts: provisionRunningPersistentVm calls vmReadyByCli before the API Running observation and asserts waitReady and execAfterWait."
+    }
+  ]
+}

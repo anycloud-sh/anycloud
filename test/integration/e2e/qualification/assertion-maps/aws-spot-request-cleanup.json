@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "member": "aws-spot-request-cleanup",
+  "candidate": "e2e.sh aws-spot-request-cleanup --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "A closed kind/target selects the fixed registered capability and profile; specs cannot inject lifecycle callbacks, placement or evidence.",
+      "candidateEvidence": "contracts/job-policy.ts and targets/job-profiles.ts; closed-spec ESLint and ordinary Vitest discovery controls."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a fresh complete inventory fence precede each send. Original controller, credential, explicit and resolved placement, provisional transitions and every validated attempt prefix survive missing replies or later failures.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger, JobNativeCleanup, public-cloud-job adapter and original-controller Workload mutation hook; strict inventory/provisional/lost-reply regressions."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; cleanup uses its original identity, independent cancellation scope and remaining deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; JobNativeCleanup and independent native readers; cancellation, partial-history and failed automatic-cleanup regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer consumes exact run/reference/generation-bound active and required extension evidence once, then releases children and shared resources before its sole completion result. Terminal-only, copied, mismatched, missing, early or reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: begin/progress/extension/terminal/claim; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; evidence ownership and finalizer controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named forced failure produces no completion. Preserve primary and cleanup failures and inspect raw native/resource registrations before rescue. Compact records retain source/profile/run/attempt/generation and durations for at least 30 days.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: E2E_JOB_FORCE_CLEANUP; fixture-record/cleanup-observations/native records; existing e2e-job comparison artifact uploads and retention policy."
+    },
+    {
+      "id": "original-credential-and-private-commands",
+      "requirement": "Register imported API credential intent before mutation, bind its original controller and provider identity, sanitize actual child environments and suppress secret-producing output before recording artifacts. Complete API absence readback precedes credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization bootstrap owner and JobPrivateCommands; isolatedJobEnvironment, JobCloudSession and ApiClient readback; original-controller, deadline, schema and redaction controls."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Bind the requested profile and observed image configuration/API manifest to the original active attempt and exact resolved placement. An omitted zone is accepted only for an originally null zone; explicit or known placement mismatches reject.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudProgress active baseline; imageConfigDigest and original VmLedgerProbe/JobAttemptLedger observations."
+    },
+    {
+      "id": "persistent-original-request",
+      "requirement": "A non-completed Spot Job reaches Running within 1200 seconds; its exact original instance has one persistent request active within 60 seconds in the original account/region.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-spot.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #spotMember; JobSpotTransport.active/request exact provider request, Workload tags, VM and credential identity."
+    },
+    {
+      "id": "automatic-cancellation",
+      "requirement": "After public Workload termination, observe persisted cleanup within 600 seconds and the same persistent request cancelled within 120 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-spot.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #spotMember sameRequest guard and independent JobSpotTransport request observation; original automatic failure is retained."
+    },
+    {
+      "id": "full-no-replacement-guard",
+      "requirement": "For a full 90 seconds, inventory both original Workload tags and original request ID and find no live original or replacement instance; final exact request remains cancelled.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-spot.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #spotMember existing provider clock/pause capability; JobSpotTransport.liveInstances strict complete inventories and deadline; final request read."
+    },
+    {
+      "id": "cancel-before-native-termination",
+      "requirement": "Cleanup records request intent before mutation, cancels every owned persistent request before terminating native instances, and retains known identities after partial inventory or lost replies.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-spot.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobSpotTransport independent cleanup scope/deadline and reservation history; original request/VM/account/region guards and partial/lost-reply regressions."
+    },
+    {
+      "id": "automatic-failure-survives-rescue",
+      "requirement": "The named forced failure follows the active request baseline. Rescue cancellation/native deletion cannot turn a failed automatic-cancellation or no-replacement assertion into success.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #spotMember forced boundary and finalizer; primary/secondary error preservation; cleanup registration remains armed until exact readback."
+    },
+    {
+      "id": "early-cancellation",
+      "requirement": "A second Spot Job is terminated as soon as its attempt names a launched instance. The request the instance names, read by request ID and bound to that instance, must reach cancelled, and a full 90-second guard must find no live original or replacement instance. With that fix reverted, the run fails when the old instance-id lookup misses the request (an earlier race), because the request is never cancelled; it passes when that lookup already finds the request, because the old code then cancels it. The instance-id lookup before, at and after the cancel, launch time and cancel time are recorded as evidence and gate nothing.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #spotEarlyCancel, #spotCancelled; test/integration/e2e/internal/transports/job-spot.ts launched/instanceFilter; test/unit/e2e-cloud-job-contract.spec.ts early-reopened, recorded-not-gated cases, late-instance; test/unit/e2e-job-spot.spec.ts."
+    }
+  ]
+}

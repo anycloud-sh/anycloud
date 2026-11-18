@@ -1,0 +1,241 @@
+{
+  "study": "list-aggregation-v1",
+  "date": "2026-09-16",
+  "decision": "no-promotion",
+  "reason": "Structural red/green/reversal passes; all twelve A/A timing calibration intervals fail the fixed band, so A/B and full qualification do not run.",
+  "baseline": "913f8e992adbefd8d236d59fcec89f99dd788503",
+  "version": "0.1.64",
+  "runtime": {
+    "node": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.5.0",
+    "cpus": [
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4",
+      "Apple M4"
+    ],
+    "memory": 25769803776
+  },
+  "harness": {
+    "helpers": "ac5817f2eb3680cddbc75fe443d8c41efcb49153fa27f852ccf22453509db3d9",
+    "runner": "db487751734aa7b68f23924b31ef9167a2ca20447a70f47d2233256f73994086",
+    "fixture": "7bade16e308cd22bba5176d22a691f4878389b6ca883ff22e1490e3db6b80114"
+  },
+  "candidatePatchSha256": "36949d4347621af7fc7c2b4a899a6b44019a1cbbdccd0a3424b8abb3ff302f50",
+  "structural": {
+    "red": true,
+    "green": true,
+    "reversal": true,
+    "fixtureScopePathCases": 12,
+    "temporaryByteRatios": {
+      "mixed-user": {
+        "ordinary-1000": 0.21909437200068244,
+        "terminatable-1000": 0.22047235735160423
+      },
+      "mixed-api": {
+        "ordinary-1000": 0.2161795086004172,
+        "terminatable-1000": 0.218952021916902
+      },
+      "ip-heavy-user": {
+        "ordinary-1000": 0.23050001410559984,
+        "terminatable-1000": 0.23365014225328612
+      },
+      "ip-heavy-api": {
+        "ordinary-1000": 0.22961552452899542,
+        "terminatable-1000": 0.23204055679027816
+      },
+      "ip-heavy-depth-user": {
+        "ordinary-1000": 0.18862047465865864,
+        "terminatable-1000": 0.19122170594603527
+      },
+      "ip-heavy-depth-api": {
+        "ordinary-1000": 0.18798125546126648,
+        "terminatable-1000": 0.18982412308175478
+      }
+    },
+    "maximumAmplifiedAverageRecordBytes": 192
+  },
+  "calibration": {
+    "decision": "inconclusive",
+    "pairs": 6,
+    "passedIntervals": 0,
+    "totalIntervals": 12,
+    "intervals": [
+      {
+        "id": "ordinary-1000/sqlMeanMs",
+        "estimate": 0.8857846634465043,
+        "lower": 0.6733757883043753,
+        "upper": 1.1259831019995372
+      },
+      {
+        "id": "ordinary-1000/httpP50Ms",
+        "estimate": 0.9071547414510269,
+        "lower": 0.7050593929359865,
+        "upper": 1.1087138221871224
+      },
+      {
+        "id": "ordinary-1000/httpP95Ms",
+        "estimate": 0.8369969290839369,
+        "lower": 0.5753458311294324,
+        "upper": 1.2122736977706552
+      },
+      {
+        "id": "terminatable-1000/sqlMeanMs",
+        "estimate": 1.017797464046112,
+        "lower": 0.8172920496465037,
+        "upper": 1.251799258008603
+      },
+      {
+        "id": "terminatable-1000/httpP50Ms",
+        "estimate": 0.9616980903370921,
+        "lower": 0.7951764449240905,
+        "upper": 1.13544701501458
+      },
+      {
+        "id": "terminatable-1000/httpP95Ms",
+        "estimate": 1.0904203434401571,
+        "lower": 0.7362200142689272,
+        "upper": 1.6065311682655028
+      },
+      {
+        "id": "daily-cost/sqlMeanMs",
+        "estimate": 0.8366212455595379,
+        "lower": 0.6033771889207177,
+        "upper": 1.2089809982479534
+      },
+      {
+        "id": "daily-cost/httpP50Ms",
+        "estimate": 0.8249938190969477,
+        "lower": 0.6074734138442496,
+        "upper": 1.0926125708490315
+      },
+      {
+        "id": "daily-cost/httpP95Ms",
+        "estimate": 0.9114713698571053,
+        "lower": 0.5368279891135186,
+        "upper": 1.7266267479843727
+      },
+      {
+        "id": "terminal-status/sqlMeanMs",
+        "estimate": 0.6059437461223951,
+        "lower": 0.40764013832267243,
+        "upper": 0.8814125835979323
+      },
+      {
+        "id": "terminal-status/httpP50Ms",
+        "estimate": 0.6832541561264679,
+        "lower": 0.4996687598628582,
+        "upper": 0.9226974847620184
+      },
+      {
+        "id": "terminal-status/httpP95Ms",
+        "estimate": 0.39811423326960227,
+        "lower": 0.1980132996710014,
+        "upper": 0.7421055144072614
+      }
+    ]
+  },
+  "accounting": {
+    "structural": {
+      "trials": 24,
+      "httpOffersIncludingFirstAndWarmup": 315,
+      "measuredHttpOffersIncludingCorrectnessErrors": 297,
+      "expectedCorrectnessErrorResponses": 33,
+      "lateHttpResponses": 0,
+      "timedOut": 0,
+      "unfinished": 0,
+      "healthOffers": 811,
+      "healthDeadlineMisses": 124,
+      "healthLateSuccesses": 0
+    },
+    "calibration": {
+      "trials": 12,
+      "httpOffersIncludingFirstAndWarmup": 2892,
+      "measuredHttpOffersIncludingCorrectnessErrors": 2400,
+      "expectedCorrectnessErrorResponses": 0,
+      "lateHttpResponses": 0,
+      "timedOut": 0,
+      "unfinished": 0,
+      "healthOffers": 8786,
+      "healthDeadlineMisses": 2077,
+      "healthLateSuccesses": 3
+    }
+  },
+  "checks": {
+    "focusedHarnessTests": {
+      "passed": 12
+    },
+    "candidateFocusedTests": {
+      "passed": 325,
+      "failed": 1,
+      "failure": "Existing SCAN d query-plan guard also matches the bounded selected-page CTE."
+    },
+    "repositoryChecks": {
+      "boundaries": "passed",
+      "build": "passed",
+      "lint": "passed with 9 warnings",
+      "typeChecks": "passed",
+      "deadExports": "passed after declaring the denied test sentinel",
+      "formatting": "passed",
+      "fullUnitRuns": [
+        {
+          "passed": 10163,
+          "failed": 1,
+          "failure": "Unchanged shutdown telemetry deadline test"
+        },
+        {
+          "passed": 10163,
+          "failed": 1,
+          "failure": "Unchanged process-group cleanup, kill EPERM"
+        }
+      ],
+      "isolatedBaselineChecks": [
+        {
+          "suite": "http-shutdown",
+          "passed": 6
+        },
+        {
+          "suite": "claude-session",
+          "passed": 19
+        }
+      ]
+    },
+    "longHistoryIntegration": {
+      "workloads": 3700,
+      "deadlineMs": 6000,
+      "baseline": "passed",
+      "candidate": "passed"
+    },
+    "nativeObserverSelfCheck": "passed",
+    "noExperimentalRetries": true
+  },
+  "experimentalMs": 1518511.131833,
+  "executionBudgetMs": 1800000,
+  "artifact": {
+    "archive": "list-aggregation-evidence.tar.gz",
+    "bytes": 165065498,
+    "sha256": "a1a892d47ca0b86dd3d828957f47ce32a144b4ac2c8a17401e3beee2d928974a",
+    "inventorySha256": "aaf7e749442ab60bb80e78a1a98d9f4e2fda3217209460eb10f8a2be785282ed",
+    "retained": ".context/list-aggregation-20260916T220526Z/retained",
+    "files": 747,
+    "completeTrials": 36,
+    "httpOffers": 3207,
+    "healthOffers": 9597,
+    "standaloneArchivedVerifier": "passed",
+    "harnessHashes": "passed",
+    "completeCorrectnessEquality": "passed",
+    "calibrationBuildsAndSqliteConfigurationIdentical": "passed",
+    "nativeFingerprintScope": "Stock native binary pinned at study boundaries; each calibration child records SQLite version and compile options. Observed children also record the instrumented binary hash."
+  },
+  "localOutput": ".context/list-aggregation-20260916T220526Z",
+  "productionSourceChanged": false,
+  "implementationPr": null
+}

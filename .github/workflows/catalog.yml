@@ -1,0 +1,168 @@
+name: Catalog Refresh
+
+on:
+  schedule:
+    - cron: '15 */3 * * *' # Every 3 hours
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      # backmesh's image has no OpenSSH client.
+      - name: Install ssh
+        run: command -v ssh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends openssh-client; }
+
+      - name: Verify catalog repo access
+        env:
+          CATALOG_DEPLOY_KEY: ${{ secrets.CATALOG_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$CATALOG_DEPLOY_KEY" > ~/.ssh/catalog_key
+          chmod 600 ~/.ssh/catalog_key
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/catalog_key -o StrictHostKeyChecking=accept-new" \
+            git ls-remote git@github.com:anycloud-sh/catalog.git HEAD
+          rm -f ~/.ssh/catalog_key
+
+  refresh:
+    needs: preflight
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    outputs:
+      failed_clouds: ${{ steps.fetch.outputs.failed_clouds }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Clone current catalog for regression validation
+        env:
+          CATALOG_DEPLOY_KEY: ${{ secrets.CATALOG_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$CATALOG_DEPLOY_KEY" > ~/.ssh/catalog_key
+          chmod 600 ~/.ssh/catalog_key
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/catalog_key -o StrictHostKeyChecking=accept-new" \
+            git clone git@github.com:anycloud-sh/catalog.git /tmp/catalog
+
+      - name: Fetch all catalogs in parallel
+        id: fetch
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+          LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+        run: |
+          # Create all output directories up front
+          for cloud in aws gcp lambda azure; do
+            mkdir -p /tmp/catalogs/$cloud
+          done
+
+          # Each fetcher's PID maps to its cloud, so a failure names the cloud.
+          declare -A clouds
+          # AWS: SkyPilot rows + EC2 processor capabilities by region.
+          # Other fetchers (Azure: scraped; GCP: SkyPilot prices +
+          # Compute Engine machine metadata;
+          # Lambda: /instance-types + /images, so regions track Lambda's live offering
+          # instead of SkyPilot's weeks-stale snapshot).
+          for cloud in aws azure gcp lambda; do
+            npx tsx scripts/fetch-catalog.ts --cloud $cloud --output /tmp/catalogs/$cloud/vms.csv &
+            clouds[$!]=$cloud
+          done
+
+          # Wait for every fetcher (so all logs flush). Bare `wait` returns 0
+          # regardless, so check each PID. A failed cloud republishes its
+          # previous catalog, so the other clouds still refresh; the final step
+          # fails the run, which alerts Slack with the failed clouds.
+          failed=()
+          for pid in "${!clouds[@]}"; do
+            wait "$pid" || failed+=("${clouds[$pid]}")
+          done
+          for cloud in "${failed[@]}"; do
+            echo "::error::Catalog fetch failed for $cloud; keeping its previous catalog"
+            cp -R "/tmp/catalog/$cloud/." "/tmp/catalogs/$cloud/"
+          done
+          echo "failed_clouds=${failed[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate generated catalogs
+        run: |
+          for artifact in usage-families.json usage-families-v2.json; do
+            npx tsx scripts/validate-catalog.ts \
+              --input /tmp/catalogs/azure/vms.csv \
+              --cloud azure \
+              --usage-families "/tmp/catalogs/azure/$artifact"
+          done
+          npx tsx scripts/validate-catalog.ts \
+            --input /tmp/catalogs/gcp/vms.csv \
+            --cloud gcp
+
+      - name: Exercise generated catalogs through runtime queries
+        run: |
+          npx tsx scripts/validate-generated-catalog.ts \
+            --catalog-root /tmp/catalogs \
+            --previous-root /tmp/catalog
+
+      - name: Push to catalog repo
+        env:
+          CATALOG_DEPLOY_KEY: ${{ secrets.CATALOG_DEPLOY_KEY }}
+        run: |
+          for cloud in aws gcp lambda azure; do
+            mkdir -p /tmp/catalog/$cloud
+            cp /tmp/catalogs/$cloud/vms.csv /tmp/catalog/$cloud/vms.csv
+          done
+          # Azure-only: live Usage API confirmation of catalog family names
+          # (see AzureCatalogFetcher.fetchUsageFamilies) — independent from
+          # vms.csv's Resource-SKU-derived QuotaGroup column.
+          cp /tmp/catalogs/azure/usage-families.json /tmp/catalog/azure/usage-families.json
+          cp /tmp/catalogs/azure/usage-families-v2.json /tmp/catalog/azure/usage-families-v2.json
+          cd /tmp/catalog
+          git config user.name "anycloud-bot"
+          git config user.email "bot@anycloud.sh"
+          git add aws/ gcp/ lambda/ azure/
+          git diff --cached --quiet || {
+            git commit -m "Update catalogs $(date -u +%Y-%m-%d)"
+            GIT_SSH_COMMAND="ssh -i ~/.ssh/catalog_key" git push
+          }
+
+      - name: Remove catalog deploy key
+        if: always()
+        run: rm -f ~/.ssh/catalog_key
+
+      - name: Fail when a cloud kept its previous catalog
+        if: steps.fetch.outputs.failed_clouds != ''
+        env:
+          FAILED_CLOUDS: ${{ steps.fetch.outputs.failed_clouds }}
+        run: |
+          echo "::error::Catalog fetch failed for: $FAILED_CLOUDS"
+          exit 1
+
+  notify-slack:
+    needs: [preflight, refresh]
+    if: ${{ !cancelled() && contains(needs.*.result, 'failure') }}
+    permissions: {}
+    uses: ./.github/workflows/notify-slack.yml
+    with:
+      message: >-
+        Catalog Refresh failed${{ needs.refresh.outputs.failed_clouds && format(' for {0}', needs.refresh.outputs.failed_clouds) || '' }}: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    secrets:
+      SLACK_CI_WEBHOOK_URL: ${{ secrets.SLACK_CI_WEBHOOK_URL }}

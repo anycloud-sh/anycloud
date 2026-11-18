@@ -1,0 +1,8 @@
+# Cloudflare Worker that serves https://get.anycloud.sh — a static-assets worker
+# whose only asset is get-dist/index.html (a copy of ../install.sh, staged by
+# .github/workflows/install-script.yml). Deployed via `wrangler deploy`.
+name = "get-anycloud-sh"
+compatibility_date = "2026-03-17"
+
+[assets]
+directory = "./get-dist"

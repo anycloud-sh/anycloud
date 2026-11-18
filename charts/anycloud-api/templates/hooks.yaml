@@ -1,0 +1,109 @@
+# Hook Jobs run the API image's system-release hook entrypoint under
+# delegated, narrowly scoped identities. The bundled Helm invocation has no
+# --wait, so the post-install/post-upgrade Job is what decides the release
+# reached its requested target: exact operation, image digest, served version
+# and live readiness through the real endpoint.
+#
+# The guard runs first on every upgrade (never on install: there is no
+# Deployment yet) and refuses an incoming revision that is not newer than the
+# one the running Deployment carries, so a stale or replayed HelmChart cannot
+# roll the release backwards from inside the cluster either.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: anycloud-api-guard-{{ .Values.release.revision }}
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: '-20'
+    helm.sh/hook-delete-policy: before-hook-creation
+    {{- include "anycloud-api.releaseAnnotations" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        {{- include "anycloud-api.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: anycloud-api-observer
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: hook
+          image: {{ .Values.release.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args: [node, ./dist/api/system-release-hook.js, guard]
+          env:
+            - name: ANYCLOUD_RELEASE_REVISION
+              value: {{ .Values.release.revision | quote }}
+            - name: ANYCLOUD_RELEASE_OPERATION
+              value: {{ .Values.release.operationId | quote }}
+            - name: ANYCLOUD_RELEASE_IMAGE
+              value: {{ .Values.release.image | quote }}
+            - name: ANYCLOUD_RELEASE_VERSION
+              value: {{ .Values.release.version | quote }}
+            - name: ANYCLOUD_INSTALLATION_ID
+              value: {{ .Values.installation.id | quote }}
+            - name: ANYCLOUD_RELEASE_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: anycloud-api-ready-{{ .Values.release.revision }}
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: '10'
+    helm.sh/hook-delete-policy: before-hook-creation
+    {{- include "anycloud-api.releaseAnnotations" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "anycloud-api.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: anycloud-api-observer
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: hook
+          image: {{ .Values.release.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args: [node, ./dist/api/system-release-hook.js, ready]
+          env:
+            - name: ANYCLOUD_RELEASE_REVISION
+              value: {{ .Values.release.revision | quote }}
+            - name: ANYCLOUD_RELEASE_OPERATION
+              value: {{ .Values.release.operationId | quote }}
+            - name: ANYCLOUD_RELEASE_IMAGE
+              value: {{ .Values.release.image | quote }}
+            - name: ANYCLOUD_RELEASE_VERSION
+              value: {{ .Values.release.version | quote }}
+            - name: ANYCLOUD_INSTALLATION_ID
+              value: {{ .Values.installation.id | quote }}
+            - name: ANYCLOUD_RELEASE_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            # The hook reaches the API Pod by its observed Pod IP; cluster DNS
+            # is not assumed.
+            - name: ANYCLOUD_API_PORT
+              value: {{ .Values.api.port | quote }}

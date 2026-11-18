@@ -1,0 +1,7 @@
+name = "anycloud"
+compatibility_date = "2026-03-17"
+# Version and alias preview URLs for PR builds; see .github/workflows/docs.yml.
+preview_urls = true
+
+[assets]
+directory = "./build"

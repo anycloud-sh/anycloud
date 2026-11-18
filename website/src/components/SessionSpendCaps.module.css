@@ -1,0 +1,80 @@
+.wrap {
+  --ssc-code-bg: #0c0c0c;
+  --ssc-code-ink: #e2e8f0;
+  --ssc-line: #e2e8f0;
+
+  margin: 22px 0;
+  max-width: 760px;
+  overflow: hidden;
+  background: var(--ssc-code-bg);
+  border: 0;
+  border-radius: 8px;
+}
+
+.compact {
+  margin: 0;
+  max-width: none;
+}
+
+:global([data-theme='dark']) .wrap {
+  --ssc-code-bg: #070a12;
+  --ssc-code-ink: #cbd5e1;
+  --ssc-line: #1e293b;
+}
+
+.wrap > .codePane {
+  display: block;
+  margin: 0;
+  padding: 22px 24px 24px;
+  overflow-x: auto;
+  color: var(--ssc-code-ink);
+  background: var(--ssc-code-bg);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre;
+}
+
+@media (max-width: 640px) {
+  .wrap > .codePane {
+    padding: 20px 16px 22px;
+    font-size: 10.8px;
+    line-height: 1.78;
+  }
+}
+
+.codePane :global(.fn) {
+  color: #67e8f9;
+}
+
+.codePane :global(.num) {
+  color: #fbbf24;
+}
+
+.codePane :global(.flag) {
+  color: #f9a8d4;
+}
+
+.codePane :global(.barGreen) {
+  color: #4ade80;
+}
+
+.codePane :global(.barYellow) {
+  color: #fbbf24;
+}
+
+.codePane :global(.barRed) {
+  color: #f87171;
+}
+
+.codePane :global(.snapHead) {
+  color: #f3f4f6;
+  font-weight: 700;
+}
+
+.codePane :global(.snapDim) {
+  color: #6b7280;
+}

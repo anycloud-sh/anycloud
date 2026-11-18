@@ -1,0 +1,54 @@
+name: Install script
+
+# Publishes release/install.sh to get.anycloud.sh — a Cloudflare Worker (static
+# assets) named "get-anycloud-sh" (NOT a Pages project; `wrangler deploy`, like
+# the main site in docs.yml). The hosted copy drifted once because this deploy
+# was manual / out-of-band. Wiring it to CI keeps the served script byte-for-byte
+# equal to release/install.sh and re-publishes it:
+#   - on demand            (workflow_dispatch — redeploy any time, e.g. to un-stick a stale copy)
+#   - whenever it changes   (push to main touching the script, the worker config, or this workflow)
+#   - after every Release   (workflow_run — so the hosted installer matches the repo script)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'release/install.sh'
+      - 'release/get-anycloud-sh/**'
+      - '.github/workflows/install-script.yml'
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # For the post-Release trigger, only deploy if the Release actually succeeded.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloudflare-deploy
+    steps:
+      - uses: actions/checkout@v5
+
+      # The Worker serves <assets>/index.html at `/`, which is what
+      # `curl -fsSL https://get.anycloud.sh | sh` fetches. curl|sh ignores the
+      # content-type, so the script body as index.html is all that's needed.
+      - name: Stage install script as the asset root
+        run: |
+          mkdir -p release/get-anycloud-sh/get-dist
+          cp release/install.sh release/get-anycloud-sh/get-dist/index.html
+
+      # Run wrangler through npx: wrangler-action's `npm i` resolves to the
+      # repository's root package.json and fails there.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Deploy get.anycloud.sh
+        working-directory: release/get-anycloud-sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.148.0 deploy

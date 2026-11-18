@@ -1,0 +1,14 @@
+{{- if .Values.backup }}
+# Storage credential for the database backup, from the installation record.
+# Lives with the release values on the cluster (cluster-admin scope), as the
+# Docker-hosted API's checkpoint credential lived in its container.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: anycloud-api-backup
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  config: {{ toJson .Values.backup | quote }}
+{{- end }}

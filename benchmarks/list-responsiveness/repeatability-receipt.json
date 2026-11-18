@@ -1,0 +1,559 @@
+{
+  "study": "list-fixture-preflight-v2",
+  "date": "2026-09-17",
+  "status": "complete",
+  "decision": "no-promotion",
+  "reason": "All twelve A/A gates pass; both primary list SQL benefits and eleven A/B gates pass. Terminal-status HTTP p95 interval crosses the 1.05 upper-ratio boundary, leaving comparison inconclusive. No additional samples or implementation PR.",
+  "application": "913f8e992adbefd8d236d59fcec89f99dd788503",
+  "version": "0.1.64",
+  "harnessCommit": "2dc2447cac405bff68b04927a717d20d19376a37",
+  "harness": {
+    "runner": "f0949ef72bf1cca25a94db65b8ad755fa529ea63c717207d49d9bda39fe416f8",
+    "helpers": "dfd43ecf16e4c06118cc65e083cd34caac509e504eb2c368089dd96162a918b5",
+    "fixture": "7bade16e308cd22bba5176d22a691f4878389b6ca883ff22e1490e3db6b80114"
+  },
+  "candidatePatchSha256": "36949d4347621af7fc7c2b4a899a6b44019a1cbbdccd0a3424b8abb3ff302f50",
+  "runtime": {
+    "node": "v22.14.0",
+    "nodeSha256": "1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1",
+    "platform": "linux",
+    "arch": "x64",
+    "release": "6.17.0-1022-azure",
+    "cpus": [
+      "AMD EPYC 7763 64-Core Processor",
+      "AMD EPYC 7763 64-Core Processor"
+    ],
+    "memoryBytes": 8323973120,
+    "betterSqlite3": "11.10.0",
+    "sqlite": "3.49.2"
+  },
+  "runner": {
+    "runId": "35192785143",
+    "attempt": "1",
+    "name": "GitHub Actions 1000001305",
+    "environment": "github-hosted"
+  },
+  "builds": {
+    "baseline": {
+      "source": "913f8e992adbefd8d236d59fcec89f99dd788503",
+      "buildSha256": "57ede9ed51b001b915942159e870c0cc689a3c6e52eea07ff5b3cd1d222735d1",
+      "migrationsSha256": "6cb98dd844547586a5d682fcffa010164e2f9eee1fb03d1693345025f11fcfb7",
+      "lockSha256": "93b2ac2bb1022d0565d69792b879b632e64f72554e08a3d1b7370127ff1db7eb",
+      "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+    },
+    "candidate": {
+      "source": "913f8e992adbefd8d236d59fcec89f99dd788503",
+      "buildSha256": "aca7b4e7bc10ac7f18763dc97f239de5d65882747d287c4244545c22e7ce142c",
+      "migrationsSha256": "6cb98dd844547586a5d682fcffa010164e2f9eee1fb03d1693345025f11fcfb7",
+      "lockSha256": "93b2ac2bb1022d0565d69792b879b632e64f72554e08a3d1b7370127ff1db7eb",
+      "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+    }
+  },
+  "fixture": {
+    "counts": {
+      "workloads": 18664,
+      "container_specs": 18664,
+      "vms": 285564,
+      "workload_events": 1994751,
+      "credentials": 2,
+      "deployments": 0,
+      "clusters": 0
+    },
+    "proof": {
+      "version": 1,
+      "logicalSha256": "71be32cffdbb705f3c52ea89f06743397e26000d7ac8fc7b7180f2d944fba131",
+      "database": {
+        "bytes": 661377024,
+        "sha256": "b119a62fa0e13fdcfe681e10f4668101786e43156942c9f7ef166a90abd62334"
+      }
+    },
+    "timingScope": "user",
+    "correctnessScopes": ["user", "api"]
+  },
+  "policy": {
+    "pairsPerStage": 6,
+    "resamples": 46656,
+    "estimator": "exp(mean(log(candidate_i / baseline_i)))",
+    "interval": "Pointwise two-sided 95% percentile bootstrap, all complete paired blocks jointly resampled; nearest rank",
+    "calibrationBounds": [0.95, 1.05],
+    "primarySqlUpper": 0.9,
+    "protectionUpper": 1.05,
+    "protocolSha256": "9f0b77ee053ea20574a21567d6af785c01a03b8307848a3570c14da3c7294d1a",
+    "additionalTrials": 0,
+    "coldOsCacheClaim": false
+  },
+  "accounting": {
+    "correctness": {
+      "trials": 6,
+      "offered": 225,
+      "measured": 225,
+      "outcomes": {
+        "success": 192,
+        "http-error": 33
+      },
+      "expectedCorrectnessErrors": 33,
+      "lateBodyCompletions": 0,
+      "unfinished": 0,
+      "healthOffered": 72,
+      "healthMisses": 0,
+      "pendingAfterDrain": 0
+    },
+    "setup": {
+      "trials": 3,
+      "offered": 63,
+      "measured": 36,
+      "outcomes": {
+        "success": 63
+      },
+      "expectedCorrectnessErrors": 0,
+      "lateBodyCompletions": 0,
+      "unfinished": 0,
+      "healthOffered": 155,
+      "healthMisses": 0,
+      "pendingAfterDrain": 0
+    },
+    "calibration": {
+      "trials": 12,
+      "offered": 2892,
+      "measured": 2400,
+      "outcomes": {
+        "success": 2892
+      },
+      "expectedCorrectnessErrors": 0,
+      "lateBodyCompletions": 0,
+      "unfinished": 0,
+      "healthOffered": 5445,
+      "healthMisses": 0,
+      "pendingAfterDrain": 0
+    },
+    "comparison": {
+      "trials": 12,
+      "offered": 2892,
+      "measured": 2400,
+      "outcomes": {
+        "success": 2892
+      },
+      "expectedCorrectnessErrors": 0,
+      "lateBodyCompletions": 0,
+      "unfinished": 0,
+      "healthOffered": 4746,
+      "healthMisses": 0,
+      "pendingAfterDrain": 0
+    }
+  },
+  "experimentalMs": 1738063.7809899999,
+  "executionBudgetMs": 1800000,
+  "storage": {
+    "minimumSampledAvailableBytes": 7993901056,
+    "trialRequiredBytes": 4792991744,
+    "capacityReceipts": 34,
+    "sharedClosedMixedCopies": 27,
+    "privateCorrectnessCopies": 6,
+    "contentsRetainedUntilUpload": true
+  },
+  "checks": {
+    "focusedTests": 69,
+    "preparationHttpResponses": 299,
+    "verify": {
+      "result": "passed",
+      "tests": 10178,
+      "files": 421
+    },
+    "longHistoryIntegration": {
+      "result": "passed",
+      "workloads": 3700,
+      "deadlineMs": 6000
+    },
+    "independentCiDownloadAudit": "passed",
+    "archivedStandaloneVerifier": "passed",
+    "regularPrUnitJob": {
+      "jobId": 105109424399,
+      "runId": 35192770508,
+      "passed": 10323,
+      "failed": 1,
+      "failure": "SSH-process cancellation test received undefined child PID at test/unit/services/gateways/ssh-process.spec.ts:276; retained separately.",
+      "checkout": "8b3bbe103c747e6bbc2a64f57daf2db811db6cae",
+      "base": "21be6b254902a20b0857706155f189fb228632c0"
+    },
+    "historicalCandidatePlanGuard": "Existing SCAN d assertion also matches a bounded selected-page CTE; unresolved, no test relaxed."
+  },
+  "artifact": {
+    "archive": "list-repeatability-evidence.tar.gz",
+    "bytes": 97980881,
+    "sha256": "866549ec0842d502c85462646b11fcefc15aba8e252c1dc72e7b10a2d25e9c01",
+    "inventorySha256": "99a8a685b07b42ad74ed2944be906b431648f04a9a929017ccc33cc8e854ff93",
+    "files": 734,
+    "completeTrials": 33,
+    "httpOffers": 6072,
+    "healthOffers": 10418,
+    "localVerifier": "passed",
+    "standaloneArchivedVerifier": "passed",
+    "archiveMembersVerified": 735
+  },
+  "ciArtifacts": [
+    {
+      "id": 10485778620,
+      "name": "api-responsiveness-list-repeatability-download-audit",
+      "bytes": 4095,
+      "digest": "sha256:90973fb82cfef64be6db38559eaf32c91659e10cba722ebcd0ae9bc547ed5197",
+      "expiresAt": "2026-09-24T07:46:09Z"
+    },
+    {
+      "id": 10485314531,
+      "name": "api-responsiveness-list-repeatability-evidence",
+      "bytes": 98861249,
+      "digest": "sha256:15c84c7298dfdba83377ad1e4071404ddfdc2f1f233113a727d8d91401a230a1",
+      "expiresAt": "2026-09-24T07:45:42Z"
+    },
+    {
+      "id": 10485291027,
+      "name": "api-responsiveness-list-repeatability-checks",
+      "bytes": 18462,
+      "digest": "sha256:7eb93308582ad25e0c516550ef41d7913b6366f65595dc02c1a42ce93316da34",
+      "expiresAt": "2026-09-24T07:13:01Z"
+    }
+  ],
+  "expectedCompletedTrials": [
+    "correctness-original-user",
+    "correctness-original-api",
+    "correctness-proof-user",
+    "correctness-proof-api",
+    "correctness-candidate-user",
+    "correctness-candidate-api",
+    "setup-original",
+    "setup-file-proof",
+    "setup-reversal",
+    "calibration-1-baseline",
+    "calibration-1-candidate",
+    "calibration-2-candidate",
+    "calibration-2-baseline",
+    "calibration-3-baseline",
+    "calibration-3-candidate",
+    "calibration-4-candidate",
+    "calibration-4-baseline",
+    "calibration-5-baseline",
+    "calibration-5-candidate",
+    "calibration-6-candidate",
+    "calibration-6-baseline",
+    "comparison-1-baseline",
+    "comparison-1-candidate",
+    "comparison-2-candidate",
+    "comparison-2-baseline",
+    "comparison-3-baseline",
+    "comparison-3-candidate",
+    "comparison-4-candidate",
+    "comparison-4-baseline",
+    "comparison-5-baseline",
+    "comparison-5-candidate",
+    "comparison-6-candidate",
+    "comparison-6-baseline"
+  ],
+  "localOutput": ".context/list-repeatability-storage-20260917T065431Z",
+  "productionSourceChanged": false,
+  "implementationPr": null,
+  "fullQualificationRun": false,
+  "calibration": {
+    "decision": "passes",
+    "drained": true,
+    "passedIntervals": 12,
+    "totalIntervals": 12,
+    "intervals": [
+      {
+        "id": "ordinary-1000/sqlMeanMs",
+        "primary": true,
+        "estimate": 0.9958410247917299,
+        "lower": 0.9861903344871038,
+        "upper": 1.0037878204524358,
+        "pairedValues": [
+          0.9862137011446963, 1.006131061628115, 0.9756787596060743,
+          1.0013965422458118, 1.003841442544902, 1.0021585442530323
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "ordinary-1000/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9948573626514646,
+        "lower": 0.9855854188151495,
+        "upper": 1.0028811570993155,
+        "pairedValues": [
+          0.9859818356589144, 1.0061941608921197, 0.97538252072015,
+          1.0044560400250135, 0.9973345489081614, 1.0001552900542485
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "ordinary-1000/httpP95Ms",
+        "primary": false,
+        "estimate": 0.9886894805851655,
+        "lower": 0.9752498321441279,
+        "upper": 1.0020803830638527,
+        "pairedValues": [
+          0.9760497204359677, 1.0142923638694663, 0.9625133343591435,
+          0.9856061577322736, 1.001257991506901, 0.9932720724223587
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/sqlMeanMs",
+        "primary": true,
+        "estimate": 0.9920323891074891,
+        "lower": 0.9769403905738147,
+        "upper": 1.0022060558148203,
+        "pairedValues": [
+          0.9930164697600401, 0.998657564984839, 0.9567152005847188,
+          1.007843612742354, 0.9998893879637663, 0.996906164877188
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9990382699370645,
+        "lower": 0.9896054233393371,
+        "upper": 1.0073042811180752,
+        "pairedValues": [
+          0.9940468791879653, 1.0055081473563159, 0.9780478791064736,
+          1.0143394661413978, 0.997732817043062, 1.0049456936604348
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/httpP95Ms",
+        "primary": false,
+        "estimate": 0.998291356329228,
+        "lower": 0.9756198253095313,
+        "upper": 1.0203171915723763,
+        "pairedValues": [
+          1.0431452032257824, 1.0093059165972196, 0.9500923068324651,
+          1.0012902037180027, 1.0029201630076454, 0.9853355433515514
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/sqlMeanMs",
+        "primary": false,
+        "estimate": 0.9969858105477722,
+        "lower": 0.9865074246819444,
+        "upper": 1.007752614428804,
+        "pairedValues": [
+          0.9786565593839804, 1.0006355846096442, 0.9964025498239236,
+          1.0206010628460578, 0.9845207816290976, 1.0016404972174053
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9959398952782204,
+        "lower": 0.9857712010005213,
+        "upper": 1.0061729678823899,
+        "pairedValues": [
+          0.9750916386211401, 0.998965997513189, 0.9953707560379205,
+          1.0175385065995781, 0.9904846033177879, 0.9986635069339659
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/httpP95Ms",
+        "primary": false,
+        "estimate": 0.9985154455317669,
+        "lower": 0.9792627347841366,
+        "upper": 1.0184235087336508,
+        "pairedValues": [
+          0.9836540814696284, 1.0110838501649713, 0.9897586412684938,
+          1.0352643278310278, 0.9615736010010301, 1.0114305503195065
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/sqlMeanMs",
+        "primary": false,
+        "estimate": 0.993114510160512,
+        "lower": 0.9781334009135244,
+        "upper": 1.0104703393749337,
+        "pairedValues": [
+          0.9981949439353827, 0.9844848289487843, 0.9775215506477085,
+          0.9982264890147936, 0.9682390381169403, 1.0333169429332598
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9960685765041567,
+        "lower": 0.9585063029484219,
+        "upper": 1.0367179224040584,
+        "pairedValues": [
+          1.0184130895714005, 0.9277850457306164, 0.9765053538951047,
+          1.0261607911671518, 0.9575318496312966, 1.077260713274246
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/httpP95Ms",
+        "primary": false,
+        "estimate": 1.0134551506265481,
+        "lower": 0.9844968274216102,
+        "upper": 1.041758458880731,
+        "pairedValues": [
+          1.0594330598277022, 1.0106702166383748, 0.9617181539105051,
+          0.9750039879736836, 1.0452731772461439, 1.0324290220816135
+        ],
+        "decision": "passes"
+      }
+    ]
+  },
+  "comparison": {
+    "decision": "inconclusive",
+    "drained": true,
+    "passedIntervals": 11,
+    "totalIntervals": 12,
+    "intervals": [
+      {
+        "id": "ordinary-1000/sqlMeanMs",
+        "primary": true,
+        "estimate": 0.5949058519919731,
+        "lower": 0.5878914747058087,
+        "upper": 0.6013074110920864,
+        "pairedValues": [
+          0.5992687822717641, 0.5964520633856714, 0.601565010749671,
+          0.604628098063113, 0.5809005049794637, 0.5869749918069921
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "ordinary-1000/httpP50Ms",
+        "primary": false,
+        "estimate": 0.6313375336835328,
+        "lower": 0.6244539480722084,
+        "upper": 0.6382569775985404,
+        "pairedValues": [
+          0.6348886945040564, 0.6295285868139445, 0.6395470064342089,
+          0.6431297002306064, 0.6199444567043111, 0.6213449726231594
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "ordinary-1000/httpP95Ms",
+        "primary": false,
+        "estimate": 0.6333275462232077,
+        "lower": 0.6222595090551634,
+        "upper": 0.6422433102327267,
+        "pairedValues": [
+          0.6368322503928058, 0.6412762267681485, 0.6394842574382528,
+          0.6473306555704863, 0.6081314485231766, 0.6276919850517132
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/sqlMeanMs",
+        "primary": true,
+        "estimate": 0.528735618350309,
+        "lower": 0.5231855881272803,
+        "upper": 0.5330792358985308,
+        "pairedValues": [
+          0.5298616549688322, 0.5301242245024612, 0.5345409871588581,
+          0.5347172779527034, 0.5275741261931944, 0.5158251906689283
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/httpP50Ms",
+        "primary": false,
+        "estimate": 0.5834446512100895,
+        "lower": 0.57565282494625,
+        "upper": 0.5902039573768632,
+        "pairedValues": [
+          0.5860018767098596, 0.5856212242293295, 0.5932349779326123,
+          0.5917834203813916, 0.5783462271113085, 0.5661150640472299
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminatable-1000/httpP95Ms",
+        "primary": false,
+        "estimate": 0.5896892075319191,
+        "lower": 0.579128616232192,
+        "upper": 0.5985983663358102,
+        "pairedValues": [
+          0.5935476643080905, 0.5826942886428934, 0.5965679428244851,
+          0.6057983092340793, 0.5934465707411648, 0.5668564869382385
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/sqlMeanMs",
+        "primary": false,
+        "estimate": 0.9848082069741866,
+        "lower": 0.9628443598523926,
+        "upper": 1.008340381464315,
+        "pairedValues": [
+          1.0158870806873073, 0.9697268092573492, 0.9899746793949761,
+          1.0264340052111516, 0.9429304403527394, 0.966452114966004
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9839209103372699,
+        "lower": 0.9630222986452901,
+        "upper": 1.0058658753973524,
+        "pairedValues": [
+          1.00920187713647, 0.9751936661869864, 0.9856834336055595,
+          1.0254710798571696, 0.9430052225302016, 0.9672021383049387
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "daily-cost/httpP95Ms",
+        "primary": false,
+        "estimate": 0.9910290686484807,
+        "lower": 0.9658674156694875,
+        "upper": 1.0174096561555548,
+        "pairedValues": [
+          1.0267099429422755, 0.9721567403801236, 1.007995052638098,
+          1.0339176159289947, 0.9481084897405692, 0.9605764374795702
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/sqlMeanMs",
+        "primary": false,
+        "estimate": 0.98838855067794,
+        "lower": 0.9485754233252693,
+        "upper": 1.0186654858612116,
+        "pairedValues": [
+          1.004131175271242, 0.9801165765608456, 1.0166542686761129,
+          1.0374870685522295, 0.9985859478197247, 0.8994077375409371
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/httpP50Ms",
+        "primary": false,
+        "estimate": 0.9662639953074943,
+        "lower": 0.8835566432795243,
+        "upper": 1.0342188549452582,
+        "pairedValues": [
+          1.0323534795406515, 0.9337362221387246, 1.0588767075779923,
+          1.0488986140213012, 0.960922733019966, 0.7911426116418618
+        ],
+        "decision": "passes"
+      },
+      {
+        "id": "terminal-status/httpP95Ms",
+        "primary": false,
+        "estimate": 0.9946290224650789,
+        "lower": 0.9395513018559192,
+        "upper": 1.0545436234234367,
+        "pairedValues": [
+          0.9842246572377481, 0.947220822692201, 1.0991707918235132,
+          1.0891518087480834, 0.9660711292097133, 0.8979632997016973
+        ],
+        "decision": "inconclusive"
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "member": "image-preflight-invalid",
+  "candidate": "e2e.sh image-preflight-invalid --vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "image-architecture",
+      "requirement": "An arm64-only latest image is rejected with x86_64 rebuild guidance before any provisioning.",
+      "candidateEvidence": "test/integration/e2e/specs/image-preflight-invalid.spec.ts architectureId through rejectsBeforeProvision: requires nonzero CLI outcome, exact diagnostic, no spawn/timeout/abort, zero live VM rows and exactly zero Workload/VM database rows."
+    },
+    {
+      "id": "image-missing-tag",
+      "requirement": "A missing tag in the public fixture repository is rejected with not found before any provisioning.",
+      "candidateEvidence": "test/integration/e2e/specs/image-preflight-invalid.spec.ts missingTagId through rejectsBeforeProvision: requires nonzero CLI outcome, exact diagnostic, no spawn/timeout/abort, zero live VM rows and exactly zero Workload/VM database rows."
+    },
+    {
+      "id": "image-explicit-disk",
+      "requirement": "The pinned large amd64 image is rejected with requested 1 GB disk when disk-size is explicitly 1.",
+      "candidateEvidence": "test/integration/e2e/specs/image-preflight-invalid.spec.ts explicitDiskId through rejectsBeforeProvision: requires nonzero CLI outcome, exact diagnostic, no spawn/timeout/abort, zero live VM rows and exactly zero Workload/VM database rows."
+    },
+    {
+      "id": "image-catalog-disk",
+      "requirement": "The pinned large amd64 image is rejected with the selected VM type catalog-disk diagnostic when no explicit disk size is supplied.",
+      "candidateEvidence": "test/integration/e2e/specs/image-preflight-invalid.spec.ts catalogDiskId through rejectsBeforeProvision: requires nonzero CLI outcome, exact diagnostic, no spawn/timeout/abort, zero live VM rows and exactly zero Workload/VM database rows."
+    },
+    {
+      "id": "preflight-profile",
+      "requirement": "Use an isolated API with dummy unvalidated AWS credentials, the public arm64 fixture, the pinned amd64 CUDA digest, the m3.medium default, and preserve the existing explicit overrides. No cloud resource may be created.",
+      "candidateEvidence": "test/integration/e2e/specs/image-preflight-invalid.spec.ts; api.ts::saveCredential; context.ts workloadFacts and database.ts::queryComplete. The isolated outer runner owns local API fixtures; cloud cleanup is Not applicable."
+    }
+  ]
+}

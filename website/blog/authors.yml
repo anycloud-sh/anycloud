@@ -1,0 +1,13 @@
+luis:
+  name: Luis Fernando de Pombo
+  title: Co-founder, anycloud
+  url: https://github.com/depombo
+  image_url: https://github.com/depombo.png
+  page: true
+
+laurence:
+  name: Laurence Midgley
+  title: Co-founder & CTO, Ångstrom AI
+  url: https://lollcat.github.io/laurence-midgley/
+  image_url: /img/laurence-midgley-linkedin.jpeg
+  page: true

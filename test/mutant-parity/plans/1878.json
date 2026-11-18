@@ -1,0 +1,61 @@
+{
+  "base": "e9754c9f73c0c9dee2a2fe2db815d1a08bfaafe0",
+  "head": "b944ccbfe93768684650fb6801b2f10bbb1d488b",
+  "moves": [
+    {
+      "from": "src/api/services/kubernetes/deployment-workload.ts",
+      "to": "src/api/services/deployment-objects.ts",
+      "symbols": [
+        ["buildKubernetesDeploymentManifests", "renderDeploymentObjects"],
+        "appliedGenerationOf",
+        "contains",
+        "rolledOut",
+        "ownedResources",
+        ["observeKubernetesDeployment", "observeDeployment"],
+        ["kubernetesDeploymentDiffers", ["applyDiffering", "storedSecret"]]
+      ]
+    },
+    {
+      "from": "src/api/services/kubernetes/deployment-workload.ts",
+      "to": "src/api/services/kubernetes/pool-objects.ts",
+      "symbols": ["podPendingReason"]
+    },
+    {
+      "from": "src/api/services/deployment-controller.ts",
+      "to": "src/api/services/deployment-controller.ts",
+      "symbols": [
+        "replica",
+        "createDeploymentOwner",
+        "createDeploymentController"
+      ]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/routes/job-change-waits.spec.ts",
+      "test/unit/services/deployment-controller.spec.ts",
+      "test/unit/services/deployment-discovery-domain.spec.ts",
+      "test/unit/services/deployment-workload-domain.spec.ts",
+      "test/unit/services/job/node-pool-logs.spec.ts",
+      "test/unit/services/kubernetes/deployment-workload.spec.ts",
+      "test/unit/services/kubernetes/pool-objects.spec.ts",
+      "test/unit/services/monitor-targeted-jobs.spec.ts",
+      "test/unit/services/node-pool-deployment-jobs.spec.ts",
+      "test/unit/services/node-pool-deployment-permissions.spec.ts"
+    ],
+    "head": [
+      "test/unit/routes/job-change-waits.spec.ts",
+      "test/unit/services/deployment-controller.spec.ts",
+      "test/unit/services/deployment-discovery-domain.spec.ts",
+      "test/unit/services/deployment-objects.spec.ts",
+      "test/unit/services/deployment-workload-domain.spec.ts",
+      "test/unit/services/job/node-pool-logs.spec.ts",
+      "test/unit/services/kubernetes/node-pool-namespace.spec.ts",
+      "test/unit/services/kubernetes/pool-objects.spec.ts",
+      "test/unit/services/monitor-targeted-jobs.spec.ts",
+      "test/unit/services/node-pool-deployment-jobs.spec.ts",
+      "test/unit/services/node-pool-deployment-permissions.spec.ts",
+      "test/unit/services/pool-reconciler.spec.ts"
+    ]
+  }
+}

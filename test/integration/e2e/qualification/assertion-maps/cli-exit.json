@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "member": "cli-exit",
+  "candidate": "yarn test:cli-exit:vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "list-help",
+      "requirement": "list --help exits successfully within five seconds.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts listHelp; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "missing-workload-status",
+      "requirement": "status nonexistent exits within thirty seconds; failure is acceptable and may not hang.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingWorkload; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "missing-local-api",
+      "requirement": "A deterministic immediate Docker failure yields No local API is running within five seconds.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts noApi and docker-fast-failure command shim; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "hung-docker",
+      "requirement": "A thirty-second Docker hang yields Timed out checking the local API container before the five-second outer deadline.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts hungDocker and docker-hang command shim; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "removed-config",
+      "requirement": "config exits within five seconds with unknown command.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts removedConfig; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "removed-worker",
+      "requirement": "worker exits within five seconds with unknown command.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts removedWorker; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "credentials-help",
+      "requirement": "credentials --help exits successfully within five seconds.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts credentialsHelp; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "status-needs-id",
+      "requirement": "status without an ID exits within five seconds; candidate also requires nonzero status.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingStatusId; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "terminate-needs-id",
+      "requirement": "terminate without an ID exits within five seconds; candidate also requires nonzero status.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingTerminateId; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "submit-needs-image",
+      "requirement": "CI=true submit without arguments exits within ten seconds with Image required and never enters an interactive wizard.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingImage; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "credentials-need-provider",
+      "requirement": "CI=true credentials new my-cred exits within ten seconds with provider-required guidance.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingProvider; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    },
+    {
+      "id": "submit-needs-compute-target",
+      "requirement": "CI=true submit with inline dummy AWS credentials and nginx:alpine but no compute target exits within ten seconds with the exact --vm-type/--gpu-type guidance.",
+      "candidateEvidence": "test/integration/e2e/specs/cli-exit.spec.ts missingComputeTarget; expectBounded rejects spawn errors, abortion and timeout; internal/cli.ts sets CI=true."
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+name: Publish Skill
+
+# Mirrors anycloud-skills/ (the monorepo source of truth) to the public
+# anycloud-sh/anycloud-skills repo, which backs the Claude plugin marketplace and
+# `npx skills add`. Modeled on catalog.yml (deploy-key -> clone -> sync -> push).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'anycloud-skills/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'anycloud-skills/**'
+      - 'src/cli/**' # CLI changes can invalidate the skill's documented commands
+      - 'ci/skills/check-skill-drift.ts'
+      - 'docs/introduction/getting-started.md' # pages the drift check reads
+      - 'docs/reference/cli/api-utilities.md'
+      - 'docs/platform/container-images.md'
+      - 'docs/platform/secrets-environment.md'
+      - 'docs/reference/cli/credentials.md'
+      - '.github/workflows/skills.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CLAUDE_CODE_VERSION: '2.1.159' # pin: validate strictness changes across releases
+
+jobs:
+  validate:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Install Claude Code (for plugin validate)
+        run: npm i -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      # Gate 1: manifest validity. Guard against false-green — a bad path prints
+      # "failed" but exits 0, so assert the manifest exists AND grep the output.
+      - name: Validate plugin manifest (--strict)
+        run: |
+          test -f anycloud-skills/.claude-plugin/marketplace.json
+          out=$(claude plugin validate --strict anycloud-skills/ 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "Validation passed"
+
+      # Gate 2: anti-drift — claude plugin validate does NOT read SKILL.md, so this
+      # asserts every command the skill documents still exists in the CLI.
+      - name: Check skill anti-drift
+        run: npx tsx ci/skills/check-skill-drift.ts
+
+      # Gate 3: version lockstep — every skill-manifest version field must equal
+      # package.json (the product version the skill tracks). Mirrors
+      # scripts/verify-release-state.js so a skill-only PR can't publish a version
+      # that would later fail release validation: plugin.json.version, marketplace
+      # metadata.version, and the anycloud plugin entry must all match package.json.
+      - name: Check version lockstep
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          PV=$(node -p "require('./anycloud-skills/.claude-plugin/plugin.json').version")
+          MM=$(node -p "require('./anycloud-skills/.claude-plugin/marketplace.json').metadata.version")
+          MP=$(node -p "require('./anycloud-skills/.claude-plugin/marketplace.json').plugins.find(p => p.name === 'anycloud').version")
+          echo "package.json=$PKG plugin.json=$PV marketplace.metadata=$MM marketplace.plugin=$MP"
+          for V in "$PV" "$MM" "$MP"; do
+            [ "$V" = "$PKG" ] || { echo "✘ version mismatch: skill manifest has '$V', package.json has '$PKG'"; exit 1; }
+          done
+
+  preflight:
+    needs: validate
+    if: github.ref == 'refs/heads/main' # main only — blocks PRs and accidental feature-branch dispatch
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      # backmesh's image has no OpenSSH client.
+      - name: Install ssh
+        run: command -v ssh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends openssh-client; }
+
+      - name: Verify skills repo access
+        env:
+          SKILLS_DEPLOY_KEY: ${{ secrets.SKILLS_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SKILLS_DEPLOY_KEY" > ~/.ssh/skills_key
+          chmod 600 ~/.ssh/skills_key
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/skills_key -o StrictHostKeyChecking=accept-new" \
+            git ls-remote git@github.com:anycloud-sh/anycloud-skills.git HEAD
+          rm -f ~/.ssh/skills_key
+
+  publish:
+    needs: [validate, preflight]
+    if: github.ref == 'refs/heads/main' # main only — blocks PRs and accidental feature-branch dispatch
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+      # backmesh's image has no OpenSSH client.
+      - name: Install ssh
+        run: command -v ssh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends openssh-client; }
+      - name: Publish to anycloud-sh/anycloud-skills
+        env:
+          SKILLS_DEPLOY_KEY: ${{ secrets.SKILLS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$SKILLS_DEPLOY_KEY" > ~/.ssh/skills_key
+          chmod 600 ~/.ssh/skills_key
+          trap 'rm -f ~/.ssh/skills_key' EXIT
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/skills_key -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:anycloud-sh/anycloud-skills.git /tmp/skills-pub
+          # --checksum: a version-only bump (e.g. 0.1.32 -> 0.1.33) keeps each file
+          # the SAME byte size, so rsync's default size+mtime quick-check can skip it
+          # and silently never sync the version. Compare by content instead.
+          # --delete so files removed in the monorepo don't leak into the mirror.
+          rsync -a --checksum --delete --exclude='.git/' anycloud-skills/ /tmp/skills-pub/
+          cd /tmp/skills-pub
+          git config user.name "anycloud-bot"
+          git config user.email "bot@anycloud.sh"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Skill already in sync; nothing to publish."
+          else
+            git commit -m "Sync skill from anycloud@$(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)"
+            # HEAD:main handles the first push into a freshly-created empty repo too.
+            # Under set -e (not masked by a || block), a push failure fails the job.
+            git push origin HEAD:main
+          fi

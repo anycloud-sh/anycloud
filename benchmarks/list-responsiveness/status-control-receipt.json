@@ -1,0 +1,1273 @@
+{
+  "formatVersion": 1,
+  "purpose": "Profiled diagnostic evidence only; no new calibration or qualification",
+  "decision": {
+    "decisionRecordedAt": "2026-09-17T16:10:39.001538+00:00",
+    "decision": "no-promotion; stop this follow-up",
+    "reason": "The saved audit and four profiled trials identify GC/dispatch overlap and mixed response costs, but do not demonstrate an actionable defect in the unprofiled harness. They do not establish a causal candidate-specific regression. The approved condition for a shared correction and fresh qualification is unmet.",
+    "newCalibration": false,
+    "newComparison": false,
+    "implementationPr": null,
+    "application": "913f8e992adbefd8d236d59fcec89f99dd788503",
+    "candidatePatchSha256": "36949d4347621af7fc7c2b4a899a6b44019a1cbbdccd0a3424b8abb3ff302f50",
+    "harness": "e90cf6d34e5b16c2778e2e505a6ee081be558ae7",
+    "run": 35241899689,
+    "executionMs": 221547.948003,
+    "executionBudgetMs": 1200000,
+    "hostStartToDecisionMs": 1015071.5380859375,
+    "accounting": {
+      "offered": 604,
+      "admitted": 604,
+      "completed": 604,
+      "deadlineMisses": 0,
+      "httpErrors": 0,
+      "transportErrors": 0,
+      "schedulingSkipped": 0,
+      "admissionSkipped": 0,
+      "unfinished": 0,
+      "healthOffered": 904,
+      "healthCompleted": 904,
+      "healthDeadlineMisses": 0,
+      "statusOffers": 242,
+      "samples": 500
+    },
+    "analysisSha256": "c5459be919c68906f5b81227317e8591786d1148a933ef16ecf4b5c590d43f34",
+    "sourceInventorySha256": "cea8fe645caf73a892a1d0fd8a786a811306f269717f59887ab3492efb515db4",
+    "preservedVerdicts": {
+      "aggregation": "v2 A/A 12/12 passed, A/B 11/12 passed; terminal-status HTTP p95 interval crosses 1.05; no promotion",
+      "B": "parked",
+      "C": "rejected"
+    }
+  },
+  "sourceInventorySha256": "cea8fe645caf73a892a1d0fd8a786a811306f269717f59887ab3492efb515db4",
+  "archive": {
+    "archive": "status-control-evidence.tar.gz",
+    "bytes": 94979878,
+    "sha256": "04753d11369d7b29371b5d158cf2dd1fa809ad39591000d5d618e6a038c909e5",
+    "verifiedFiles": 133,
+    "inventorySha256": "cea8fe645caf73a892a1d0fd8a786a811306f269717f59887ab3492efb515db4"
+  },
+  "preparationArchive": {
+    "archive": "preparation-evidence.tar.gz",
+    "bytes": 5750457,
+    "sha256": "555a55a5d82599b8a8fd14322195631405c20cec9b3b9c382cb05b92f4f9ac14",
+    "verifiedFiles": 392,
+    "inventorySha256": "c1dce4b787b462ef00be70924b36981eb0644b50e97e55d1afbd39d7f90a0dd1"
+  },
+  "checks": {
+    "run": 35241899689,
+    "job": 105272179406,
+    "head": "e90cf6d34e5b16c2778e2e505a6ee081be558ae7",
+    "verify": "passed",
+    "testFiles": 422,
+    "tests": 10187,
+    "sixSecondIntegrationGate": "passed",
+    "integrationWorkloads": 3700,
+    "files": [
+      {
+        "path": "install.log",
+        "bytes": 422,
+        "sha256": "29ee080e161da9e2a4f515f28ce7b68d0a550cf5bbf9589a3a042904a2d7c760"
+      },
+      {
+        "path": "long-history.log",
+        "bytes": 9118,
+        "sha256": "2e4c523e2b3ce9594d11a97d1dd07b3fcad1ebb73df46d27eceafadeba5ad425"
+      },
+      {
+        "path": "verify.log",
+        "bytes": 88234,
+        "sha256": "424268a2c973bbd1dc7e2903587e7b6b4fdabbda08bd227556bcb85e6100fca4"
+      }
+    ]
+  },
+  "ciArtifacts": [
+    {
+      "id": 10506930967,
+      "name": "api-responsiveness-list-repeatability-download-audit",
+      "size_in_bytes": 374,
+      "digest": "sha256:4dc7f88a967f07c785899ae245eee1b70828047846cc014bcdaa3de4633ef98e",
+      "expires_at": "2026-09-24T15:57:56Z"
+    },
+    {
+      "id": 10506561702,
+      "name": "api-responsiveness-list-repeatability-evidence",
+      "size_in_bytes": 95958120,
+      "digest": "sha256:1fa4538a217fde8290dc67169301258d27d8ed5761b5f576950bba3f0d4b3397",
+      "expires_at": "2026-09-24T15:57:32Z"
+    },
+    {
+      "id": 10505952789,
+      "name": "api-responsiveness-list-repeatability-checks",
+      "size_in_bytes": 19077,
+      "digest": "sha256:ac6b7e4df16ac9f5aa5130cf8ffbd352339231cebcb323a6f3b2fb98d5dcd489",
+      "expires_at": "2026-09-24T15:50:13Z"
+    }
+  ],
+  "statusTrials": [
+    {
+      "id": "sequence-baseline",
+      "arm": "baseline",
+      "metrics": {
+        "httpMs": {
+          "n": 50,
+          "mean": 7.43639755999975,
+          "p50": 6.958821000000171,
+          "p95": 9.056957000000693,
+          "max": 11.991952999997011
+        },
+        "serverMs": {
+          "n": 50,
+          "mean": 6.094721580000332,
+          "p50": 5.8453389999995125,
+          "p95": 7.738968999998178,
+          "max": 7.854057999997167
+        },
+        "sqlMs": {
+          "n": 50,
+          "mean": 2.321611319999647,
+          "p50": 2.2663269999902695,
+          "p95": 2.6791599999851314,
+          "max": 3.7457229999854462
+        },
+        "receivedAfterOfferMs": {
+          "n": 50,
+          "mean": 0.97677734375,
+          "p50": 0.533447265625,
+          "p95": 2.4638671875,
+          "max": 5.556396484375
+        },
+        "bodyAfterHeadersMs": {
+          "n": 50,
+          "mean": 0.5523893200000748,
+          "p50": 0.5541159999993397,
+          "p95": 0.6370020000031218,
+          "max": 0.6395760000013979
+        },
+        "headersAfterOfferMs": {
+          "n": 50,
+          "mean": 6.884008239999676,
+          "p50": 6.360521999995399,
+          "p95": 8.523619999999937,
+          "max": 11.38677099999768
+        },
+        "serverFinishAfterBodyMs": {
+          "n": 50,
+          "mean": -0.364921875,
+          "p50": -0.4814453125,
+          "p95": 0.722900390625,
+          "max": 1.39892578125
+        },
+        "apiGcOverlapMs": {
+          "n": 50,
+          "mean": 0.4489892578125,
+          "p50": 0,
+          "p95": 2.12060546875,
+          "max": 4.578125
+        },
+        "driverGcOverlapMs": {
+          "n": 50,
+          "mean": 0.091962890625,
+          "p50": 0,
+          "p95": 0.633544921875,
+          "max": 1.99169921875
+        },
+        "parentGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0193408203125,
+          "p50": 0,
+          "p95": 0,
+          "max": 0.967041015625
+        },
+        "apiHandlerGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "apiBeforeObservedGcOverlapMs": {
+          "n": 50,
+          "mean": 0.410419921875,
+          "p50": 0,
+          "p95": 2.12060546875,
+          "max": 4.578125
+        },
+        "serializeMs": {
+          "n": 50,
+          "mean": 0.393763120000076,
+          "p50": 0.3597430000008899,
+          "p95": 0.532907000000705,
+          "max": 1.4408540000003995
+        },
+        "serializeCpuMs": {
+          "n": 50,
+          "mean": 0.37848,
+          "p50": 0.36,
+          "p95": 0.513,
+          "max": 0.706
+        },
+        "responseEndMs": {
+          "n": 50,
+          "mean": 0.17508442000020297,
+          "p50": 0.15172400000301423,
+          "p95": 0.20638599999801954,
+          "max": 0.5777700000035111
+        },
+        "responseEndCpuMs": {
+          "n": 50,
+          "mean": 0.1723200000000001,
+          "p50": 0.152,
+          "p95": 0.253,
+          "max": 0.513
+        },
+        "receivedJournalMs": {
+          "n": 50,
+          "mean": 0.03311797999995179,
+          "p50": 0.0322809999997844,
+          "p95": 0.04852099999698112,
+          "max": 0.06447999999363674
+        },
+        "receivedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03492,
+          "p50": 0.032,
+          "p95": 0.077,
+          "max": 0.083
+        },
+        "finishedJournalMs": {
+          "n": 50,
+          "mean": 0.039745700000203214,
+          "p50": 0.03953399999591056,
+          "p95": 0.046827999998640735,
+          "max": 0.09028800000669435
+        },
+        "finishedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03918,
+          "p50": 0.039,
+          "p95": 0.047,
+          "max": 0.065
+        },
+        "closedJournalMs": {
+          "n": 50,
+          "mean": 0.031301120000425724,
+          "p50": 0.030627000000094995,
+          "p95": 0.03974400000151945,
+          "max": 0.04447300000174437
+        },
+        "closedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03132000000000001,
+          "p50": 0.031,
+          "p95": 0.04,
+          "max": 0.045
+        },
+        "offeredJournalMs": {
+          "n": 50,
+          "mean": 0.01560611999957473,
+          "p50": 0.012854000000515953,
+          "p95": 0.02517700000316836,
+          "max": 0.02740099999937229
+        },
+        "offeredJournalCpuMs": {
+          "n": 50,
+          "mean": 0.01568000000000001,
+          "p50": 0.013,
+          "p95": 0.025,
+          "max": 0.027
+        },
+        "settledJournalMs": {
+          "n": 50,
+          "mean": 0.03301508000033209,
+          "p50": 0.02915499999653548,
+          "p95": 0.053790999998454936,
+          "max": 0.07533100000000559
+        },
+        "settledJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03382,
+          "p50": 0.029,
+          "p95": 0.058,
+          "max": 0.103
+        },
+        "bodyHashCopyMs": {
+          "n": 50,
+          "mean": 0.09202908000021125,
+          "p50": 0.08617100000265054,
+          "p95": 0.11646799999289215,
+          "max": 0.11709899999550544
+        },
+        "bodyHashCopyCpuMs": {
+          "n": 50,
+          "mean": 0.09304,
+          "p50": 0.086,
+          "p95": 0.117,
+          "max": 0.146
+        }
+      },
+      "p95Request": {
+        "trial": "sequence-baseline",
+        "arm": "baseline",
+        "id": "request-227",
+        "case": "terminal-status",
+        "phase": "matrix:terminal-status",
+        "sample": true,
+        "outcome": "success",
+        "status": 200,
+        "bytes": 121589,
+        "responseSha256": "1ca10333fc423dfc00d100ad7040506f264cec8b7716a9c471d374a2ce69e0a0",
+        "offerEpochMs": 1789660511965.7058,
+        "bodyEpochMs": 1789660511974.7627,
+        "serverStartEpochMs": 1789660511968.351,
+        "serverFinishEpochMs": 1789660511974.2546,
+        "httpMs": 9.056957000000693,
+        "serverMs": 5.903539999999339,
+        "sqlMs": 2.261759000008169,
+        "sqlCount": 5,
+        "receivedAfterOfferMs": 2.645263671875,
+        "bodyAfterHeadersMs": 0.5333370000007562,
+        "headersAfterOfferMs": 8.523619999999937,
+        "serverFinishAfterBodyMs": -0.508056640625,
+        "apiGcOverlapMs": 2.2275390625,
+        "driverGcOverlapMs": 0,
+        "parentGcOverlapMs": 0,
+        "apiHandlerGcOverlapMs": 0,
+        "apiBeforeObservedGcOverlapMs": 2.2275390625,
+        "apiGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660511965.9128,
+            "durationMs": 2.22757599997567,
+            "overlapMs": 2.2275390625
+          }
+        ],
+        "driverGc": [],
+        "parentGc": [],
+        "apiHandlerGc": [],
+        "apiBeforeObservedGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660511965.9128,
+            "durationMs": 2.22757599997567,
+            "overlapMs": 2.2275390625
+          }
+        ],
+        "serializeMs": 0.4016110000011395,
+        "serializeCpuMs": 0.427,
+        "responseEndMs": 0.1891539999996894,
+        "responseEndCpuMs": 0.19,
+        "receivedJournalMs": 0.023494000000937376,
+        "receivedJournalCpuMs": 0.024,
+        "finishedJournalMs": 0.04161799999565119,
+        "finishedJournalCpuMs": 0.042,
+        "closedJournalMs": 0.03024600000208011,
+        "closedJournalCpuMs": 0.03,
+        "offeredJournalMs": 0.024294999995618127,
+        "offeredJournalCpuMs": 0.024,
+        "settledJournalMs": 0.024495999998180196,
+        "settledJournalCpuMs": 0.024,
+        "bodyHashCopyMs": 0.10602800000197021,
+        "bodyHashCopyCpuMs": 0.106
+      },
+      "gcAffectedRequests": {
+        "parent": 1,
+        "api": 16,
+        "driver": 5
+      },
+      "statusPlansSha256": "281136a30e2d1dd3c620c35613d198b3930abab5e7f266722d32435375187c3c",
+      "statusDistinctSql": 4,
+      "observerWrites": {
+        "parent": {
+          "count": 2773,
+          "elapsedMs": 183.7562369994448,
+          "cpuMicros": 113754,
+          "excludesFinalStopWrite": true
+        },
+        "api": {
+          "count": 5386,
+          "elapsedMs": 213.3590720002644,
+          "cpuMicros": 180340,
+          "excludesFinalStopWrite": true
+        },
+        "driver": {
+          "count": 4127,
+          "elapsedMs": 250.07115700013838,
+          "cpuMicros": 166585,
+          "excludesFinalStopWrite": true
+        }
+      }
+    },
+    {
+      "id": "sequence-candidate",
+      "arm": "candidate",
+      "metrics": {
+        "httpMs": {
+          "n": 50,
+          "mean": 7.63388684000005,
+          "p50": 7.1470530000005965,
+          "p95": 9.651019999997516,
+          "max": 11.407735000000685
+        },
+        "serverMs": {
+          "n": 50,
+          "mean": 6.070367719999776,
+          "p50": 5.91688399999839,
+          "p95": 6.70551699999487,
+          "max": 8.924203000002308
+        },
+        "sqlMs": {
+          "n": 50,
+          "mean": 2.3058956399995076,
+          "p50": 2.2760120000020834,
+          "p95": 2.734277999996266,
+          "max": 3.0081020000143326
+        },
+        "receivedAfterOfferMs": {
+          "n": 50,
+          "mean": 0.9696826171875,
+          "p50": 0.56591796875,
+          "p95": 3.253662109375,
+          "max": 4.10400390625
+        },
+        "bodyAfterHeadersMs": {
+          "n": 50,
+          "mean": 0.6778097599999455,
+          "p50": 0.6327320000054897,
+          "p95": 0.7586769999979879,
+          "max": 2.2673460000005434
+        },
+        "headersAfterOfferMs": {
+          "n": 50,
+          "mean": 6.956077080000105,
+          "p50": 6.45819499999925,
+          "p95": 9.039036999995005,
+          "max": 10.807553999999072
+        },
+        "serverFinishAfterBodyMs": {
+          "n": 50,
+          "mean": -0.593876953125,
+          "p50": -0.600341796875,
+          "p95": -0.193359375,
+          "max": 0.50048828125
+        },
+        "apiGcOverlapMs": {
+          "n": 50,
+          "mean": 0.4487109375,
+          "p50": 0,
+          "p95": 1.93994140625,
+          "max": 3.781005859375
+        },
+        "driverGcOverlapMs": {
+          "n": 50,
+          "mean": 0.1390576171875,
+          "p50": 0,
+          "p95": 1.4521484375,
+          "max": 1.838623046875
+        },
+        "parentGcOverlapMs": {
+          "n": 50,
+          "mean": 0.01068359375,
+          "p50": 0,
+          "p95": 0,
+          "max": 0.5341796875
+        },
+        "apiHandlerGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "apiBeforeObservedGcOverlapMs": {
+          "n": 50,
+          "mean": 0.382294921875,
+          "p50": 0,
+          "p95": 1.93994140625,
+          "max": 3.781005859375
+        },
+        "serializeMs": {
+          "n": 50,
+          "mean": 0.3747197600001527,
+          "p50": 0.3603430000002845,
+          "p95": 0.45363799999904586,
+          "max": 0.6531799999938812
+        },
+        "serializeCpuMs": {
+          "n": 50,
+          "mean": 0.40928,
+          "p50": 0.372,
+          "p95": 0.511,
+          "max": 1.736
+        },
+        "responseEndMs": {
+          "n": 50,
+          "mean": 0.21737536000058755,
+          "p50": 0.1666110000005574,
+          "p95": 0.6981139999988955,
+          "max": 1.406488000000536
+        },
+        "responseEndCpuMs": {
+          "n": 50,
+          "mean": 0.20517999999999997,
+          "p50": 0.167,
+          "p95": 0.252,
+          "max": 1.485
+        },
+        "receivedJournalMs": {
+          "n": 50,
+          "mean": 0.03358191999956034,
+          "p50": 0.033481999998912215,
+          "p95": 0.04701799999747891,
+          "max": 0.06120399999781512
+        },
+        "receivedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.036259999999999994,
+          "p50": 0.033,
+          "p95": 0.083,
+          "max": 0.087
+        },
+        "finishedJournalMs": {
+          "n": 50,
+          "mean": 0.03907233999998425,
+          "p50": 0.038722000004781876,
+          "p95": 0.04471399999601999,
+          "max": 0.060764000001654495
+        },
+        "finishedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.039099999999999996,
+          "p50": 0.039,
+          "p95": 0.045,
+          "max": 0.061
+        },
+        "closedJournalMs": {
+          "n": 50,
+          "mean": 0.03288744000063162,
+          "p50": 0.03165900000021793,
+          "p95": 0.046687000001838896,
+          "max": 0.06405999999697087
+        },
+        "closedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03292,
+          "p50": 0.032,
+          "p95": 0.047,
+          "max": 0.064
+        },
+        "offeredJournalMs": {
+          "n": 50,
+          "mean": 0.020413840000110213,
+          "p50": 0.014306999997643288,
+          "p95": 0.047909000000800006,
+          "max": 0.051676000002771616
+        },
+        "offeredJournalCpuMs": {
+          "n": 50,
+          "mean": 0.029059999999999992,
+          "p50": 0.015,
+          "p95": 0.051,
+          "max": 0.471
+        },
+        "settledJournalMs": {
+          "n": 50,
+          "mean": 0.033088200000638605,
+          "p50": 0.03007600000273669,
+          "p95": 0.05810899999778485,
+          "max": 0.06386899999779416
+        },
+        "settledJournalCpuMs": {
+          "n": 50,
+          "mean": 0.05021999999999999,
+          "p50": 0.03,
+          "p95": 0.065,
+          "max": 0.567
+        },
+        "bodyHashCopyMs": {
+          "n": 50,
+          "mean": 0.12472870000012336,
+          "p50": 0.08863600000040606,
+          "p95": 0.1251140000022133,
+          "max": 1.5805429999963962
+        },
+        "bodyHashCopyCpuMs": {
+          "n": 50,
+          "mean": 0.11975999999999998,
+          "p50": 0.087,
+          "p95": 0.15,
+          "max": 0.949
+        }
+      },
+      "p95Request": {
+        "trial": "sequence-candidate",
+        "arm": "candidate",
+        "id": "request-202",
+        "case": "terminal-status",
+        "phase": "matrix:terminal-status",
+        "sample": true,
+        "outcome": "success",
+        "status": 200,
+        "bytes": 121589,
+        "responseSha256": "1ca10333fc423dfc00d100ad7040506f264cec8b7716a9c471d374a2ce69e0a0",
+        "offerEpochMs": 1789660573800.6594,
+        "bodyEpochMs": 1789660573810.3103,
+        "serverStartEpochMs": 1789660573803.913,
+        "serverFinishEpochMs": 1789660573809.7297,
+        "httpMs": 9.651019999997516,
+        "serverMs": 5.816756000000169,
+        "sqlMs": 2.38006599999062,
+        "sqlCount": 5,
+        "receivedAfterOfferMs": 3.253662109375,
+        "bodyAfterHeadersMs": 0.6119830000025104,
+        "headersAfterOfferMs": 9.039036999995005,
+        "serverFinishAfterBodyMs": -0.58056640625,
+        "apiGcOverlapMs": 1.98779296875,
+        "driverGcOverlapMs": 0,
+        "parentGcOverlapMs": 0,
+        "apiHandlerGcOverlapMs": 0,
+        "apiBeforeObservedGcOverlapMs": 1.98779296875,
+        "apiGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660573801.7153,
+            "durationMs": 1.9876729999668896,
+            "overlapMs": 1.98779296875
+          }
+        ],
+        "driverGc": [],
+        "parentGc": [],
+        "apiHandlerGc": [],
+        "apiBeforeObservedGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660573801.7153,
+            "durationMs": 1.9876729999668896,
+            "overlapMs": 1.98779296875
+          }
+        ],
+        "serializeMs": 0.4200750000018161,
+        "serializeCpuMs": 0.44,
+        "responseEndMs": 0.14704499999788823,
+        "responseEndCpuMs": 0.148,
+        "receivedJournalMs": 0.024135999999998603,
+        "receivedJournalCpuMs": 0.024,
+        "finishedJournalMs": 0.03303200000664219,
+        "finishedJournalCpuMs": 0.034,
+        "closedJournalMs": 0.030136000001220964,
+        "closedJournalCpuMs": 0.03,
+        "offeredJournalMs": 0.020368999998026993,
+        "offeredJournalCpuMs": 0.02,
+        "settledJournalMs": 0.03131800000119256,
+        "settledJournalCpuMs": 0.031,
+        "bodyHashCopyMs": 0.11210000000573928,
+        "bodyHashCopyCpuMs": 0.111
+      },
+      "gcAffectedRequests": {
+        "parent": 1,
+        "api": 18,
+        "driver": 5
+      },
+      "statusPlansSha256": "281136a30e2d1dd3c620c35613d198b3930abab5e7f266722d32435375187c3c",
+      "statusDistinctSql": 4,
+      "observerWrites": {
+        "parent": {
+          "count": 2027,
+          "elapsedMs": 87.63058700039983,
+          "cpuMicros": 69265,
+          "excludesFinalStopWrite": true
+        },
+        "api": {
+          "count": 5091,
+          "elapsedMs": 206.18618100009178,
+          "cpuMicros": 174101,
+          "excludesFinalStopWrite": true
+        },
+        "driver": {
+          "count": 4197,
+          "elapsedMs": 232.7236190000653,
+          "cpuMicros": 171478,
+          "excludesFinalStopWrite": true
+        }
+      }
+    },
+    {
+      "id": "isolated-candidate",
+      "arm": "candidate",
+      "metrics": {
+        "httpMs": {
+          "n": 50,
+          "mean": 9.690415459999999,
+          "p50": 9.24420299999997,
+          "p95": 12.909020000000055,
+          "max": 18.197902999999997
+        },
+        "serverMs": {
+          "n": 50,
+          "mean": 7.74230401999992,
+          "p50": 7.193862000000081,
+          "p95": 10.239692999999534,
+          "max": 14.162148999999772
+        },
+        "sqlMs": {
+          "n": 50,
+          "mean": 2.728858259999961,
+          "p50": 2.5358590000014374,
+          "p95": 3.8750190000000657,
+          "max": 5.3503370000007635
+        },
+        "receivedAfterOfferMs": {
+          "n": 50,
+          "mean": 1.0342724609375,
+          "p50": 0.8154296875,
+          "p95": 2.084228515625,
+          "max": 2.530029296875
+        },
+        "bodyAfterHeadersMs": {
+          "n": 50,
+          "mean": 1.021187340000007,
+          "p50": 0.9118140000000494,
+          "p95": 1.8136090000000422,
+          "max": 2.9607619999999315
+        },
+        "headersAfterOfferMs": {
+          "n": 50,
+          "mean": 8.669228119999993,
+          "p50": 8.375549999999976,
+          "p95": 11.167826999999988,
+          "max": 17.018468999999982
+        },
+        "serverFinishAfterBodyMs": {
+          "n": 50,
+          "mean": -0.9138671875,
+          "p50": -0.847412109375,
+          "p95": 0.022705078125,
+          "max": 0.448486328125
+        },
+        "apiGcOverlapMs": {
+          "n": 50,
+          "mean": 0.426162109375,
+          "p50": 0,
+          "p95": 1.80029296875,
+          "max": 1.85888671875
+        },
+        "driverGcOverlapMs": {
+          "n": 50,
+          "mean": 0.2419384765625,
+          "p50": 0,
+          "p95": 1.461181640625,
+          "max": 8.16552734375
+        },
+        "parentGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "apiHandlerGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "apiBeforeObservedGcOverlapMs": {
+          "n": 50,
+          "mean": 0.2650146484375,
+          "p50": 0,
+          "p95": 1.785400390625,
+          "max": 1.85888671875
+        },
+        "serializeMs": {
+          "n": 50,
+          "mean": 0.5102925200000754,
+          "p50": 0.48167000000012195,
+          "p95": 0.7400830000005953,
+          "max": 0.9197080000003552
+        },
+        "serializeCpuMs": {
+          "n": 50,
+          "mean": 0.54122,
+          "p50": 0.482,
+          "p95": 0.74,
+          "max": 1.46
+        },
+        "responseEndMs": {
+          "n": 50,
+          "mean": 0.29211359999992054,
+          "p50": 0.22937899999942601,
+          "p95": 0.9563870000001771,
+          "max": 1.0699789999998757
+        },
+        "responseEndCpuMs": {
+          "n": 50,
+          "mean": 0.26970000000000005,
+          "p50": 0.23,
+          "p95": 0.305,
+          "max": 1.072
+        },
+        "receivedJournalMs": {
+          "n": 50,
+          "mean": 0.03836948000001939,
+          "p50": 0.03216900000006717,
+          "p95": 0.09148100000038539,
+          "max": 0.10802200000034645
+        },
+        "receivedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03795999999999999,
+          "p50": 0.032,
+          "p95": 0.084,
+          "max": 0.092
+        },
+        "finishedJournalMs": {
+          "n": 50,
+          "mean": 0.04700599999994665,
+          "p50": 0.04528499999923952,
+          "p95": 0.07062199999927543,
+          "max": 0.07289600000058272
+        },
+        "finishedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.04721999999999998,
+          "p50": 0.045,
+          "p95": 0.071,
+          "max": 0.073
+        },
+        "closedJournalMs": {
+          "n": 50,
+          "mean": 0.03714027999996688,
+          "p50": 0.0365589999992153,
+          "p95": 0.05145600000014383,
+          "max": 0.06459099999938189
+        },
+        "closedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.037520000000000005,
+          "p50": 0.037,
+          "p95": 0.05,
+          "max": 0.066
+        },
+        "offeredJournalMs": {
+          "n": 50,
+          "mean": 0.02274136000000908,
+          "p50": 0.01754300000004605,
+          "p95": 0.04342200000007779,
+          "max": 0.07600200000001678
+        },
+        "offeredJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03338000000000001,
+          "p50": 0.018,
+          "p95": 0.043,
+          "max": 0.607
+        },
+        "settledJournalMs": {
+          "n": 50,
+          "mean": 0.05217650000001868,
+          "p50": 0.0407270000000608,
+          "p95": 0.06831799999997656,
+          "max": 0.607311999999979
+        },
+        "settledJournalCpuMs": {
+          "n": 50,
+          "mean": 0.05464000000000002,
+          "p50": 0.041,
+          "p95": 0.099,
+          "max": 0.637
+        },
+        "bodyHashCopyMs": {
+          "n": 50,
+          "mean": 0.1358087599999976,
+          "p50": 0.0920730000000276,
+          "p95": 0.14284699999996064,
+          "max": 1.0499829999999974
+        },
+        "bodyHashCopyCpuMs": {
+          "n": 50,
+          "mean": 0.10378000000000003,
+          "p50": 0.091,
+          "p95": 0.157,
+          "max": 0.165
+        }
+      },
+      "p95Request": {
+        "trial": "isolated-candidate",
+        "arm": "candidate",
+        "id": "request-19",
+        "case": "terminal-status",
+        "phase": "matrix:terminal-status",
+        "sample": true,
+        "outcome": "success",
+        "status": 200,
+        "bytes": 121589,
+        "responseSha256": "1ca10333fc423dfc00d100ad7040506f264cec8b7716a9c471d374a2ce69e0a0",
+        "offerEpochMs": 1789660601350.8613,
+        "bodyEpochMs": 1789660601363.7703,
+        "serverStartEpochMs": 1789660601353.3914,
+        "serverFinishEpochMs": 1789660601361.6726,
+        "httpMs": 12.909020000000055,
+        "serverMs": 8.281363999999485,
+        "sqlMs": 2.8230860000003304,
+        "sqlCount": 5,
+        "receivedAfterOfferMs": 2.530029296875,
+        "bodyAfterHeadersMs": 2.1614789999999857,
+        "headersAfterOfferMs": 10.74754100000007,
+        "serverFinishAfterBodyMs": -2.09765625,
+        "apiGcOverlapMs": 1.829345703125,
+        "driverGcOverlapMs": 0,
+        "parentGcOverlapMs": 0,
+        "apiHandlerGcOverlapMs": 0,
+        "apiBeforeObservedGcOverlapMs": 0,
+        "apiGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660601361.941,
+            "durationMs": 2.0280599999823608,
+            "overlapMs": 1.829345703125
+          }
+        ],
+        "driverGc": [],
+        "parentGc": [],
+        "apiHandlerGc": [],
+        "apiBeforeObservedGc": [],
+        "serializeMs": 0.6985159999994721,
+        "serializeCpuMs": 0.721,
+        "responseEndMs": 0.2272739999998521,
+        "responseEndCpuMs": 0.228,
+        "receivedJournalMs": 0.03975400000035734,
+        "receivedJournalCpuMs": 0.041,
+        "finishedJournalMs": 0.05371099999956641,
+        "finishedJournalCpuMs": 0.055,
+        "closedJournalMs": 0.036578000000190514,
+        "closedJournalCpuMs": 0.037,
+        "offeredJournalMs": 0.016570999999999003,
+        "offeredJournalCpuMs": 0.017,
+        "settledJournalMs": 0.06462099999998827,
+        "settledJournalCpuMs": 0.064,
+        "bodyHashCopyMs": 1.0499829999999974,
+        "bodyHashCopyCpuMs": 0.144
+      },
+      "gcAffectedRequests": {
+        "parent": 0,
+        "api": 20,
+        "driver": 4
+      },
+      "statusPlansSha256": "281136a30e2d1dd3c620c35613d198b3930abab5e7f266722d32435375187c3c",
+      "statusDistinctSql": 4,
+      "observerWrites": {
+        "parent": {
+          "count": 152,
+          "elapsedMs": 9.163872000208357,
+          "cpuMicros": 7681,
+          "excludesFinalStopWrite": true
+        },
+        "api": {
+          "count": 1358,
+          "elapsedMs": 57.25294300001777,
+          "cpuMicros": 50726,
+          "excludesFinalStopWrite": true
+        },
+        "driver": {
+          "count": 571,
+          "elapsedMs": 35.15345600000034,
+          "cpuMicros": 25964,
+          "excludesFinalStopWrite": true
+        }
+      }
+    },
+    {
+      "id": "isolated-baseline",
+      "arm": "baseline",
+      "metrics": {
+        "httpMs": {
+          "n": 50,
+          "mean": 9.084675239999994,
+          "p50": 8.488669000000073,
+          "p95": 12.118507000000022,
+          "max": 18.45700099999999
+        },
+        "serverMs": {
+          "n": 50,
+          "mean": 7.2209976600000845,
+          "p50": 6.510726000000432,
+          "p95": 10.545573000000331,
+          "max": 16.96172900000056
+        },
+        "sqlMs": {
+          "n": 50,
+          "mean": 2.6888566400000853,
+          "p50": 2.386765000000196,
+          "p95": 3.9036389999992025,
+          "max": 9.143662000000404
+        },
+        "receivedAfterOfferMs": {
+          "n": 50,
+          "mean": 1.01986328125,
+          "p50": 0.74755859375,
+          "p95": 2.098876953125,
+          "max": 2.97900390625
+        },
+        "bodyAfterHeadersMs": {
+          "n": 50,
+          "mean": 0.9282650199999967,
+          "p50": 0.839398000000017,
+          "p95": 1.468705,
+          "max": 2.1110109999999622
+        },
+        "headersAfterOfferMs": {
+          "n": 50,
+          "mean": 8.156410219999996,
+          "p50": 7.463764999999967,
+          "p95": 11.223394999999982,
+          "max": 17.344633000000044
+        },
+        "serverFinishAfterBodyMs": {
+          "n": 50,
+          "mean": -0.8438037109375,
+          "p50": -0.797607421875,
+          "p95": -0.59228515625,
+          "max": 1.055419921875
+        },
+        "apiGcOverlapMs": {
+          "n": 50,
+          "mean": 0.4512646484375,
+          "p50": 0,
+          "p95": 1.812255859375,
+          "max": 1.89794921875
+        },
+        "driverGcOverlapMs": {
+          "n": 50,
+          "mean": 0.298681640625,
+          "p50": 0,
+          "p95": 2.06787109375,
+          "max": 6.762451171875
+        },
+        "parentGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0259521484375,
+          "p50": 0,
+          "p95": 0,
+          "max": 1.297607421875
+        },
+        "apiHandlerGcOverlapMs": {
+          "n": 50,
+          "mean": 0.0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "apiBeforeObservedGcOverlapMs": {
+          "n": 50,
+          "mean": 0.29908203125,
+          "p50": 0,
+          "p95": 1.693359375,
+          "max": 1.863037109375
+        },
+        "serializeMs": {
+          "n": 50,
+          "mean": 0.38977544000006675,
+          "p50": 0.3650020000004588,
+          "p95": 0.6025549999994837,
+          "max": 0.6460360000000946
+        },
+        "serializeCpuMs": {
+          "n": 50,
+          "mean": 0.4362,
+          "p50": 0.373,
+          "p95": 1.034,
+          "max": 1.429
+        },
+        "responseEndMs": {
+          "n": 50,
+          "mean": 0.2467986799999926,
+          "p50": 0.19709799999964162,
+          "p95": 0.28369999999995343,
+          "max": 2.2047059999995327
+        },
+        "responseEndCpuMs": {
+          "n": 50,
+          "mean": 0.2634,
+          "p50": 0.197,
+          "p95": 0.295,
+          "max": 2.288
+        },
+        "receivedJournalMs": {
+          "n": 50,
+          "mean": 0.04113315999997212,
+          "p50": 0.03733899999951973,
+          "p95": 0.07713400000011461,
+          "max": 0.11251000000083877
+        },
+        "receivedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.03950000000000001,
+          "p50": 0.038,
+          "p95": 0.066,
+          "max": 0.096
+        },
+        "finishedJournalMs": {
+          "n": 50,
+          "mean": 0.045010500000080354,
+          "p50": 0.04263900000023568,
+          "p95": 0.06217599999945378,
+          "max": 0.06746599999951286
+        },
+        "finishedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.04514000000000001,
+          "p50": 0.043,
+          "p95": 0.062,
+          "max": 0.068
+        },
+        "closedJournalMs": {
+          "n": 50,
+          "mean": 0.036411099999913855,
+          "p50": 0.035605999999461346,
+          "p95": 0.04538499999944179,
+          "max": 0.06359899999915797
+        },
+        "closedJournalCpuMs": {
+          "n": 50,
+          "mean": 0.04971999999999998,
+          "p50": 0.036,
+          "p95": 0.059,
+          "max": 0.677
+        },
+        "offeredJournalMs": {
+          "n": 50,
+          "mean": 0.02185376000001611,
+          "p50": 0.017201999999997497,
+          "p95": 0.045565000000010514,
+          "max": 0.08954700000003868
+        },
+        "offeredJournalCpuMs": {
+          "n": 50,
+          "mean": 0.025999999999999992,
+          "p50": 0.018,
+          "p95": 0.047,
+          "max": 0.286
+        },
+        "settledJournalMs": {
+          "n": 50,
+          "mean": 0.04040924000000814,
+          "p50": 0.03798000000006141,
+          "p95": 0.055072999999993044,
+          "max": 0.11847099999999955
+        },
+        "settledJournalCpuMs": {
+          "n": 50,
+          "mean": 0.0398,
+          "p50": 0.037,
+          "p95": 0.055,
+          "max": 0.09
+        },
+        "bodyHashCopyMs": {
+          "n": 50,
+          "mean": 0.09995312000000581,
+          "p50": 0.09060900000008587,
+          "p95": 0.1636349999999993,
+          "max": 0.18770000000000664
+        },
+        "bodyHashCopyCpuMs": {
+          "n": 50,
+          "mean": 0.09756000000000001,
+          "p50": 0.089,
+          "p95": 0.134,
+          "max": 0.159
+        }
+      },
+      "p95Request": {
+        "trial": "isolated-baseline",
+        "arm": "baseline",
+        "id": "request-24",
+        "case": "terminal-status",
+        "phase": "matrix:terminal-status",
+        "sample": true,
+        "outcome": "success",
+        "status": 200,
+        "bytes": 121589,
+        "responseSha256": "1ca10333fc423dfc00d100ad7040506f264cec8b7716a9c471d374a2ce69e0a0",
+        "offerEpochMs": 1789660627729.409,
+        "bodyEpochMs": 1789660627741.5276,
+        "serverStartEpochMs": 1789660627730.1108,
+        "serverFinishEpochMs": 1789660627740.6562,
+        "httpMs": 12.118507000000022,
+        "serverMs": 10.545573000000331,
+        "sqlMs": 4.348332000000482,
+        "sqlCount": 5,
+        "receivedAfterOfferMs": 0.701904296875,
+        "bodyAfterHeadersMs": 0.8951120000000401,
+        "headersAfterOfferMs": 11.223394999999982,
+        "serverFinishAfterBodyMs": -0.871337890625,
+        "apiGcOverlapMs": 0,
+        "driverGcOverlapMs": 4.3525390625,
+        "parentGcOverlapMs": 0,
+        "apiHandlerGcOverlapMs": 0,
+        "apiBeforeObservedGcOverlapMs": 0,
+        "apiGc": [],
+        "driverGc": [
+          {
+            "kind": 1,
+            "flags": 0,
+            "startEpochMs": 1789660627730.263,
+            "durationMs": 4.3524559999932535,
+            "overlapMs": 4.3525390625
+          }
+        ],
+        "parentGc": [],
+        "apiHandlerGc": [],
+        "apiBeforeObservedGc": [],
+        "serializeMs": 0.3650020000004588,
+        "serializeCpuMs": 0.395,
+        "responseEndMs": 0.23465800000030868,
+        "responseEndCpuMs": 0.235,
+        "receivedJournalMs": 0.0443119999999908,
+        "receivedJournalCpuMs": 0.045,
+        "finishedJournalMs": 0.050635000000511354,
+        "finishedJournalCpuMs": 0.052,
+        "closedJournalMs": 0.033722999999554304,
+        "closedJournalCpuMs": 0.035,
+        "offeredJournalMs": 0.02518699999995988,
+        "offeredJournalCpuMs": 0.026,
+        "settledJournalMs": 0.032320000000026994,
+        "settledJournalCpuMs": 0.032,
+        "bodyHashCopyMs": 0.10628899999994701,
+        "bodyHashCopyCpuMs": 0.135
+      },
+      "gcAffectedRequests": {
+        "parent": 1,
+        "api": 19,
+        "driver": 4
+      },
+      "statusPlansSha256": "281136a30e2d1dd3c620c35613d198b3930abab5e7f266722d32435375187c3c",
+      "statusDistinctSql": 4,
+      "observerWrites": {
+        "parent": {
+          "count": 143,
+          "elapsedMs": 8.137006000091787,
+          "cpuMicros": 7424,
+          "excludesFinalStopWrite": true
+        },
+        "api": {
+          "count": 1355,
+          "elapsedMs": 56.242570000014055,
+          "cpuMicros": 48235,
+          "excludesFinalStopWrite": true
+        },
+        "driver": {
+          "count": 573,
+          "elapsedMs": 39.1370679999995,
+          "cpuMicros": 25321,
+          "excludesFinalStopWrite": true
+        }
+      }
+    }
+  ]
+}

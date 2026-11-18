@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "member": "azure-host-docker",
+  "candidate": "e2e.sh azure-host-docker --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "nested-host-docker-job",
+      "requirement": "A listener Job submitted with --host-docker and --require-nested-virtualization on a nested-capable type completes with exit 0, its probe passing every check as the image's non-root user.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember; test/integration/e2e/internal/targets/public-cloud-job.ts: the host-docker argv."
+    },
+    {
+      "id": "docker-through-host-socket",
+      "requirement": "docker run, a docker build and a two-service docker compose up with name resolution run through the host's socket, and an inner bind mount of $PWD sees the Job's /workspace.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: docker_run, docker_build, compose and bind_mount checks."
+    },
+    {
+      "id": "kvm-guest",
+      "requirement": "/dev/kvm opens read-write, KVM_GET_API_VERSION is 12 and a real-mode guest runs to its marker and halt.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: kvm check."
+    },
+    {
+      "id": "unprivileged-container",
+      "requirement": "The host's docker inspect of the Job container shows Privileged false, no added capabilities, no security options and /dev/kvm as its device.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: unprivileged check."
+    },
+    {
+      "id": "host-daemon-defaults",
+      "requirement": "The host daemon has mirror.gcr.io configured as its registry mirror, and a plain Docker Hub name pulls; a plainly published port is reached from a bridge container at host.docker.internal (host-gateway), as a container: job's service, and from a --network host container on localhost, as a workflow's services: ports.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/host-docker-probe.ts: mirror, host_gateway and network_host_loopback checks."
+    },
+    {
+      "id": "peer-isolation",
+      "requirement": "Not probed live: every Azure Job VNet is 10.0.0.0/16, so a peer Job would probe its own address. Isolation from other machines comes from the per-Job VNet and NSG; the host's DOCKER-USER guard is covered by unit tests and a local dind proof.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/job-profiles.ts: azure hostDocker.peer false; test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember submits no prober."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; only one family completion follows.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; test/integration/e2e/internal/job-native-cleanup.ts."
+    }
+  ]
+}

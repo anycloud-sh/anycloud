@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "member": "aws-input-hydration-recovery",
+  "candidate": "e2e.sh aws-input-hydration-recovery --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "A closed kind/target selects the fixed registered capability and profile; specs cannot inject lifecycle callbacks, placement or evidence.",
+      "candidateEvidence": "contracts/job-policy.ts and targets/job-profiles.ts; closed-spec ESLint and ordinary Vitest discovery controls."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a fresh complete inventory fence precede each send. Original controller, credential, explicit and resolved placement, provisional transitions and every validated attempt prefix survive missing replies or later failures.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger, JobNativeCleanup, public-cloud-job adapter and original-controller Workload mutation hook; strict inventory/provisional/lost-reply regressions."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; cleanup uses its original identity, independent cancellation scope and remaining deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; JobNativeCleanup and independent native readers; cancellation, partial-history and failed automatic-cleanup regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer consumes exact run/reference/generation-bound active and required extension evidence once, then releases children and shared resources before its sole completion result. Terminal-only, copied, mismatched, missing, early or reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: begin/progress/extension/terminal/claim; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; evidence ownership and finalizer controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named forced failure produces no completion. Preserve primary and cleanup failures and inspect raw native/resource registrations before rescue. Compact records retain source/profile/run/attempt/generation and durations for at least 30 days.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: E2E_JOB_FORCE_CLEANUP; fixture-record/cleanup-observations/native records; existing e2e-job comparison artifact uploads and retention policy."
+    },
+    {
+      "id": "original-credential-and-private-commands",
+      "requirement": "Register imported API credential intent before mutation, bind its original controller and provider identity, sanitize actual child environments and suppress secret-producing output before recording artifacts. Complete API absence readback precedes credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization bootstrap owner and JobPrivateCommands; isolatedJobEnvironment, JobCloudSession and ApiClient readback; original-controller, deadline, schema and redaction controls."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Bind the requested profile and observed image configuration/API manifest to the original active attempt and exact resolved placement. An omitted zone is accepted only for an originally null zone; explicit or known placement mismatches reject.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudProgress or the hydration Syncing baseline; imageConfigDigest and original VmLedgerProbe/JobAttemptLedger observations."
+    },
+    {
+      "id": "real-256-gib-fixture",
+      "requirement": "Upload 2048 real 128 MiB shards with the shared 32-worker copy payload; mounted input assertions cover exactly 256 GiB. Retain the seed hash and every bucket intent before mutation.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: job-hydration.ts fixture creation; fixtures/job-input-hydration-copy.mjs and job-input-hydration-manifest.sh are shared permanent payloads; JobCloudStorage registration."
+    },
+    {
+      "id": "syncing-and-native-disk",
+      "requirement": "Require an active Syncing worker, not terminal or already Running evidence, in the fixed storage/compute region. Verify the exact original AWS VM and 350 GiB gp3 medium disk with 3000 IOPS and 125 MiB/s throughput.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-hydration.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hydrationMember Syncing baseline; JobRecords.beforeHydration; JobHydrationTransport.disk and JobRecoveryTransport.identity."
+    },
+    {
+      "id": "same-api-container-adoption",
+      "requirement": "Hard-restart the same API container and require a new adoption log within 300 seconds while worker invocation, PID, intended input identity, native VM/disk and launch count stay unchanged.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-hydration.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobHydrationTransport.restart and apiLogs; JobRecords.hydrationAdopted; independent original-container restoration registration."
+    },
+    {
+      "id": "healthy-production-window",
+      "requirement": "Fifteen original 60-second samples must prove at least 870 seconds of activity while the same worker remains active in Syncing and its log grows.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hydrationMember sample loop; JobRecords.hydrationHealthy/adopted; unchanged production timings."
+    },
+    {
+      "id": "hidden-progress-fault",
+      "requirement": "Persist a fresh pre-fault observation, hide only the visible activity log, and after 75 seconds require an empty visible log while the same worker continues growing its hidden log.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-hydration.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobHydrationTransport.hideActivity/activity; JobRecords.hydrationFault; original worker/run/reference/generation ownership."
+    },
+    {
+      "id": "production-inactivity-retry",
+      "requirement": "Observe the Workload-owned new inactivity retry event no earlier than 900 seconds and within 1080 seconds from the fault. Require a fresh worker invocation within 300 seconds on the exact same VM, boot disk and original attempt.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: #hydrationMember watchdog and resume waits; jobHydrationRetryEvent; JobRecords.hydrated native/attempt/worker equality."
+    },
+    {
+      "id": "full-mounted-data-completion",
+      "requirement": "Complete with exit zero within 3600 seconds and verify 2048 shards, 274877906944 bytes and seed-equal first/middle/last shard hashes in the uploaded manifest.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: Shared job-input-hydration-manifest.sh; jobHydrationManifest; JobRecords.hydrated and family completion assertion."
+    },
+    {
+      "id": "restart-and-storage-cleanup",
+      "requirement": "Independent cleanup first restores only the original API container if required, then proves all owned native attempts and exact input/output buckets absent before credential release. Forced failure follows same-worker adoption, before the long timing windows.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-hydration.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/contracts/job-records.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobHydrationTransport restart cleanup registration; #hydrationMember forced boundary; JobNativeCleanup and JobCloudStorage complete native/API readbacks."
+    }
+  ]
+}

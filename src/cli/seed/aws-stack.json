@@ -1,0 +1,417 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "AnyCloud installation: the management VM, its network and identity, and the checkpoint bucket. Created by `anycloud cluster create`; the VM's user-data is added by the CLI.",
+  "Transform": "AWS::LanguageExtensions",
+  "Parameters": {
+    "ClusterId": {
+      "Type": "String",
+      "AllowedPattern": "^[a-z0-9][a-z0-9-]{0,50}$"
+    },
+    "InstanceType": { "Type": "String" },
+    "AvailabilityZone": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Empty lets EC2 pick a default subnet."
+    },
+    "CloudflareIpv4": {
+      "Type": "CommaDelimitedList",
+      "Description": "Cloudflare's edge ranges, which alone reach the API on 80 and 443."
+    },
+    "CloudflareIpv6": { "Type": "CommaDelimitedList" },
+    "OwnerApiIdentity": {
+      "Type": "String",
+      "AllowedPattern": "^[0-9a-f]{32}$",
+      "Description": "The hosted API's identity, which its VM Jobs carry as anycloud_owner_api."
+    },
+    "CheckpointBucket": { "Type": "String" },
+    "CreateBucket": {
+      "Type": "String",
+      "AllowedValues": ["true", "false"],
+      "Description": "false when --checkpoint-bucket names an existing bucket."
+    },
+    "ImageId": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+    }
+  },
+  "Conditions": {
+    "CreateBucket": { "Fn::Equals": [{ "Ref": "CreateBucket" }, "true"] },
+    "PickZone": {
+      "Fn::Not": [{ "Fn::Equals": [{ "Ref": "AvailabilityZone" }, ""] }]
+    }
+  },
+  "Resources": {
+    "SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupName": { "Fn::Sub": "anycloud-cluster-${ClusterId}" },
+        "GroupDescription": "AnyCloud management VM: Kubernetes API for node pool VMs, and the API through Cloudflare",
+        "SecurityGroupIngress": [
+          {
+            "Description": "Kubernetes API",
+            "IpProtocol": "tcp",
+            "FromPort": 6443,
+            "ToPort": 6443,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "Description": "Kubernetes API",
+            "IpProtocol": "tcp",
+            "FromPort": 6443,
+            "ToPort": 6443,
+            "CidrIpv6": "::/0"
+          }
+        ]
+      }
+    },
+    "Fn::ForEach::CloudflareRulesV4": [
+      "Cidr",
+      { "Ref": "CloudflareIpv4" },
+      {
+        "Fn::ForEach::PortV4": [
+          "Port",
+          ["80", "443"],
+          {
+            "Cloudflare${Port}V4x&{Cidr}": {
+              "Type": "AWS::EC2::SecurityGroupIngress",
+              "Properties": {
+                "GroupId": { "Fn::GetAtt": ["SecurityGroup", "GroupId"] },
+                "Description": "AnyCloud API through Cloudflare",
+                "IpProtocol": "tcp",
+                "FromPort": { "Ref": "Port" },
+                "ToPort": { "Ref": "Port" },
+                "CidrIp": { "Ref": "Cidr" }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "Fn::ForEach::CloudflareRulesV6": [
+      "Cidr",
+      { "Ref": "CloudflareIpv6" },
+      {
+        "Fn::ForEach::PortV6": [
+          "Port",
+          ["80", "443"],
+          {
+            "Cloudflare${Port}V6x&{Cidr}": {
+              "Type": "AWS::EC2::SecurityGroupIngress",
+              "Properties": {
+                "GroupId": { "Fn::GetAtt": ["SecurityGroup", "GroupId"] },
+                "Description": "AnyCloud API through Cloudflare",
+                "IpProtocol": "tcp",
+                "FromPort": { "Ref": "Port" },
+                "ToPort": { "Ref": "Port" },
+                "CidrIpv6": { "Ref": "Cidr" }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "CreateBucket",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": { "Ref": "CheckpointBucket" },
+        "VersioningConfiguration": { "Status": "Enabled" },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      }
+    },
+    "VmRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": { "Fn::Sub": "anycloud-${ClusterId}-vm" },
+        "Description": "The AnyCloud management VM: its checkpoint bucket, and deleting its installation last",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "ec2.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "anycloud-management-vm",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "Describe",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:DescribeInstances",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeVolumes",
+                    "ec2:DescribeSpotInstanceRequests"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "SweepCluster",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:TerminateInstances",
+                    "ec2:DeleteVolume",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:DeleteSecurityGroup",
+                    "ec2:CancelSpotInstanceRequests"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:*/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:ResourceTag/anycloud_cluster": { "Ref": "ClusterId" }
+                    }
+                  }
+                },
+                {
+                  "Sid": "SweepOwnerApi",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:TerminateInstances",
+                    "ec2:DeleteVolume",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:DeleteSecurityGroup",
+                    "ec2:CancelSpotInstanceRequests"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:*/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:ResourceTag/anycloud_owner_api": {
+                        "Ref": "OwnerApiIdentity"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Sid": "ListRegions",
+                  "Effect": "Allow",
+                  "Action": "account:ListRegions",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:account::${AWS::AccountId}:account"
+                  }
+                },
+                {
+                  "Sid": "CheckpointBucket",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetBucketLocation",
+                    "s3:GetBucketVersioning",
+                    "s3:ListBucket",
+                    "s3:ListBucketMultipartUploads"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::${CheckpointBucket}"
+                  }
+                },
+                {
+                  "Sid": "CheckpointObjects",
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:AbortMultipartUpload",
+                    "s3:ListMultipartUploadParts"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::${CheckpointBucket}/*"
+                  }
+                },
+                {
+                  "Sid": "DeleteOwnStack",
+                  "Effect": "Allow",
+                  "Action": [
+                    "cloudformation:DeleteStack",
+                    "cloudformation:DescribeStacks"
+                  ],
+                  "Resource": { "Ref": "AWS::StackId" }
+                },
+                {
+                  "Sid": "PassStackDeleteRole",
+                  "Effect": "Allow",
+                  "Action": "iam:PassRole",
+                  "Resource": { "Fn::GetAtt": ["StackDeleteRole", "Arn"] },
+                  "Condition": {
+                    "StringEquals": {
+                      "iam:PassedToService": "cloudformation.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "VmInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "InstanceProfileName": { "Fn::Sub": "anycloud-${ClusterId}-vm" },
+        "Roles": [{ "Ref": "VmRole" }]
+      }
+    },
+    "StackDeleteRole": {
+      "Type": "AWS::IAM::Role",
+      "DeletionPolicy": "RetainExceptOnCreate",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "RoleName": { "Fn::Sub": "anycloud-${ClusterId}-cfn" },
+        "Description": "Deletes this AnyCloud stack. Kept by its own delete; the CLI removes it afterwards.",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "cloudformation.amazonaws.com" },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "anycloud-stack-delete",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "Describe",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:DescribeInstances",
+                    "ec2:DescribeInstanceAttribute",
+                    "ec2:DescribeInstanceCreditSpecifications",
+                    "ec2:DescribeLaunchTemplates",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeVolumes",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeSecurityGroupRules"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "RevokeClusterGroupRules",
+                  "Effect": "Allow",
+                  "Action": "ec2:RevokeSecurityGroupIngress",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:security-group-rule/*"
+                  }
+                },
+                {
+                  "Sid": "DeleteTagged",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:TerminateInstances",
+                    "ec2:RevokeSecurityGroupIngress",
+                    "ec2:DeleteSecurityGroup"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:*/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:ResourceTag/anycloud_cluster": { "Ref": "ClusterId" }
+                    }
+                  }
+                },
+                {
+                  "Sid": "DeleteVmIdentity",
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:GetRole",
+                    "iam:ListRolePolicies",
+                    "iam:ListAttachedRolePolicies",
+                    "iam:ListInstanceProfilesForRole",
+                    "iam:DeleteRolePolicy",
+                    "iam:DeleteRole",
+                    "iam:GetInstanceProfile",
+                    "iam:RemoveRoleFromInstanceProfile",
+                    "iam:DeleteInstanceProfile"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/anycloud-${ClusterId}-vm"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/anycloud-${ClusterId}-vm"
+                    }
+                  ]
+                },
+                {
+                  "Sid": "ResolveImageParameter",
+                  "Effect": "Allow",
+                  "Action": "ssm:GetParameters",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/canonical/*"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": { "Ref": "ImageId" },
+        "InstanceType": { "Ref": "InstanceType" },
+        "AvailabilityZone": {
+          "Fn::If": [
+            "PickZone",
+            { "Ref": "AvailabilityZone" },
+            { "Ref": "AWS::NoValue" }
+          ]
+        },
+        "IamInstanceProfile": { "Ref": "VmInstanceProfile" },
+        "Ipv6AddressCount": 0,
+        "SecurityGroupIds": [{ "Fn::GetAtt": ["SecurityGroup", "GroupId"] }],
+        "MetadataOptions": {
+          "HttpEndpoint": "enabled",
+          "HttpTokens": "required",
+          "HttpPutResponseHopLimit": 2
+        },
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+              "VolumeType": "gp3",
+              "VolumeSize": 16,
+              "Iops": 8000,
+              "DeleteOnTermination": true
+            }
+          }
+        ],
+        "PropagateTagsToVolumeOnCreation": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Fn::Sub": "anycloud-cluster-${ClusterId}" }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "PublicIp": { "Value": { "Fn::GetAtt": ["Instance", "PublicIp"] } },
+    "InstanceId": { "Value": { "Ref": "Instance" } },
+    "Bucket": { "Value": { "Ref": "CheckpointBucket" } },
+    "RoleArn": { "Value": { "Fn::GetAtt": ["VmRole", "Arn"] } }
+  }
+}

@@ -1,0 +1,11 @@
+-- Per-deployment scheduling timestamp for the due-pull reconciliation queue:
+-- the next wall-clock time (ms) this deployment is eligible to be checked by a
+-- background reconciler. NULL means due now -- a freshly created or migrated row
+-- sorts first under ORDER BY next_check_at ASC and is claimed on the next tick.
+--
+-- The reconciler claims due rows atomically (UPDATE ... WHERE next_check_at <= now
+-- ... LIMIT K RETURNING), leases each by pushing next_check_at forward so an
+-- in-flight row is not re-claimed, and reschedules on completion: success sets
+-- now + interval, failure sets now + backoff. Generalizes the existing
+-- last_checked heartbeat with backoff folded in.
+ALTER TABLE deployments ADD COLUMN next_check_at INTEGER;

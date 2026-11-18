@@ -1,0 +1,193 @@
+{{- include "anycloud-api.requireValues" . -}}
+# The API's cluster authority. The hosted API manages node pools, Deployments
+# and Services and applies its own release through this ServiceAccount; no
+# credential for it is stored or exported (ARCHITECTURE.md, "Cluster
+# authority"). The rule list is exactly what the API's permission preflight
+# checks (src/api/services/kubernetes/cluster-runtime.ts).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+rules:
+  # Identity (kube-system UID) and workload namespaces.
+  - apiGroups: ['']
+    resources: ['namespaces']
+    verbs: ['get', 'create', 'patch', 'delete']
+  # Node pool join, cordon and removal; the pool loop's Node cache.
+  - apiGroups: ['']
+    resources: ['nodes']
+    verbs: ['get', 'list', 'watch', 'patch', 'delete']
+  # Join tokens (kube-system) and Deployment material, which the pool loop
+  # watches so a deleted object is repaired.
+  - apiGroups: ['']
+    resources: ['secrets', 'serviceaccounts']
+    verbs: ['get', 'list', 'watch', 'create', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['services']
+    verbs: ['get', 'list', 'create', 'patch', 'delete']
+  # The pool loop's Pod cache, the finalizer it removes, removed Nodes' Pods
+  # and Service replicas leaving a former ingress entry, and the GPU check
+  # Pod on a pool Node.
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch', 'create', 'patch', 'delete']
+  # A replica's image pull, from kubelet's events, on its Jobs' claims.
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['list']
+  # `anycloud logs` for Deployments and Services on node pools.
+  - apiGroups: ['']
+    resources: ['pods/log']
+    verbs: ['get']
+  # Draining an outdated pool Node within PodDisruptionBudgets.
+  - apiGroups: ['']
+    resources: ['pods/eviction']
+    verbs: ['create']
+  # `anycloud exec` into a pool Job's or Deployment's replica Pod. A WebSocket
+  # exec is a GET, authorized as `get`, and Kubernetes 1.35 also requires
+  # `create`; the API execs only into Pods it lists in a node pool namespace
+  # by a Deployment's selector.
+  - apiGroups: ['']
+    resources: ['pods/exec']
+    verbs: ['get', 'create']
+  - apiGroups: ['apps']
+    resources: ['deployments']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['apps']
+    resources: ['daemonsets']
+    verbs: ['get', 'list', 'create', 'update', 'patch', 'delete']
+  # Each node pool namespace's default egress policy, server-side applied
+  # and watched by the pool loop so drift is repaired.
+  - apiGroups: ['networking.k8s.io']
+    resources: ['networkpolicies']
+    verbs: ['list', 'watch', 'create', 'patch']
+  - apiGroups: ['batch']
+    resources: ['jobs']
+    verbs: ['get', 'list', 'create', 'patch', 'delete']
+  - apiGroups: ['node.k8s.io']
+    resources: ['runtimeclasses']
+    verbs: ['get', 'create', 'update', 'delete']
+  # The Node status policy (K3s's shared controller identity) and the
+  # user-namespace policy, which guards its runtime class (RFC 0049 C32).
+  - apiGroups: ['admissionregistration.k8s.io']
+    resources: ['validatingadmissionpolicies', 'validatingadmissionpolicybindings']
+    verbs: ['get', 'create', 'update', 'delete']
+  # A Service's public route in its namespace (node pool ingress).
+  - apiGroups: ['traefik.io']
+    resources: ['ingressroutes']
+    verbs: ['get', 'list', 'create', 'patch', 'delete']
+  # Registry add-ons (kube-system) and the API's own release.
+  - apiGroups: ['helm.cattle.io']
+    resources: ['helmcharts', 'helmchartconfigs']
+    verbs: ['get', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['authentication.k8s.io']
+    resources: ['tokenreviews']
+    verbs: ['create']
+  # Permission preflight.
+  - apiGroups: ['authorization.k8s.io']
+    resources: ['selfsubjectaccessreviews']
+    verbs: ['create']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: anycloud-api
+subjects:
+  - kind: ServiceAccount
+    name: anycloud-api
+    namespace: {{ .Release.Namespace }}
+---
+# Every role connection's trust must refuse this ServiceAccount's token; the
+# save-time check proves it (RFC 0047 § Save-time check). It has no other use
+# or permission, and no Pod mounts it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: anycloud-trust-probe
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+# Role connections exchange the API's own token, bound to each cloud's
+# audience, for cloud sessions (RFC 0047 amendments 8 and 9), and the trust
+# probe's token to prove each trust pins its subject.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: anycloud-api-token
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ['']
+    resources: ['serviceaccounts/token']
+    resourceNames: ['anycloud-api', 'anycloud-trust-probe']
+    verbs: ['create']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: anycloud-api-token
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: anycloud-api-token
+subjects:
+  - kind: ServiceAccount
+    name: anycloud-api
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: anycloud-api-observer
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: anycloud-api-observer
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ['apps']
+    resources: ['deployments']
+    resourceNames: ['anycloud-api']
+    verbs: ['get']
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: anycloud-api-observer
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: anycloud-api-observer
+subjects:
+  - kind: ServiceAccount
+    name: anycloud-api-observer
+    namespace: {{ .Release.Namespace }}

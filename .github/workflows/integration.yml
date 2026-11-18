@@ -1,0 +1,903 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    # Broader than tests.yml: no integration spec reads prose, but unit specs
+    # do. Prose-only PRs (RFCs, docs) skip the integration matrix.
+    # docs.yml still builds the website on docs/website PRs, and style.yml
+    # still formats markdown.
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - 'anycloud-skills/**'
+      - 'ci/skills/**'
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/skills.yml'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      force_service_cleanup:
+        description: Fail the Local Service cell before finalization to inspect cleanup
+        type: boolean
+        default: false
+      force_vm_cleanup:
+        description: Fail the Local VM contracts after Running to inspect native fallback cleanup
+        type: boolean
+        default: false
+      force_job_cleanup:
+        description: Fail the Local Job after active extensions to inspect native fallback cleanup
+        type: boolean
+        default: false
+      azure_runner_loss:
+        description: Qualify Azure onboarding cleanup after creator process and filesystem loss
+        type: boolean
+        default: false
+      force_api_process_cleanup:
+        description: Fail the API image and startup launchers after Running and require exact native cleanup
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keep an opt-in cleanup qualification alive when another PR run starts.
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.azure_runner_loss && format('-azure-runner-loss-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Build docs
+        run: cd website && npm ci && npm run build
+
+  integration-tests-common:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    # api-startup builds the API image and resolves the private prebuilt deps
+    # bases from GHCR; keep the permission explicit so it does not depend on org
+    # token defaults.
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      RESULTS_DIR: /tmp/e2e-results-common-${{ matrix.test }}-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_API_PROCESS_FORCE_FAILURE_AFTER_RUNNING: ${{ (matrix.test == 'api-image' || matrix.test == 'api-startup') && inputs.force_api_process_cleanup && '1' || '0' }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        test:
+          [
+            api-startup,
+            api-image,
+            api-http-reconciliation,
+            binary,
+            cli-interactive,
+            slack-handoff,
+            credentials-terminal,
+            credential-lifecycle,
+            install-script,
+            installed-wizard,
+            ssh-keepalive,
+            ssh-starvation,
+            ssh-interrupt,
+            ssh-interrupt-container,
+            kubernetes-host-step,
+            fail-assert,
+            image-manifest,
+            ghcr-private-auth,
+            runner-rclone-sync,
+          ]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Install Chromium for Slack handoff test and its libraries
+        if: matrix.test == 'slack-handoff'
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Free up disk space
+        if: matrix.test == 'api-startup' || matrix.test == 'api-image'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af
+          df -h
+
+      - name: Log in to GHCR
+        if: matrix.test == 'api-startup'
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run integration test - ${{ matrix.test }}
+        id: tests
+        if: matrix.test != 'ghcr-private-auth'
+        continue-on-error: ${{ (matrix.test == 'api-image' || matrix.test == 'api-startup') && inputs.force_api_process_cleanup == true }}
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          yarn test:${{ matrix.test }}
+
+      - name: Verify retained API process cleanup
+        id: process_cleanup
+        if: always() && (matrix.test == 'api-image' || matrix.test == 'api-startup')
+        run: >-
+          yarn -s tsx test/integration/helpers/api-process.ts verify-cleanup
+          "$RESULTS_DIR" "${{ matrix.test }}" "${{ steps.tests.outcome }}"
+          "${{ inputs.force_api_process_cleanup && 'forced' || 'normal' }}"
+
+      - name: Run integration test - ghcr-private-auth
+        id: ghcr_auth
+        if: matrix.test == 'ghcr-private-auth'
+        env:
+          GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+          E2E_GH_TOKEN_ORG_PACKAGES: ${{ secrets.E2E_GH_TOKEN_ORG_PACKAGES }}
+          E2E_GH_TOKEN_NO_SCOPE: ${{ secrets.E2E_GH_TOKEN_NO_SCOPE }}
+        run: yarn test:ghcr-private-auth
+
+      - name: Upload test logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 3
+          name: test-logs-common-${{ matrix.test }}
+          path: |
+            /tmp/api*.log
+            /tmp/preemption-test-*.log
+            /tmp/e2e-results-common-*/
+
+  vitest-e2e:
+    name: vitest-e2e / ${{ matrix.test }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-4' }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test: cli-exit
+            command: yarn test:cli-exit:vitest
+            build: true
+            ghcr: false
+            timeout_minutes: 15
+          # The release-built binary, since Bun-only output bugs never show
+          # under Node. The darwin targets run the build's ad-hoc
+          # re-sign and signature verification; no job launches them
+          # on a Mac, since GitHub-hosted macOS costs about 10x Linux.
+          - test: cli-piped-output
+            command: ANYCLOUD_BINARY_TARGETS="bun-linux-x64 bun-darwin-arm64 bun-darwin-x64" ./release/build-binaries.sh && yarn test:cli-piped-output
+            build: false
+            ghcr: false
+            timeout_minutes: 15
+          - test: hosted-api-access-policy
+            command: yarn test:hosted-api-access-policy:vitest
+            build: true
+            ghcr: false
+            timeout_minutes: 15
+          - test: secret-crud-privacy
+            command: yarn test:secret-crud-privacy:vitest
+            build: true
+            ghcr: false
+            timeout_minutes: 15
+          - test: image-preflight-invalid
+            command: ./test/integration/e2e.sh image-preflight-invalid --vitest
+            build: false
+            ghcr: true
+            timeout_minutes: 30
+          - test: billing-settlement
+            command: yarn test:billing-settlement:vitest
+            build: true
+            ghcr: false
+            timeout_minutes: 15
+          - test: long-history-responsiveness
+            command: yarn test:long-history-responsiveness:vitest
+            build: true
+            ghcr: false
+            timeout_minutes: 15
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        if: matrix.build
+        run: yarn build
+
+      - name: Log in to GHCR
+        if: matrix.ghcr
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Vitest E2E - ${{ matrix.test }}
+        id: tests
+        env:
+          RESULTS_DIR: /tmp/e2e-results-${{ matrix.test }}-vitest-${{ github.run_id }}-${{ github.run_attempt }}
+        run: ${{ matrix.command }}
+
+      - name: Upload Vitest logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-vitest-${{ matrix.test }}
+          path: |
+            /tmp/anycloud-e2e-artifacts/
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  credentials-onboarding-e2e:
+    # Real cloud credentials are unavailable to forks and Dependabot. For every
+    # trusted PR, exercise the human-facing PTY flow against each cloud while
+    # keeping the generated identities isolated from the provisioning suite.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 35
+
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [aws, azure, gcp]
+
+    # Each provider sweep owns a shared onb-* namespace. Serialize that provider
+    # across PRs so one run cannot sweep an identity another run is validating.
+    concurrency:
+      group: ${{ matrix.provider }}-onboarding-e2e
+      queue: max
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+
+    env:
+      # These identities bootstrap creation only. Each test authenticates the
+      # separate identity produced by the bare `credentials new` wizard in a PTY.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - name: Check cloud toolchain
+        run: bash ci/check-cloud-tools.sh
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Validate existing ${{ matrix.provider }} test configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.provider }}" in
+            aws)
+              test -n "$AWS_ACCESS_KEY_ID"
+              test -n "$AWS_SECRET_ACCESS_KEY"
+              ;;
+            azure)
+              test -n "$AZURE_SUBSCRIPTION_ID"
+              test -n "$AZURE_TENANT_ID"
+              test -n "$AZURE_CLIENT_ID"
+              test -n "$AZURE_CLIENT_SECRET"
+              ;;
+            gcp)
+              test -n "$GCP_PROJECT_ID"
+              test -n "$GCP_CLIENT_EMAIL"
+              test -n "$GCP_PRIVATE_KEY"
+              ;;
+          esac
+
+      - name: Build
+        run: yarn build
+
+      - name: Sweep stale ${{ matrix.provider }} onboarding identities
+        run: yarn cleanup:${{ matrix.provider }}-onboarding-e2e --suite onboarding --sweep
+
+      - name: Run real ${{ matrix.provider }} credentials onboarding in a PTY
+        run: yarn test:${{ matrix.provider }}-onboarding-e2e
+
+      - name: Sweep ${{ matrix.provider }} onboarding identities after the test
+        if: always()
+        run: yarn cleanup:${{ matrix.provider }}-onboarding-e2e --suite onboarding --sweep
+
+  # Controlled qualification only. These exact run names are excluded from the
+  # legacy onboarding sweeps; no generated-fixture jobs are activated here.
+  azure-onboarding-runner-loss-create:
+    name: azure-onboarding-runner-loss-create
+    if: github.event_name == 'workflow_dispatch' && inputs.azure_runner_loss
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+      - name: Create smoke container, kill creator, and destroy its filesystem
+        run: yarn tsx test/integration/credentials-onboarding/azure/runner-loss.ts create
+
+  azure-onboarding-runner-loss-recover:
+    name: azure-onboarding-runner-loss-recover
+    needs: azure-onboarding-runner-loss-create
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      inputs.azure_runner_loss &&
+      needs.azure-onboarding-runner-loss-create.result != 'skipped'
+    # Cleanup uses a fresh CLI profile; no creator state is handed to this job.
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+      - name: Independently authorize and recover the abandoned Azure run
+        run: yarn cleanup:azure-onboarding-e2e --run-recovery
+      - name: Confirm recovery is idempotent from another fresh process
+        run: yarn cleanup:azure-onboarding-e2e --run-recovery
+
+  e2e-cluster-local:
+    name: ${{ matrix.member }}
+    strategy:
+      fail-fast: false
+      matrix:
+        member: [e2e-cluster-local, e2e-pool-scaling-local]
+    # On demand: these run 46–54 min on the release path, where a spot
+    # reclaim costs a full rerun.
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-od-8' }}
+    # Measured (run 9, 2026-09-26): checkout to K3s cluster up ~2 min; both node
+    # pools joined +2 min; the Deployment / targeted-Job composition ~7 min;
+    # the Service stage ~1.5 min; deletion and teardown ~3 min — about 16 min
+    # end to end, plus the 10-minute Service cleanup budget if that stage has
+    # to fall back. The hosted-chart stage adds an API image build and a Helm
+    # install plus upgrade (estimated ~12 min). 60 keeps headroom over a loaded
+    # runner without hiding a hang for long. e2e-pool-scaling-local waits out
+    # two 10-minute idle windows and 8 minutes before a restart: about 65 min.
+    timeout-minutes: ${{ matrix.member == 'e2e-pool-scaling-local' && 90 || 60 }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Initialize local cluster artifact directories
+        shell: bash
+        run: |
+          # Under /tmp, which a backmesh runner shares with its Docker daemon.
+          echo "E2E_RESULTS_ROOT=/tmp/e2e-results-root-${{ matrix.member }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Generate deterministic Python SDK
+        env:
+          PYTHON_BIN: python3
+        run: yarn generate:python-sdk
+
+      - name: Build
+        run: yarn build
+
+      - name: Run local cluster E2E
+        id: tests
+        env:
+          E2E_PRIVATE_REPO_TOKEN: ${{ secrets.E2E_PRIVATE_REPO_TOKEN }}
+          # Fork and Dependabot pull requests get no repository secrets.
+          E2E_PRIVATE_REPO_SKIP: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '' }}
+        run: |
+          docker info
+          yarn test:${{ matrix.member }}:vitest
+
+      # A cancelled job kills the spec before its own dump runs; the K3s cluster
+      # and agent logs are the only record of how far it got.
+      - name: Retain local cluster container logs
+        id: retain-e2e-cluster-local-logs
+        if: failure() || cancelled()
+        continue-on-error: true
+        run: |
+          mkdir -p "$E2E_RESULTS_ROOT/retained-containers"
+          docker ps -a --filter label=com.anycloud.e2e-cluster-local=true --format '{{.ID}} {{.Names}} {{.Status}}' | tee "$E2E_RESULTS_ROOT/retained-containers/containers.txt"
+          for id in $(docker ps -aq --filter label=com.anycloud.e2e-cluster-local=true); do
+            name="$(docker inspect --format '{{.Name}}' "$id" | sed 's#^/##')"
+            docker logs "$id" > "$E2E_RESULTS_ROOT/retained-containers/$name.log" 2>&1 || true
+          done
+
+      - name: Delete retained local cluster resources
+        if: always()
+        run: |
+          docker ps -aq --filter label=com.anycloud.e2e-cluster-local=true | xargs -r docker rm -f
+          docker network ls -q --filter label=com.anycloud.e2e-cluster-local=true | xargs -r docker network rm
+
+      - name: Upload local cluster records
+        if: success() && steps.tests.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-cluster-local-records-${{ matrix.member }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.E2E_RESULTS_ROOT }}/e2e-results-${{ matrix.member }}-vitest-*/e2e-run.json
+            ${{ env.E2E_RESULTS_ROOT }}/e2e-results-${{ matrix.member }}-vitest-*/vitest-fixture/**/**/fixture-record.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload local cluster E2E logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.member }}
+          path: |
+            ${{ env.E2E_RESULTS_ROOT }}/
+            /tmp/anycloud-e2e-artifacts/
+            /tmp/e2e-results-*/
+          retention-days: 3
+
+  cloud-sad-tests:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloud-e2e
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        test:
+          [
+            aws-sad,
+            aws-multivpc,
+            azure-sad,
+            pool-job-storage-azure,
+            pool-job-storage-aws,
+            pool-job-storage-gcp,
+            gcp-sad,
+            lambda-sad,
+            quota,
+            quota-e2e,
+          ]
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      # A cancelled run skips the spec's VPC delete; reclaim stale throwaways
+      # before they reach the account's VPC limit.
+      - name: Sweep stale multi-VPC test VPCs
+        if: matrix.test == 'aws-multivpc'
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts --multivpc-vpcs
+
+      - name: Run sad path test - ${{ matrix.test }}
+        id: tests
+        run: yarn test:${{ matrix.test }}
+
+      - name: Upload test logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 3
+          name: test-logs-sad-${{ matrix.test }}
+          path: |
+            /tmp/api*.log
+
+  e2e-noprovision:
+    name: e2e-noprovision / ${{ matrix.test }} / ${{ matrix.runner }}
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 30
+    # Vitest E2E cells that exercise the full API/CLI path but never provision a
+    # real cloud VM: the `*-invalid` admission members are rejected before launch.
+    # Cheap and deterministic (~5-11m); no pre/post cleanup because nothing is provisioned
+    # (the real-cloud workflow cleanups are the backstop if a regression ever does).
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        include:
+          - test: aws-invalid
+            runner: vitest
+            args: --vitest
+          - test: azure-invalid
+            runner: vitest
+            args: --vitest
+          - test: gcp-invalid
+            runner: vitest
+            args: --vitest
+
+    # Explicit so deps-base reuse doesn't depend on the org's default token
+    # permissions: the GHCR login below needs packages: read to inspect the
+    # private prebuilt base (matches e2e-job.yml / e2e-vm.yml / e2e-serve.yml).
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      # Authenticate to GHCR so resolve-deps-image.sh can inspect the (private)
+      # prebuilt deps base; without it the e2e image build silently falls back
+      # to a full inline install. (packages: read is granted job-level above.)
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run E2E test - ${{ matrix.test }}
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.test }} ${{ matrix.args }}
+
+      - name: Retain Job admission comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-admission-${{ matrix.test }}-${{ matrix.runner }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-*/e2e-run.json
+            /tmp/e2e-results-*/workloads-to-clean
+            /tmp/e2e-results-*/vitest-fixture/*/metadata.json
+            /tmp/e2e-results-*/vitest-fixture/*/fixture-record.json
+            /tmp/e2e-results-*/vitest-fixture/*/job-*.json
+            /tmp/e2e-results-*/vitest-fixture/*/vm-*-native-cleanup.json
+            /tmp/e2e-results-*/vitest-fixture/*/vm-*-native-identities.json
+            /tmp/e2e-results-*/vitest-fixture/*/dedicated-job-result.json
+            /tmp/e2e-results-*/vitest-fixture/*/cleanup-observations.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-e2e-${{ matrix.test }}-${{ matrix.runner }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  local-smolvm:
+    name: local-smolvm / ${{ matrix.suite }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-kvm-4' }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    # Each runtime/surface gets a fresh runner. In particular, a Job failure
+    # must not skip VM or Serve coverage by putting later tests behind it.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: runtime
+            command: yarn test:local-smolvm:runtime
+            ghcr: false
+            e2e_timeout: ''
+            timeout_minutes: 30
+          - suite: job-held-vitest
+            command: ./test/integration/e2e.sh local-held-job --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+          - suite: job-completed-vitest
+            command: ./test/integration/e2e.sh local-completed-job --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+          - suite: job-resubmitted-vitest
+            command: ./test/integration/e2e.sh local-resubmitted-job --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+          - suite: vm-vitest
+            command: ./test/integration/e2e.sh local-smolvm-vm --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+          - suite: vm-host-loss-vitest
+            command: ./test/integration/e2e.sh local-smolvm-vm-host-loss --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+          - suite: serve-vitest
+            command: ./test/integration/e2e.sh local-smolvm-serve --vitest
+            ghcr: true
+            e2e_timeout: '1800'
+            timeout_minutes: 45
+    # Internal Local harness: smolvm microVMs exercise the real SSH/Docker VM-host
+    # lifecycle without exposing a host Docker socket to the API container.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # A backmesh runner shares /tmp with its Docker daemon at the same path,
+      # so the API container and the runner's SmolVM see one bucket root.
+      ANYCLOUD_TEST_LOCAL_BUCKET_ROOT: /tmp/anycloud-local-buckets-${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Free disk space for microVM overlays
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
+          sudo docker system prune -af
+
+      - name: Setup Local smolvm runtime
+        run: yarn local-runtime:setup
+
+      - name: Cleanup stale Local microVMs
+        run: yarn local-runtime:cleanup
+
+      # E2E surfaces inspect or pull private GHCR images. The lower-level
+      # runtime suite exercises only the guest/runtime and does not need registry auth.
+      - name: Log in to GHCR
+        if: matrix.ghcr
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Local smolvm ${{ matrix.suite }}
+        id: tests
+        env:
+          E2E_TEST_TIMEOUT_SECONDS: ${{ matrix.e2e_timeout }}
+          E2E_VM_FORCE_FAILURE_AFTER_RUNNING: ${{ inputs.force_vm_cleanup && startsWith(matrix.suite, 'vm-') && '1' || '' }}
+          E2E_SERVE_FORCE_FAILURE_BEFORE_FINALIZE: ${{ inputs.force_service_cleanup && matrix.suite == 'serve-vitest' && '1' || '' }}
+          E2E_JOB_FORCE_CLEANUP: ${{ inputs.force_job_cleanup && startsWith(matrix.suite, 'job-') && '1' || '' }}
+        run: |
+          git rev-parse HEAD > /tmp/vm-comparison-source-sha.txt
+          git rev-parse HEAD > /tmp/service-comparison-source-sha.txt
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ${{ matrix.command }}
+
+      - name: Capture smolvm diagnostics
+        if: always()
+        run: |
+          curl -fsS http://127.0.0.1:18089/health > /tmp/anycloud-smolvm-health.json || true
+          curl -fsS http://127.0.0.1:18089/api/v1/machines > /tmp/anycloud-smolvm-machines.json || true
+          sudo journalctl -u anycloud-test-smolvm.service -n 300 --no-pager > /tmp/anycloud-smolvm-service.log 2>&1 || true
+          sudo cp /var/lib/anycloud-test/local/smolvm-serve.log /tmp/anycloud-smolvm-serve.log 2>/dev/null || true
+          sudo chown "$USER" /tmp/anycloud-smolvm-* 2>/dev/null || true
+
+      # Retain validated contract observations before the broad runtime cleanup.
+      - name: Retain VM comparison evidence
+        if: always() && startsWith(matrix.suite, 'vm-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-comparison-evidence-local-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/vm-comparison-source-sha.txt
+            /tmp/e2e-results-*/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain Local Service comparison evidence
+        if: always() && matrix.suite == 'serve-vitest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-comparison-evidence-local-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/service-comparison-source-sha.txt
+            /tmp/e2e-results-local-smolvm-serve*/e2e-run.json
+            /tmp/e2e-results-local-smolvm-serve*/workloads-to-clean
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/*cleanup-observations*.json
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/*native-*.json
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/*service-*.json
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/*serve-local-recovery-result*.json
+            /tmp/e2e-results-local-smolvm-serve*/vitest-fixture/**/*local-serve-starting-checkpoint*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain Job comparison evidence
+        if: always() && startsWith(matrix.suite, 'job-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-local-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-*/e2e-run.json
+            /tmp/e2e-results-*/workloads-to-clean
+            /tmp/e2e-results-*/job-comparison-*.jsonl
+            /tmp/e2e-results-*/vitest-fixture/*/metadata.json
+            /tmp/e2e-results-*/vitest-fixture/*/fixture-record.json
+            /tmp/e2e-results-*/vitest-fixture/*/job-*.json
+            /tmp/e2e-results-*/vitest-fixture/*/dedicated-job-result.json
+            /tmp/e2e-results-*/vitest-fixture/*/cleanup-observations.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Cleanup Local microVMs
+        if: always()
+        run: yarn local-runtime:cleanup
+
+      - name: Upload test logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-local-smolvm-${{ matrix.suite }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+            /tmp/anycloud-smolvm-*
+          retention-days: 3
+
+  local-smolvm-nuke:
+    name: local-smolvm / nuke
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/nuke.yml
+    with:
+      provider: local
+      nuke_count: '300'
+      seed_workloads: '3700'
+      deadline_sec: '900'
+      runtime_sec: '10'
+      pass_pct: '100'
+      cleanup_drain_sec: '120'
+      db_timeout_ms: '20000'
+      e2e_timeout_seconds: '1800'
+      timeout_minutes: 45

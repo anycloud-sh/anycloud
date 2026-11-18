@@ -1,0 +1,34 @@
+# Base of the GPU pool's voice receiver: Kyutai TTS 1.6B with its
+# weights, one voice and Whisper baked in, so nothing downloads at runtime.
+# The receiver (Dockerfile.e2e-cluster-local-deployment, WORKLOAD_PROFILE=voice)
+# builds on it and renders the CPU reference there.
+#
+# Attribution: Kyutai TTS 1.6B (kyutai/tts-1.6b-en_fr) and the vctk voice
+# embedding (kyutai/tts-voices) by Kyutai, CC-BY-4.0, the embedding derived from
+# the VCTK corpus (CSTR, University of Edinburgh, CC-BY-4.0); moshi by Kyutai,
+# MIT; Whisper by OpenAI, MIT. Unpinned Python dependencies can change the
+# reference on a rebuild, but it is rebuilt with the image, so it stays its own.
+FROM mirror.gcr.io/pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime@sha256:77f17f843507062875ce8be2a6f76aa6aa3df7f9ef1e31d9d7432f4b0f563dee
+
+LABEL org.opencontainers.image.licenses="CC-BY-4.0 AND MIT" \
+      org.opencontainers.image.description="Kyutai TTS 1.6B (CC-BY-4.0, Kyutai) test fixture for Anycloud"
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+# moshi's torch.compile path builds a Triton helper with a C compiler.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+
+# moshi and Kyutai's batched TTS scheduler (rust/moshi-server/tts.py, MIT) from
+# one pinned commit, so the scheduler matches the library it drives.
+ARG MOSHI_COMMIT=e6a55d2722a65870ef52a6c9f6ecfc0e90f38362
+RUN pip install "moshi @ git+https://github.com/kyutai-labs/moshi@${MOSHI_COMMIT}#subdirectory=moshi" pydantic \
+      openai-whisper==20250625 huggingface_hub \
+    && mkdir -p /opt/kyutai \
+    && python -c "import urllib.request as u; u.urlretrieve('https://raw.githubusercontent.com/kyutai-labs/moshi/${MOSHI_COMMIT}/rust/moshi-server/tts.py', '/opt/kyutai/tts_service.py')" \
+    && echo "4d67bdc388bc47b803381793d99d4204bdf20bc608db06f9c1394fea06b1009d  /opt/kyutai/tts_service.py" | sha256sum -c
+
+RUN python -c "from huggingface_hub import snapshot_download as get; \
+get('kyutai/tts-1.6b-en_fr', revision='f65439609986c392cb12df63938abcc550c3fb15'); \
+get('kyutai/tts-voices', revision='323332d33f997de8394f24a193e1a76df720e01a', allow_patterns=['vctk/p225_023.wav.*.safetensors'], local_dir='/models/tts-voices')" \
+    && python -c "import whisper; whisper.load_model('base.en', device='cpu', download_root='/models/whisper')"
+ENV HF_HUB_OFFLINE=1

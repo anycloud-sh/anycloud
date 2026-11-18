@@ -1,0 +1,270 @@
+name: Nuke Stress Test
+
+# Local nuke preloads 2 GiB into the real API and adds the incident's SSH launch
+# cadence. An independent process probes HTTP every 100ms throughout the overlay.
+
+# Seeded production-shaped DB load plus bounded concurrent job submission. Real
+# cloud providers run on spot + bucket-sync to reproduce the "thousands of jobs
+# at once" incident and surface API-host saturation (SQLite serialized writes,
+# SSH transport, 30s monitor fan-out, retry storm, cloud ARM contention/quota).
+# Every provider records status, memory, runner-host, and API-container metrics.
+# The `local` provider is additionally a no-cloud smolvm VM-host lane. Each run
+# boots its OWN local conductor via `e2e.sh nuke`.
+#
+# Triggers:
+#   - push of a v* tag  → release.yml does `npm version patch` + `git push --tags`,
+#                         so the version tag IS this repo's "release" (it never
+#                         publishes a GitHub Release, so `on: release` would never
+#                         fire). Runs the seeded baseline gate. A red result here
+#                         does NOT block release.yml (separate workflow).
+#   - workflow_dispatch → pick provider, overlay count, and seed size.
+#   - workflow_call     → Integration reuses this exact job with its stricter
+#                         Local gate inputs instead of maintaining another lane.
+on:
+  push:
+    tags: ['v*']
+  workflow_call:
+    inputs:
+      provider:
+        type: string
+        default: local
+      nuke_count:
+        type: string
+        default: '300'
+      seed_workloads:
+        type: string
+        default: '3700'
+      deadline_sec:
+        type: string
+        default: '900'
+      runtime_sec:
+        type: string
+        default: '10'
+      pass_pct:
+        type: string
+        default: '100'
+      cleanup_drain_sec:
+        type: string
+        default: '120'
+      db_timeout_ms:
+        type: string
+        default: '20000'
+      e2e_timeout_seconds:
+        type: string
+        default: '1800'
+      timeout_minutes:
+        type: number
+        default: 45
+      interrupt_after_witness:
+        description: 'Declared fault control: interrupt one admitted witness wrapper'
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: 'Cloud provider (local = smolvm harness, no cloud resources)'
+        type: choice
+        options:
+          - local
+          - aws
+          - azure
+          - gcp
+          - lambda
+        default: 'azure'
+      nuke_count:
+        description: 'Number of overlay jobs; minimum 300; blank = 300'
+        default: ''
+      seed_workloads:
+        description: 'Seeded DB workload count, e.g. 500, 3700, 5500'
+        default: '3700'
+      deadline_sec:
+        description: 'Overall budget (s); blank = 900 Local, 9000 cloud'
+        default: ''
+      runtime_sec:
+        description: 'Workload runtime (s); blank = 10 Local, 30 cloud'
+        default: ''
+      pass_pct:
+        description: 'Completion gate %, integer 1-100; blank = 80'
+        default: ''
+      interrupt_after_witness:
+        description: 'Declared fault control: interrupt one admitted witness wrapper'
+        type: boolean
+        default: false
+
+concurrency:
+  # Same provider+ref cancels stale duplicate stress runs; different providers
+  # on the same ref can run concurrently.
+  group: nuke-${{ github.ref }}-${{ inputs.provider || 'azure' }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  nuke:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || (inputs.provider || 'azure') == 'local' && 'backmesh-kvm-16' || 'backmesh-od-4' }}
+    environment: ${{ (inputs.provider || 'azure') != 'local' && 'cloud-e2e' || '' }}
+    # Timeout headroom is for seeded DB load, the real overlay, and manual
+    # larger dispatch runs.
+    timeout-minutes: ${{ inputs.timeout_minutes || ((inputs.provider || 'azure') == 'local' && 45 || 240) }}
+
+    # Explicit so deps-base reuse doesn't depend on the org's default token
+    # permissions: the GHCR login needs packages: read to inspect the private
+    # prebuilt base (matches e2e-job.yml / e2e-vm.yml / e2e-serve.yml / integration.yml).
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      PROVIDER: ${{ inputs.provider || 'azure' }}
+      # Local only: a backmesh runner shares /tmp with its Docker daemon at the
+      # same path, so the API container and the runner's SmolVM see one root.
+      ANYCLOUD_TEST_LOCAL_BUCKET_ROOT: /tmp/anycloud-local-buckets-${{ github.run_id }}-${{ github.run_attempt }}
+      NUKE_COUNT: ${{ inputs.nuke_count || '300' }}
+      NUKE_DB_WORKLOADS: ${{ inputs.seed_workloads || '3700' }}
+      NUKE_PASS_PCT: ${{ inputs.pass_pct || '80' }}
+      NUKE_INTERRUPT_AFTER_WITNESS: ${{ inputs.interrupt_after_witness && 'true' || 'false' }}
+      RESULTS_DIR: /tmp/e2e-results-nuke-${{ github.run_id }}-${{ github.run_attempt }}
+      NUKE_EVIDENCE_DIR: /tmp/implementation-evidence-nuke-${{ github.run_id }}-${{ github.run_attempt }}
+      NUKE_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      # Resolve provider defaults here because Actions exports blank dispatch
+      # inputs as present-but-empty variables, which prevents the shell harness
+      # from distinguishing an omitted value.
+      NUKE_DEADLINE_SEC: ${{ inputs.deadline_sec || ((inputs.provider || 'azure') == 'local' && '900' || '9000') }}
+      NUKE_RUNTIME_SEC: ${{ inputs.runtime_sec || ((inputs.provider || 'azure') == 'local' && '10' || '30') }}
+      NUKE_CLEANUP_DRAIN_SEC: ${{ inputs.cleanup_drain_sec || ((inputs.provider || 'azure') == 'local' && '120' || '600') }}
+      NUKE_DB_TIMEOUT_MS: ${{ inputs.db_timeout_ms || ((inputs.provider || 'azure') == 'local' && '20000' || '6000') }}
+      # Keep e2e.sh's per-test timeout wrapper above the nuke's worst case
+      # (NUKE_DEADLINE_SEC + cleanup) so it can't SIGKILL mid-cleanup.
+      E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.e2e_timeout_seconds || ((inputs.provider || 'azure') == 'local' && '1800' || '10800') }}
+      # Expose only the selected provider's credentials. Local remains a
+      # credentialless lane, and unrelated secrets never enter its job.
+      AWS_ACCESS_KEY_ID: ${{ (inputs.provider || 'azure') == 'aws' && secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ (inputs.provider || 'azure') == 'aws' && secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      AZURE_SUBSCRIPTION_ID: ${{ (inputs.provider || 'azure') == 'azure' && secrets.AZURE_SUBSCRIPTION_ID || '' }}
+      AZURE_TENANT_ID: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID) || '' }}
+      AZURE_CLIENT_ID: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID) || '' }}
+      AZURE_CLIENT_SECRET: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET) || '' }}
+      GCP_PROJECT_ID: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_PROJECT_ID || '' }}
+      GCP_PRIVATE_KEY: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_PRIVATE_KEY || '' }}
+      GCP_CLIENT_EMAIL: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_CLIENT_EMAIL || '' }}
+      LAMBDA_API_KEY: ${{ (inputs.provider || 'azure') == 'lambda' && secrets.LAMBDA_API_KEY || '' }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Free disk space for Local microVM overlays
+        if: ${{ env.PROVIDER == 'local' }}
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
+          sudo docker system prune -af
+
+      - name: Setup Local smolvm runtime
+        if: ${{ env.PROVIDER == 'local' }}
+        run: yarn local-runtime:setup
+
+      - name: Cleanup stale Local microVMs
+        if: ${{ env.PROVIDER == 'local' }}
+        run: yarn local-runtime:cleanup
+
+      # Authenticate to GHCR so resolve-deps-image.sh (inside e2e.sh) can inspect
+      # the private prebuilt deps base; without it the build falls back to a full
+      # inline install. The job's default read token grants packages: read.
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ github.token }}
+
+      - name: Run nuke (boots its own conductor)
+        id: tests
+        # Only the declared control expects 143. The final validator requires
+        # that exact inner AND outer status plus complete cleanup evidence.
+        continue-on-error: ${{ inputs.interrupt_after_witness || false }}
+        env:
+          NUKE_PROVIDER: ${{ env.PROVIDER }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RESULTS_DIR"
+          exit_code=0
+          ./test/integration/e2e.sh nuke || exit_code=$?
+          printf '{"version":1,"exitCode":%s}\n' "$exit_code" > "$RESULTS_DIR/nuke-launch.json"
+          exit "$exit_code"
+
+      - name: Capture Local smolvm diagnostics
+        if: ${{ always() && env.PROVIDER == 'local' }}
+        run: |
+          curl -fsS http://127.0.0.1:18089/health > /tmp/anycloud-smolvm-health.json || true
+          curl -fsS http://127.0.0.1:18089/api/v1/machines > /tmp/anycloud-smolvm-machines.json || true
+          sudo journalctl -u anycloud-test-smolvm.service -n 300 --no-pager > /tmp/anycloud-smolvm-service.log 2>&1 || true
+          sudo cp /var/lib/anycloud-test/local/smolvm-serve.log /tmp/anycloud-smolvm-serve.log 2>/dev/null || true
+          sudo chown "$USER" /tmp/anycloud-smolvm-* 2>/dev/null || true
+
+      - name: Cleanup Local microVMs
+        id: local_cleanup
+        if: ${{ always() && env.PROVIDER == 'local' }}
+        run: yarn local-runtime:cleanup
+
+      - name: Post-test cloud cleanup
+        id: cloud_cleanup
+        if: always()
+        run: |
+          if [ "$PROVIDER" = "local" ]; then
+            echo "Skipping cloud cleanup for local nuke; no cloud resources are created."
+            exit 0
+          fi
+          CIPHER_KEY=$(openssl rand -hex 32) npx tsx "ci/cleanup/${PROVIDER}.ts"
+
+      - name: Capture nuke implementation evidence
+        id: evidence
+        if: always()
+        env:
+          NUKE_TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          NUKE_LOCAL_CLEANUP_OUTCOME: ${{ steps.local_cleanup.outcome }}
+          NUKE_CLOUD_CLEANUP_OUTCOME: ${{ steps.cloud_cleanup.outcome }}
+        run: node ci/nuke-implementation.ts capture
+
+      - name: Upload nuke implementation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-nuke-${{ env.PROVIDER }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.NUKE_EVIDENCE_DIR }}/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Validate nuke outcome and cleanup
+        if: always()
+        env:
+          NUKE_TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          NUKE_LOCAL_CLEANUP_OUTCOME: ${{ steps.local_cleanup.outcome }}
+          NUKE_CLOUD_CLEANUP_OUTCOME: ${{ steps.cloud_cleanup.outcome }}
+          NUKE_CAPTURE_OUTCOME: ${{ steps.evidence.outcome }}
+        run: node ci/nuke-implementation.ts validate
+
+      - name: Upload API logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuke-logs-${{ env.PROVIDER }}
+          path: |
+            /tmp/api*.log
+            /tmp/e2e-results-*/
+            /tmp/e2e-build-*.log
+            /tmp/anycloud-smolvm-*
+          retention-days: 3

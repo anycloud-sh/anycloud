@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "member": "gcp-spot-eviction",
+  "candidate": "e2e.sh gcp-spot-eviction --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "A closed kind/target selects the fixed registered capability and profile; specs cannot inject lifecycle callbacks, placement or evidence.",
+      "candidateEvidence": "contracts/job-policy.ts and targets/job-profiles.ts; closed-spec ESLint and ordinary Vitest discovery controls."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a fresh complete inventory fence precede each send. Original controller, credential, explicit and resolved placement, provisional transitions and every validated attempt prefix survive missing replies or later failures.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger, JobNativeCleanup, public-cloud-job adapter and original-controller Workload mutation hook; strict inventory/provisional/lost-reply regressions."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; cleanup uses its original identity, independent cancellation scope and remaining deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; JobNativeCleanup and independent native readers; cancellation, partial-history and failed automatic-cleanup regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer consumes exact run/reference/generation-bound active and required extension evidence once, then releases children and shared resources before its sole completion result. Terminal-only, copied, mismatched, missing, early or reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: begin/progress/extension/terminal/claim; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; evidence ownership and finalizer controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named forced failure follows the finalizing restart and produces no completion. An inconclusive race or a failed restart preserves primary and cleanup failures, and the outer runner retains native verification tracking for the member instead of releasing it. Compact pre-fault, post-fault, final-contents, fixture, cleanup and native records retain source, profile, run, attempt and generation for at least 30 days.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember E2E_JOB_FORCE_CLEANUP; test/integration/helpers/common.sh: spot-eviction native verification retention; fixture-record/cleanup-observations/native records; existing e2e-job comparison artifact uploads and retention policy."
+    },
+    {
+      "id": "original-credential-and-private-commands",
+      "requirement": "Register imported API credential intent before mutation, bind its original controller and provider identity, sanitize actual child environments and suppress secret-producing output before recording artifacts. Complete API absence readback precedes credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization bootstrap owner and JobPrivateCommands; isolatedJobEnvironment, JobCloudSession and ApiClient readback; original-controller, deadline, schema and redaction controls."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Bind the requested profile and observed image configuration/API manifest to the original active attempt and exact resolved placement. An omitted zone is accepted only for an originally null zone; explicit or known placement mismatches reject.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudProgress active baseline; imageConfigDigest and original VmLedgerProbe/JobAttemptLedger observations."
+    },
+    {
+      "id": "exit-zero-finalizing-baseline",
+      "requirement": "An unpinned spot Job writes a 24 GiB payload and a marker to its output, flushes them, exits 0 and is observed Finalizing on exactly one live attempt whose native VM and boot disk are read back before the fault.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember; test/integration/e2e/internal/contracts/job-records.ts: beforeEviction; test/integration/e2e/internal/targets/job-profiles.ts: JOB_EVICTION_PAYLOAD_MIB."
+    },
+    {
+      "id": "native-finalizing-eviction",
+      "requirement": "While the Job is Finalizing, evict its VM natively: `gcloud compute instances stop` on the exact original instance and zone after an identity readback; spot instances stop on preemption, and the gateway counts `STOPPING`/`TERMINATED`/`STOPPED` as preempted.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/job-recovery.ts: JobRecoveryTransport.stop; test/integration/e2e/internal/contracts/job-records.ts: evictionFault."
+    },
+    {
+      "id": "finalizing-restart-event",
+      "requirement": "After the fault, require a new Finalizing event with reason `final-bucket-sync-vm-restarted`, the original VM row ended and a new row for the same cloud_id, credential, placement and VM type, and no terminal state in between.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: evicted, jobEvictionRestarted; test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember."
+    },
+    {
+      "id": "completed-with-output",
+      "requirement": "The Job ends Completed with exit code 0, and the output bucket holds the exact marker and the full-size payload object.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember, #assertExit; test/integration/e2e/internal/transports/public-cloud-job.ts: evictionOutput."
+    },
+    {
+      "id": "race-is-inconclusive",
+      "requirement": "A final sync that completes before the eviction lands, with no restart event, fails as inconclusive and never passes.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember unrestarted; test/unit/e2e-cloud-job-contract.spec.ts."
+    },
+    {
+      "id": "clean-exit-end-reason",
+      "requirement": "A sibling spot Job with no retries that exits 0 ends Completed with end reason `exited`, never `reclaimed`, in under the 150 s preemption grace after its container exits (Running plus its fixed run time); without that fix it would wait out that grace.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #evictionMember spot-exit child; test/integration/e2e/internal/contracts/job-records.ts spotExit."
+    }
+  ]
+}

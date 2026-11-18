@@ -1,0 +1,59 @@
+name: DNS Worker
+
+# Manually promotes worker/ to dns.anycloud.sh. Promotion is intentionally not
+# automatic. DNS-dependent e2es run through e2e-serve.yml with
+# E2E_SERVE_GITHUB_TOKEN so the Worker can verify the caller identity.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify DNS Worker
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Run Worker tests
+        run: yarn vitest run worker/src
+
+      - name: Dry-run Worker deploy
+        working-directory: worker
+        run: npx --yes wrangler@4.102.0 deploy --dry-run
+
+  dns-worker:
+    name: DNS Worker
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    environment: cloudflare-deploy
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          # Keep this aligned with worker/package.json and the verify job. An
+          # unbounded v4 can introduce a new Workers types peer requirement
+          # between verification and deployment.
+          wranglerVersion: '4.102.0'
+          command: deploy
+
+      - name: Smoke-test DNS Worker
+        run: curl -fsS https://dns.anycloud.sh/v1/health

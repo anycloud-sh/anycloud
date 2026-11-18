@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rootDir": "../..",
+    "target": "ES2023"
+  },
+  "include": [
+    "./**/*.ts",
+    "../unit/e2e-*.spec.ts",
+    "../vitest.d.ts",
+    "../../vitest.e2e.config.mts"
+  ]
+}

@@ -1,0 +1,205 @@
+name: Mutant Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: parity compares a refactor's moved code; score mutates whole files and checks their floors
+        type: choice
+        options: [parity, score]
+        default: parity
+      source_sha:
+        description: Full commit SHA containing the parity tool and plans, and the code to score
+        required: true
+        type: string
+      targets:
+        description: 'parity: space-separated plan names or paths under test/mutant-parity/plans/, or a PR number for its <pr>.json and <pr>-*.json plans. score: space-separated src/ files, or empty for every file in floors.json'
+        type: string
+
+run-name: 'Mutant ${{ inputs.mode }}: ${{ inputs.targets }} @ ${{ inputs.source_sha }}'
+
+permissions:
+  contents: read
+
+jobs:
+  plans:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    timeout-minutes: 5
+    outputs:
+      plans: ${{ steps.resolve.outputs.plans }}
+      chunks: ${{ steps.chunks.outputs.chunks }}
+    steps:
+      - name: Require an immutable source revision
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - &checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Resolve plans
+        id: resolve
+        if: inputs.mode == 'parity'
+        env:
+          PLANS: ${{ inputs.targets }}
+        working-directory: test/mutant-parity/plans
+        run: |
+          if [[ "$PLANS" =~ ^[0-9]+$ ]]; then
+            names=$(ls | sed -nE "s/^($PLANS(-.+)?)\.json$/\1/p")
+          else
+            names=$(for plan in $PLANS; do basename "$plan" .json; done)
+          fi
+          for name in ${names:?No plans match $PLANS}; do ls "$name.json" > /dev/null; done
+          echo "plans=$(jq -Rnc '[inputs] | unique' <<< "$names")" >> "$GITHUB_OUTPUT"
+      # About 300 lines per chunk keeps each within the score job's timeout.
+      - name: Split the files to score into chunks
+        id: chunks
+        if: inputs.mode == 'score'
+        env:
+          FILES: ${{ inputs.targets }}
+        run: |
+          for file in ${FILES:-$(jq -r 'keys[]' test/mutant-parity/floors.json)}; do
+            [[ "$file" =~ ^src/[A-Za-z0-9/_.-]+\.ts$ && "$file" != *..* && -f "$file" ]] || { echo "Not a src/ file: $file"; exit 1; }
+            n=$(( ($(wc -l < "$file") + 299) / 300 ))
+            for k in $(seq "$n"); do
+              jq -nc --arg file "$file" --arg chunk "$k/$n" '{$file, $chunk, name: "\($file | gsub("/"; "_")).\($chunk | split("/")[0])"}'
+            done
+          done > chunks.jsonl
+          echo "chunks=$(jq -sc . chunks.jsonl)" >> "$GITHUB_OUTPUT"
+
+  side:
+    needs: plans
+    if: inputs.mode == 'parity'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    # An earlier parity run's sides took 44 and 58 minutes in m7.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        plan: ${{ fromJSON(needs.plans.outputs.plans) }}
+        side: [base, head]
+    env: &plan
+      PLAN: test/mutant-parity/plans/${{ matrix.plan }}.json
+      REPORTS: reports/mutation/src-parity/${{ matrix.plan }}
+    steps:
+      - *checkout
+      - &setup-node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - &install
+        run: bash scripts/ci-install-dependencies.sh
+      # A plan commit may be on no branch, such as a rebased PR's earlier head,
+      # so it is fetched by SHA, with the token passed to this step only.
+      - &fetch
+        name: Fetch the plan's commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags --depth=1 origin $(jq -r '.base, .head' "$PLAN")
+      - name: Mutate one side
+        env:
+          SIDE: ${{ matrix.side }}
+        run: yarn test:mutation:src-parity "$PLAN" "$SIDE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-mutant-parity-${{ matrix.plan }}-${{ matrix.side }}
+          path: ${{ env.REPORTS }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: [plans, side]
+    # Compares every plan, even if another plan failed; a plan missing a side
+    # fails here.
+    if: ${{ !cancelled() && inputs.mode == 'parity' && needs.plans.result == 'success' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    # The rerun can cost up to a side run on each side.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        plan: ${{ fromJSON(needs.plans.outputs.plans) }}
+    env: *plan
+    steps:
+      - *checkout
+      - *setup-node
+      - *install
+      - *fetch
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: implementation-evidence-mutant-parity-${{ matrix.plan }}-{base,head}
+          merge-multiple: true
+          path: ${{ env.REPORTS }}
+      # This one job reruns both sides' candidate losses, so a slower side
+      # runner can't turn a timing-dependent kill into a loss.
+      - name: Rerun candidate losses on one host and compare
+        run: |
+          yarn test:mutation:src-parity "$PLAN" rerun
+          yarn test:mutation:src-parity "$PLAN" compare
+          cat "$REPORTS/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-mutant-parity-${{ matrix.plan }}-compare
+          path: |
+            ${{ env.REPORTS }}/report.md
+            ${{ env.REPORTS }}/*.rerun*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  score:
+    needs: plans
+    if: inputs.mode == 'score'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: ${{ fromJSON(needs.plans.outputs.chunks) }}
+    steps:
+      - *checkout
+      - *setup-node
+      - *install
+      - name: Mutate one chunk
+        env:
+          FILE: ${{ matrix.chunk.file }}
+          CHUNK: ${{ matrix.chunk.chunk }}
+        run: yarn test:mutation:src-parity score "$FILE" "$CHUNK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-mutant-score-${{ matrix.chunk.name }}
+          path: reports/mutation/src-parity/score/
+          if-no-files-found: error
+          retention-days: 30
+
+  floors:
+    needs: [plans, score]
+    # Reports every planned file, even if a chunk failed; a file missing a
+    # chunk is listed as not scored.
+    if: ${{ !cancelled() && inputs.mode == 'score' && needs.plans.result == 'success' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    timeout-minutes: 10
+    steps:
+      - *checkout
+      - *setup-node
+      - *install
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: implementation-evidence-mutant-score-*
+          merge-multiple: true
+          path: reports/mutation/src-parity/score
+      - name: Score each file against its floor
+        env:
+          CHUNKS: ${{ needs.plans.outputs.chunks }}
+        run: |
+          yarn test:mutation:src-parity score
+          cat reports/mutation/src-parity/score/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: implementation-evidence-mutant-score-report
+          path: reports/mutation/src-parity/score/report.md
+          if-no-files-found: error
+          retention-days: 30

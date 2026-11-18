@@ -1,0 +1,177 @@
+name: Build API deps base
+
+# Prebuilds the API image's dependency layers as base images keyed by a composite
+# hash (see scripts/resolve-deps-image.sh: yarn.lock + package.json's dependency
+# classification + the Dockerfile), so the release build (and e2e builds) can skip
+# the ~5 min of `yarn install` + native-module compilation (especially
+# better-sqlite3) that otherwise re-runs every release (the per-release version
+# bump busts the COPY layer even though yarn.lock is unchanged). Two images:
+#   - api-deps-full:<key>  (full tree, consumed by the Dockerfile builder)
+#   - api-deps-prod:<key>  (prod tree, copied into the runtime stage)
+# Runs on yarn.lock / Dockerfile changes, off the release critical path. The
+# Dockerfile falls back to inline installs when no base exists for the key, so this
+# is purely an optimizer. NOTE: a package.json-only dependency reclassification
+# (dep<->devDep, same version) changes the key but is NOT in the paths filter, so
+# it won't auto-rebuild — releases correctly fall back to inline (and log a
+# warning); workflow_dispatch this job to rebuild the base for the new key.
+#
+# Retention: each yarn.lock change pushes one full+prod multi-arch pair and
+# nothing deletes them yet (accrual ~ one pair per dependency change). Cleanup
+# is deferred — GHCR org-package deletion needs a PAT with delete:packages,
+# which GITHUB_TOKEN does not carry. Revisit if storage becomes a concern.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'yarn.lock'
+      - 'Dockerfile'
+      - '.github/workflows/build-deps-base.yml'
+  workflow_dispatch:
+
+# Don't cancel an in-flight base build: a same-lockhash push should let the
+# running build finish rather than race the manifest tag.
+concurrency:
+  group: build-deps-base
+  cancel-in-progress: false
+
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build deps base (${{ matrix.platform }})
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && matrix.runner || 'backmesh-8' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compute deps key + image names
+        id: meta
+        run: |
+          # Same composite key the resolve script + release/e2e builds use, so the
+          # tag pushed here is exactly the tag they look up (can't drift).
+          echo "depshash=$(bash scripts/resolve-deps-image.sh hash)" >> "$GITHUB_OUTPUT"
+          API_IMAGE=$(node -p "require('./package.json').apiImage")
+          echo "full_image=${API_IMAGE}-deps-full" >> "$GITHUB_OUTPUT"
+          echo "prod_image=${API_IMAGE}-deps-prod" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up ARM64 emulation
+        if: vars.CI_BACKEND != 'hosted' && matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push deps-full by digest
+        id: build_full
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: deps-full-inline
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ steps.meta.outputs.full_image }},push-by-digest=true,name-canonical=true
+          cache-from: ${{ vars.CI_BACKEND == 'hosted' && format('type=gha,scope=deps-full-{0}', matrix.platform) || '' }}
+          cache-to: ${{ vars.CI_BACKEND == 'hosted' && format('type=gha,mode=max,scope=deps-full-{0}', matrix.platform) || '' }}
+
+      - name: Build and push deps-prod by digest
+        id: build_prod
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: deps-prod-inline
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ steps.meta.outputs.prod_image }},push-by-digest=true,name-canonical=true
+          cache-from: ${{ vars.CI_BACKEND == 'hosted' && format('type=gha,scope=deps-prod-{0}', matrix.platform) || '' }}
+          cache-to: ${{ vars.CI_BACKEND == 'hosted' && format('type=gha,mode=max,scope=deps-prod-{0}', matrix.platform) || '' }}
+
+      - name: Export digests
+        env:
+          FULL_DIGEST: ${{ steps.build_full.outputs.digest }}
+          PROD_DIGEST: ${{ steps.build_prod.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/full-${FULL_DIGEST#sha256:}"
+          touch "/tmp/digests/prod-${PROD_DIGEST#sha256:}"
+
+      - name: Upload digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps-digests-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish multi-arch deps base manifests
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compute deps key + image names
+        id: meta
+        run: |
+          # Same composite key the resolve script + release/e2e builds use, so the
+          # tag pushed here is exactly the tag they look up (can't drift).
+          echo "depshash=$(bash scripts/resolve-deps-image.sh hash)" >> "$GITHUB_OUTPUT"
+          API_IMAGE=$(node -p "require('./package.json').apiImage")
+          echo "full_image=${API_IMAGE}-deps-full" >> "$GITHUB_OUTPUT"
+          echo "prod_image=${API_IMAGE}-deps-prod" >> "$GITHUB_OUTPUT"
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deps-digests-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push deps-full manifest
+        working-directory: /tmp/digests
+        env:
+          FULL: ${{ steps.meta.outputs.full_image }}
+          HASH: ${{ steps.meta.outputs.depshash }}
+        run: |
+          docker buildx imagetools create -t "${FULL}:${HASH}" \
+            $(for f in full-*; do printf "${FULL}@sha256:%s " "${f#full-}"; done)
+
+      - name: Create and push deps-prod manifest
+        working-directory: /tmp/digests
+        env:
+          PROD: ${{ steps.meta.outputs.prod_image }}
+          HASH: ${{ steps.meta.outputs.depshash }}
+        run: |
+          docker buildx imagetools create -t "${PROD}:${HASH}" \
+            $(for f in prod-*; do printf "${PROD}@sha256:%s " "${f#prod-}"; done)

@@ -1,0 +1,124 @@
+name: E2E Lambda boot failover
+
+# Manual paid qualification for Lambda's no-IP recovery path. Each trial uses
+# the real gateway, workload store, retry controller, target selection, SSH,
+# and container startup. Only the first IP wait is shortened so the failure is
+# reproducible instead of waiting for Lambda to hand us another stuck machine.
+on:
+  workflow_dispatch:
+    inputs:
+      trial_count:
+        description: Run the five-trial smoke check or the full twenty trials.
+        required: true
+        type: choice
+        options:
+          - '5'
+          - '20'
+        default: '5'
+  workflow_call:
+    inputs:
+      trial_count:
+        description: Number of failover trials to run.
+        required: true
+        type: string
+
+concurrency:
+  group: lambda-boot-failover
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  forced-timeout:
+    name: Trial ${{ matrix.trial }} of ${{ inputs.trial_count }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        trial: ${{ fromJSON(inputs.trial_count == '20' && '["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15","16","17","18","19","20"]' || '["01","02","03","04","05"]') }}
+
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      TRIAL_ID: ${{ matrix.trial }}
+      ANYCLOUD_DIR: /tmp/anycloud-lambda-timeout-${{ github.run_id }}-${{ matrix.trial }}
+      LAMBDA_BOOT_FAILOVER_LEDGER_PATH: /tmp/lambda-boot-failover-ledger-${{ matrix.trial }}.json
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Force the first real Lambda boot to time out
+        id: tests
+        run: |
+          set -o pipefail
+          npx vitest run test/integration/lambda-sad.spec.ts \
+            --testNamePattern='^Lambda boot failover qualification' \
+            --reporter=verbose \
+            | tee /tmp/lambda-boot-failover.log
+
+      - name: Sweep stale Lambda test resources
+        if: always()
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/lambda.ts
+
+      - name: Upload cleanup ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-boot-failover-${{ github.run_id }}-${{ matrix.trial }}-${{ github.run_attempt }}
+          path: /tmp/lambda-boot-failover-ledger-${{ matrix.trial }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload qualification log
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-lambda-boot-failover-${{ github.run_id }}-${{ matrix.trial }}-${{ github.run_attempt }}
+          path: /tmp/lambda-boot-failover.log
+          retention-days: 3
+
+  cleanup-audit:
+    name: Confirm every trial is cleaned up
+    if: always()
+    needs: forced-timeout
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    timeout-minutes: 20
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      RUN_PREFIX: lbto-${{ github.run_id }}-
+      LAMBDA_BOOT_FAILOVER_LEDGER_ROOT: /tmp/lambda-boot-failover-artifacts
+      EXPECTED_TRIAL_COUNT: ${{ inputs.trial_count }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download exact instance ledgers
+        id: download-ledgers
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          # Failed-job reruns only recreate failed trials. Retain every attempt
+          # separately so cleanup can union both old and replacement VM IDs.
+          pattern: lambda-boot-failover-${{ github.run_id }}-*
+          path: /tmp/lambda-boot-failover-artifacts
+          merge-multiple: false
+
+      - name: Terminate and confirm any surviving trial instances
+        env:
+          LEDGER_DOWNLOAD_OUTCOME: ${{ steps.download-ledgers.outcome }}
+        run: bash test/integration/helpers/lambda-boot-failover-cleanup.sh

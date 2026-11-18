@@ -1,0 +1,2006 @@
+{
+  "formatVersion": 1,
+  "status": "complete",
+  "purpose": "Four fixed diagnostic trials; both labels run the same baseline application. No promotion estimator or qualification inference.",
+  "recommendation": "no-promotion",
+  "qualification": "Existing provisional A/A remains inconclusive and incomplete. No fresh calibration/comparison or implementation PR from this diagnostic study.",
+  "qualificationHarnessDefectEstablished": false,
+  "catalogTestFix": "47a69f155d14b5fe52314169aa4b3f01fa808fcf",
+  "longHistoryLogPortabilityFix": "c215743e7c68408a99c34e04aded7bbf882f067f",
+  "sources": {
+    "originalSpike": "282edb10124b46cba15d4a5c6569948e385d3157",
+    "originalMeasuredApplication": "02b2d81d878ba52abd62ba990892ea5156945f01",
+    "qualificationRecord": "b640fc321adc967902c536050de3de602036dcba",
+    "frozenQualificationCandidate": "e89add119396864d59908130f1ba0835aae640b7",
+    "earlierDiagnostics": "ad084905dfaf9ef242d9252a096e81e92454bb5f",
+    "nativeDiagnostics": "1ae3c152203cbc80ffc39a7898f57fa67544b927",
+    "nativeHarnessSha256": "9f1634b04b27771796f48ad380aa3263a024dc6b4ed2030c1acb3f7395f2b337",
+    "baseline": {
+      "sourceSha": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+      "sourceDirty": false,
+      "buildSha256": "5b9d9bce8d577e3acb9b46efab8ca78febc4999bda8dfe1f17e0cd3e6ddbd47e",
+      "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+      "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+      "version": "0.1.63"
+    },
+    "analyzer": {
+      "node": "v22.14.0",
+      "files": {
+        "analyze-native.mjs": "48a40c135910490cb3eb766ac22f6e6aa9ff7691a6b8582edebaab8d93bd709f",
+        "analyze-diagnostics.mjs": "a90d613f5ef0424cbd37674ecf6177a390741039afd47aaec065223530a55011"
+      }
+    }
+  },
+  "rawOutput": ".context/list-native-diagnosis-2",
+  "originalInputs": [
+    {
+      "path": "<worktree>/.context/list-qualification/provisional-20260912-1/000-correctness-seed/api.db",
+      "sha256": "b4e7ef21521c6db184c7b93b35c8e6a1cd5c46c45ff570528cc677a5203cac71",
+      "bytes": 1560576
+    },
+    {
+      "path": "<worktree>/.context/list-blocker-diagnosis-1/ip-heavy-user-matrix/005-ip-heavy-seed/api.db",
+      "sha256": "c89917387854fb10ef3c2112cece4bcd0d455cbd50ba79c180bb49040798020d",
+      "bytes": 104996864
+    },
+    {
+      "path": "<worktree>/.context/list-qualification/provisional-20260912-1/142-mixed-seed/api.db",
+      "sha256": "97c21dd7d433befa9d7374f457e1b8bb688f474b34420f3f962acfb23da7bfe3",
+      "bytes": 649355264
+    }
+  ],
+  "startedAt": "2026-09-14T17:20:02.444Z",
+  "finishedAt": "2026-09-14T17:30:02.345Z",
+  "runtime": {
+    "node": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M4",
+    "logicalCpus": 10,
+    "totalMemoryBytes": 25769803776
+  },
+  "nativePolicy": {
+    "version": 1,
+    "intervalMs": 100,
+    "durationMs": 600000,
+    "stackSeconds": 20,
+    "stackIntervalMs": 20,
+    "phases": {
+      "matrix": ["matrix:ordinary-1000"],
+      "load": ["overload", "recovery"]
+    },
+    "stopBudgetMs": 10000
+  },
+  "workload": {
+    "matrix": {
+      "warmups": 10,
+      "observations": 50,
+      "endpoints": 10
+    },
+    "load": [
+      {
+        "seconds": 30,
+        "rate": 2.4
+      },
+      {
+        "seconds": 60,
+        "rate": 8
+      },
+      {
+        "seconds": 90,
+        "rate": 2.4
+      }
+    ],
+    "healthHz": 10,
+    "healthDeadlineMs": 1000,
+    "workDeadlineMs": 15000,
+    "drainMs": 20000,
+    "childMs": 600000,
+    "caseCommandMs": 1200000
+  },
+  "evidence": {
+    "diagnostic-plan.json": "9f5cc6d2e5f438a6fb4007207578b7d094c1ce353e34bc7af0efe019afdcbdab",
+    "execution.json": "4de9f5165e449e4aaff1df9140381cf0879fbb9e2200d423a73deb2f55de499b",
+    "analysis-3/analysis.json": "ebe7a6ff7fc0b6575a1682487a58143c6b83e23acd39c0f718eba0ce1d15a24c",
+    "evidence-audit.json": "cfa4dd0c68e03b411567285da029216c0cd85f4890b96164460e9fe3b4f0034a",
+    "power-audit.json": "389ed8ca3f85edb1e5d5a5bbf94364d166279f6d18e2bb39f797d130a2bd8c09",
+    "capabilities.json": "a6db0788e0690ff84c07b24f46afc4d63af5d52770984df5361b615ba29854a1",
+    "process-context-analysis.json": "f4ad5fa5e3db2bf58b023d92f4aab57c4575c5b21bc8de0abf8db1c8b8782ed7",
+    "native-worktree-verify-2.log": "da6983c735d31eb21f738e3321f68f6806751a23614c897215fc3ae3ac402879",
+    "long-history.log": "b6a13f569c9e172956143acd523147afd5b37851414366d946a9a467c73b0c76",
+    "catalog-focused-2.log": "6262e5007053d25a8a578198e8b55fb183f991b38f0775a474665ec8852b96e1",
+    "analyzer-tests-3.log": "7f820e99b56c740200273d49f74c469d10c5abfd1b6db83fa85a0441c82d95a0",
+    "evidence-root-verify-3.log": "b3699cda11a2f60a691c68229c4af67b288ff563e2772e7f27ce84ed3cb6c956",
+    "evidence-root-verify-4.log": "5ad64fee10dfe36f333bf533fec3d729e67309351aeec29d6865990fc3b4e06a",
+    "canary-cleanup-focused.log": "159866b1bf14f33a3a9974b70601c7b36ccb5b8f1be24557729d89b13a0d6a23",
+    "analyzer-types.log": "68fb66eff64f2768a490e32f09a7bcf84f0318bbda6d9dcce8d7413c746bad44",
+    "evidence-root-long-history.log": "dbe33ecd4bdb6c07b2a61ff989cbc18f3c6242d6f854a62f2dc3d7386ebf1f2c",
+    "evidence-root-long-history-2.log": "081457d979bb1b6ae39cdd88873ee58c18fab6182ff1490735eec5d32b30ba39"
+  },
+  "totals": {
+    "trials": 4,
+    "work": {
+      "offered": 2536,
+      "admitted": 2536,
+      "completed": 2457,
+      "timedOut": 38,
+      "deadlineMisses": 38,
+      "transportErrors": 41,
+      "httpErrors": 0,
+      "bodyLimits": 0,
+      "schedulingSkipped": 0,
+      "admissionSkipped": 0,
+      "unfinished": 0,
+      "responseBytes": 1392901481
+    },
+    "lateSuccesses": 0,
+    "healthOffersIncludingWarmupAndDrain": 5036,
+    "healthMisses": 1048,
+    "comparedCorrectnessResponses": 148,
+    "artifactFiles": 386,
+    "artifactBytes": 84476545,
+    "compressedResponses": 178,
+    "diagnosticJournals": 40,
+    "nativeJournals": 12,
+    "nativeStacks": 6
+  },
+  "powerAudit": {
+    "capturedAt": "2026-09-14T17:49:33.985251+00:00",
+    "command": ["/usr/bin/pmset", "-g", "log"],
+    "exitCode": 0,
+    "studyStart": "2026-09-14T17:20:02.444Z",
+    "studyEnd": "2026-09-14T17:30:02.345Z",
+    "localTimezone": "-07:00",
+    "filteredRows": 39,
+    "sleepWakeEvents": [],
+    "stderr": ""
+  },
+  "findings": {
+    "sql": {
+      "interpretation": "Actual plans retain temporary B-trees. Main-thread aggregate stacks include SQLite sorter flushes through pwrite. Native counter windows corroborate file I/O during long synchronous list SQL; they do not assign all waiting to a particular request or retroactively explain every older outlier.",
+      "example": {
+        "directory": "009-ip-heavy-user-matrix-comparison-1-candidate",
+        "id": "request-478",
+        "case": "terminatable-1000",
+        "shape": "terminatable",
+        "start": 1789406576824.1836,
+        "end": 1789406577289.8914,
+        "cpuMs": 203.317,
+        "elapsedMs": 465.707763671875,
+        "request": {
+          "id": "request-478",
+          "case": "terminatable-1000",
+          "phase": "matrix:terminatable-1000",
+          "outcome": "success",
+          "error": null,
+          "elapsedMs": 475.3218749999942,
+          "offeredAtEpoch": 1789406576823.2144,
+          "writtenAtEpoch": 1789406576823.5137,
+          "receivedAtEpoch": 1789406576823.617,
+          "parsedAtEpoch": 1789406576823.567,
+          "serverFinished": true,
+          "sqlMs": 465.6892910000097,
+          "handlerMs": 474.2567909999998,
+          "offeredToWriteMs": 0.29931640625,
+          "writtenToParsedMs": 0.05322265625,
+          "parsedToCallbackMs": 0.050048828125,
+          "offeredToCallbackMs": 0.402587890625,
+          "acceptedBeforeOffer": true,
+          "acceptedAtEpoch": 1789406523164.0525,
+          "correlation": "request-id-and-ports",
+          "socket": {
+            "client": "socket-0",
+            "server": "socket-1",
+            "clientPort": 62983,
+            "serverPort": 62981,
+            "observedServerPeerPort": 62983
+          },
+          "clientWriteCount": 1,
+          "sqlOverlapBeforeReceiptMs": 0,
+          "gcOverlapBeforeReceiptMs": 0
+        },
+        "nativeApi": {
+          "startWallMs": 1789406576812.115,
+          "endWallMs": 1789406577331.133,
+          "elapsedMs": 519.0179999470711,
+          "cpuMs": 248.52529166666665,
+          "runnableMs": 246.03583333333333,
+          "pageins": 0,
+          "diskReadBytes": 30392320,
+          "diskWriteBytes": 31928320,
+          "faults": 2224,
+          "contextSwitches": 2249,
+          "rssBefore": 1373552640,
+          "rssAfter": 1367097344,
+          "footprintBefore": 1379194624,
+          "footprintAfter": 1372821368,
+          "threadCounters": [
+            {
+              "handle": "8424071008",
+              "cpuMs": 246.364,
+              "states": {
+                "1": 5,
+                "4": 1
+              }
+            },
+            {
+              "handle": "6154023136",
+              "cpuMs": 0.614,
+              "states": {
+                "3": 6
+              }
+            },
+            {
+              "handle": "6162444512",
+              "cpuMs": 0.594,
+              "states": {
+                "3": 6
+              }
+            }
+          ],
+          "socketMaxima": {
+            "acceptQueue": 1,
+            "incompleteQueue": 0,
+            "receiveBytes": 176,
+            "sendBytes": 0
+          },
+          "hostVmDelta": null
+        },
+        "nativeHost": {
+          "startWallMs": 1789406576741.347,
+          "endWallMs": 1789406577369.307,
+          "elapsedMs": 627.9599999785423,
+          "cpuMs": 6.058291666666666,
+          "runnableMs": 6.1437083333333335,
+          "pageins": 0,
+          "diskReadBytes": 0,
+          "diskWriteBytes": 614400,
+          "faults": 2,
+          "contextSwitches": 37,
+          "rssBefore": 108658688,
+          "rssAfter": 108658688,
+          "footprintBefore": 56614976,
+          "footprintAfter": 56614976,
+          "threadCounters": [
+            {
+              "handle": "8424071008",
+              "cpuMs": 5.299,
+              "states": {
+                "1": 1,
+                "3": 6
+              }
+            },
+            {
+              "handle": "6146175200",
+              "cpuMs": 0.344,
+              "states": {
+                "3": 7
+              }
+            },
+            {
+              "handle": "6171439328",
+              "cpuMs": 0.317,
+              "states": {
+                "3": 7
+              }
+            }
+          ],
+          "socketMaxima": {
+            "acceptQueue": 0,
+            "incompleteQueue": 0,
+            "receiveBytes": 0,
+            "sendBytes": 0
+          },
+          "hostVmDelta": {
+            "compressions": 0,
+            "decompressions": 0,
+            "swapins": 0,
+            "swapouts": 0,
+            "pageins": 83,
+            "pageouts": 20
+          }
+        }
+      }
+    },
+    "connections": {
+      "interpretation": "Load fills the listener accept queue while synchronous SQL occupies the API. Matched client writes precede runtime acceptance and HTTP parsing by tens of seconds. Native milestones are not packet timestamps or proof of a particular retransmission cause.",
+      "examples": [
+        {
+          "directory": "008-mixed-user-load-comparison-1-baseline",
+          "id": "request-153",
+          "case": "daily-cost",
+          "phase": "overload",
+          "outcome": "timeout",
+          "error": {
+            "name": "AbortError",
+            "message": "This operation was aborted",
+            "code": 20
+          },
+          "elapsedMs": 15000.000499999995,
+          "offeredAtEpoch": 1789406668270.1638,
+          "writtenAtEpoch": 1789406668270.8828,
+          "receivedAtEpoch": 1789406720312.0432,
+          "parsedAtEpoch": 1789406720312.009,
+          "serverFinished": true,
+          "sqlMs": 105.9159159999981,
+          "handlerMs": 106.79562499999884,
+          "offeredToWriteMs": 0.718994140625,
+          "writtenToParsedMs": 52041.126220703125,
+          "parsedToCallbackMs": 0.0341796875,
+          "offeredToCallbackMs": 52041.87939453125,
+          "acceptedBeforeOffer": false,
+          "acceptedAtEpoch": 1789406720076.0635,
+          "correlation": "unique-request-id-with-missing-port",
+          "socket": {
+            "client": "socket-19",
+            "server": "socket-80",
+            "clientPort": 64403,
+            "serverPort": 63949,
+            "observedServerPeerPort": null
+          },
+          "clientWriteCount": 1,
+          "sqlOverlapBeforeReceiptMs": 49205.56982421875,
+          "gcOverlapBeforeReceiptMs": 475.666015625,
+          "nativeApi": {
+            "startWallMs": 1789406668259.773,
+            "endWallMs": 1789406720317.789,
+            "elapsedMs": 52058.014999985695,
+            "cpuMs": 45321.26158333333,
+            "runnableMs": 45571.609208333335,
+            "pageins": 1,
+            "diskReadBytes": 97140736,
+            "diskWriteBytes": 2613301248,
+            "faults": 487175,
+            "contextSwitches": 137986,
+            "rssBefore": 1588117504,
+            "rssAfter": 1886453760,
+            "footprintBefore": 1587754832,
+            "footprintAfter": 1797403864,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 44387.121,
+                "states": {
+                  "1": 425,
+                  "3": 3,
+                  "4": 67
+                }
+              },
+              {
+                "handle": "6190952672",
+                "cpuMs": 244.214,
+                "states": {
+                  "1": 3,
+                  "3": 492
+                }
+              },
+              {
+                "handle": "6174109920",
+                "cpuMs": 232.805,
+                "states": {
+                  "1": 3,
+                  "3": 492
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 128,
+              "incompleteQueue": 1,
+              "receiveBytes": 406,
+              "sendBytes": 291717
+            },
+            "hostVmDelta": null
+          },
+          "nativeDriver": {
+            "startWallMs": 1789406668256.181,
+            "endWallMs": 1789406720325.23,
+            "elapsedMs": 52069.04899996519,
+            "cpuMs": 926.0527083333333,
+            "runnableMs": 956.212,
+            "pageins": 4,
+            "diskReadBytes": 176128,
+            "diskWriteBytes": 32948224,
+            "faults": 1384,
+            "contextSwitches": 6095,
+            "rssBefore": 99975168,
+            "rssAfter": 122617856,
+            "footprintBefore": 61590984,
+            "footprintAfter": 49173160,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 620.906,
+                "states": {
+                  "1": 14,
+                  "3": 475,
+                  "4": 4
+                }
+              },
+              {
+                "handle": "6130266336",
+                "cpuMs": 82.557,
+                "states": {
+                  "1": 2,
+                  "3": 491
+                }
+              },
+              {
+                "handle": "6138687712",
+                "cpuMs": 78.541,
+                "states": {
+                  "1": 3,
+                  "3": 490
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 0,
+              "incompleteQueue": 0,
+              "receiveBytes": 37724,
+              "sendBytes": 0
+            },
+            "hostVmDelta": null
+          },
+          "nativeHost": {
+            "startWallMs": 1789406668256.181,
+            "endWallMs": 1789406720325.069,
+            "elapsedMs": 52068.888000011444,
+            "cpuMs": 556.3876666666666,
+            "runnableMs": 567.9276666666666,
+            "pageins": 0,
+            "diskReadBytes": 8192,
+            "diskWriteBytes": 36311040,
+            "faults": 248,
+            "contextSwitches": 3603,
+            "rssBefore": 726515712,
+            "rssAfter": 79691776,
+            "footprintBefore": 703895096,
+            "footprintAfter": 54613392,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 501.175,
+                "states": {
+                  "1": 12,
+                  "3": 469,
+                  "4": 8
+                }
+              },
+              {
+                "handle": "6120960224",
+                "cpuMs": 21.305,
+                "states": {
+                  "3": 489
+                }
+              },
+              {
+                "handle": "6137802976",
+                "cpuMs": 15.024,
+                "states": {
+                  "3": 489
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 0,
+              "incompleteQueue": 0,
+              "receiveBytes": 0,
+              "sendBytes": 0
+            },
+            "hostVmDelta": {
+              "compressions": 0,
+              "decompressions": 7239,
+              "swapins": 12,
+              "swapouts": 0,
+              "pageins": 2958,
+              "pageouts": 127
+            }
+          }
+        },
+        {
+          "directory": "009-mixed-user-load-comparison-1-candidate",
+          "id": "request-244",
+          "case": "terminal-status",
+          "phase": "overload",
+          "outcome": "timeout",
+          "error": {
+            "name": "AbortError",
+            "message": "This operation was aborted",
+            "code": 20
+          },
+          "elapsedMs": 15002.470459000004,
+          "offeredAtEpoch": 1789406869512.864,
+          "writtenAtEpoch": 1789406869513.498,
+          "receivedAtEpoch": 1789406897404.9297,
+          "parsedAtEpoch": 1789406897404.8967,
+          "serverFinished": true,
+          "sqlMs": 0.7550419999752194,
+          "handlerMs": 2.1936249999998836,
+          "offeredToWriteMs": 0.634033203125,
+          "writtenToParsedMs": 27891.398681640625,
+          "parsedToCallbackMs": 0.032958984375,
+          "offeredToCallbackMs": 27892.065673828125,
+          "acceptedBeforeOffer": false,
+          "acceptedAtEpoch": 1789406896968.749,
+          "correlation": "unique-request-id-with-missing-port",
+          "socket": {
+            "client": "socket-20",
+            "server": "socket-110",
+            "clientPort": 50706,
+            "serverPort": 50105,
+            "observedServerPeerPort": null
+          },
+          "clientWriteCount": 1,
+          "sqlOverlapBeforeReceiptMs": 26249.242431640625,
+          "gcOverlapBeforeReceiptMs": 286.64697265625,
+          "nativeApi": {
+            "startWallMs": 1789406869429.168,
+            "endWallMs": 1789406897438.226,
+            "elapsedMs": 28009.05799996853,
+            "cpuMs": 25657.073625,
+            "runnableMs": 25779.811083333334,
+            "pageins": 0,
+            "diskReadBytes": 116154368,
+            "diskWriteBytes": 1666383872,
+            "faults": 270934,
+            "contextSwitches": 58731,
+            "rssBefore": 1729740800,
+            "rssAfter": 1106788352,
+            "footprintBefore": 1739009816,
+            "footprintAfter": 1013576584,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 25063.789,
+                "states": {
+                  "1": 235,
+                  "3": 1,
+                  "4": 27
+                }
+              },
+              {
+                "handle": "6120632544",
+                "cpuMs": 169.269,
+                "states": {
+                  "1": 1,
+                  "3": 262
+                }
+              },
+              {
+                "handle": "6137475296",
+                "cpuMs": 141.991,
+                "states": {
+                  "1": 2,
+                  "3": 261
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 128,
+              "incompleteQueue": 0,
+              "receiveBytes": 406,
+              "sendBytes": 912333
+            },
+            "hostVmDelta": null
+          },
+          "nativeDriver": {
+            "startWallMs": 1789406869509.749,
+            "endWallMs": 1789406897447.876,
+            "elapsedMs": 27938.127000033855,
+            "cpuMs": 519.7472083333333,
+            "runnableMs": 533.9195,
+            "pageins": 0,
+            "diskReadBytes": 0,
+            "diskWriteBytes": 17862656,
+            "faults": 632,
+            "contextSwitches": 3024,
+            "rssBefore": 111640576,
+            "rssAfter": 121962496,
+            "footprintBefore": 73748680,
+            "footprintAfter": 84989640,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 338.103,
+                "states": {
+                  "1": 14,
+                  "3": 246,
+                  "4": 1
+                }
+              },
+              {
+                "handle": "6202700000",
+                "cpuMs": 47.8,
+                "states": {
+                  "3": 261
+                }
+              },
+              {
+                "handle": "6185857248",
+                "cpuMs": 47.617,
+                "states": {
+                  "3": 261
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 0,
+              "incompleteQueue": 0,
+              "receiveBytes": 1151836,
+              "sendBytes": 0
+            },
+            "hostVmDelta": null
+          },
+          "nativeHost": {
+            "startWallMs": 1789406869429.221,
+            "endWallMs": 1789406897467.865,
+            "elapsedMs": 28038.644000053406,
+            "cpuMs": 285.50975,
+            "runnableMs": 292.56624999999997,
+            "pageins": 0,
+            "diskReadBytes": 4096,
+            "diskWriteBytes": 20852736,
+            "faults": 121,
+            "contextSwitches": 1949,
+            "rssBefore": 108068864,
+            "rssAfter": 109133824,
+            "footprintBefore": 85043424,
+            "footprintAfter": 86239648,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 252.893,
+                "states": {
+                  "1": 6,
+                  "3": 256,
+                  "4": 1
+                }
+              },
+              {
+                "handle": "6120960224",
+                "cpuMs": 12.106,
+                "states": {
+                  "3": 263
+                }
+              },
+              {
+                "handle": "6129381600",
+                "cpuMs": 10.078,
+                "states": {
+                  "1": 1,
+                  "3": 262
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 0,
+              "incompleteQueue": 0,
+              "receiveBytes": 0,
+              "sendBytes": 0
+            },
+            "hostVmDelta": {
+              "compressions": 0,
+              "decompressions": 729,
+              "swapins": 24,
+              "swapouts": 0,
+              "pageins": 1756,
+              "pageouts": 157
+            }
+          }
+        }
+      ],
+      "missingServerPeerPortCorrelations": 28,
+      "analysisCorrection": "Preliminary analysis-1 omitted those 28 timings. Analysis-3 uses unique request IDs with agreement checks on available ports; ambiguous or contradictory matches fail. Same four raw trials; regression coverage added."
+    }
+  },
+  "verification": {
+    "evidenceVerify": {
+      "passed": true,
+      "tests": 9177,
+      "files": 375,
+      "lintWarnings": 8,
+      "lintErrors": 0
+    },
+    "evidenceLongHistory": {
+      "passed": true,
+      "sixSecondGateUnchanged": true,
+      "deployments": 3700,
+      "logSignatureScanExecuted": true
+    },
+    "evidenceEarlierFailure": {
+      "test": "test/unit/integration-helpers/agent-session-title.spec.ts > Codex canary RPC lifecycle > rejects pending notifications when the client closes",
+      "error": "kill EPERM during local process-group cleanup",
+      "isolatedFilePassed": 14,
+      "completeSuiteRerunPassed": true,
+      "helperChanged": false,
+      "cause": "Not established; failure log retained"
+    },
+    "logScanCorrection": "Root integration script used unavailable rg inside an if condition. Use the same grep -E expression as the shared runner; syntax and the complete long-history check passed. Frozen qualification and native measurement sources unchanged.",
+    "nativeVerify": {
+      "passed": true,
+      "tests": 9180,
+      "files": 377,
+      "lintWarnings": 8,
+      "lintErrors": 0
+    },
+    "nativeLongHistory": {
+      "passed": true,
+      "sixSecondGateUnchanged": true,
+      "deployments": 3700
+    },
+    "focusedCatalog": {
+      "passed": true,
+      "tests": 66
+    },
+    "focusedNativeAndShared": {
+      "passed": true,
+      "tests": 47
+    },
+    "focusedFixedProtocol": {
+      "passed": true,
+      "tests": 39
+    },
+    "focusedAnalyzers": {
+      "passed": true,
+      "tests": 11
+    },
+    "copiedArtifactValidation": {
+      "passed": true,
+      "directory": ".context/list-native-diagnosis-2/download"
+    },
+    "originalDatabasesAndBaselineUnchanged": true
+  },
+  "limitations": [
+    "Kernel stack/scheduler trace and packet capture unavailable without elevated access",
+    "Instruments unavailable",
+    "Native sampling and synchronous diagnostic journals perturb timing",
+    "Stack windows are fixed; snapshots can miss shorter waits; host VM counters are aggregate",
+    "One pair in each of two user-scope cases; no six-pair calibration or A/B evidence.",
+    "100ms native counters bracket wider windows and can miss short waits. CPU uses recorded Mach units; thread counters use nanoseconds.",
+    "Aggregate native stacks cannot identify every individual slow request; all-thread wait totals include idle workers.",
+    "The prior 2664ms SQL outlier was not reproduced at that duration or explained retrospectively.",
+    "No dedicated-host, affinity or cold OS-cache claim. Original timing thresholds and acceptance policy unchanged."
+  ],
+  "cases": [
+    {
+      "id": "ip-heavy-user-matrix",
+      "scope": "user",
+      "applicationForBothLabels": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+      "fixture": {
+        "profile": "ip-heavy",
+        "small": false,
+        "hotRows": 2200,
+        "statusId": "list-d-000011",
+        "session": "claude:list-session-a",
+        "seedMs": 2070.514042,
+        "now": 1789041600000,
+        "counts": {
+          "deployments": 2400,
+          "container_specs": 2400,
+          "vms": 281801,
+          "deployment_events": 9600,
+          "credentials": 2,
+          "workers": 0,
+          "clusters": 0
+        },
+        "vmShape": {
+          "nullIp": 2200,
+          "withIp": 279601,
+          "emptyIp": 0,
+          "live": 880
+        },
+        "logicalSha256": "82c4d040476cdbd3d7166e1074b8f3ded95e165b6c75eee57b4674e6485871eb"
+      },
+      "artifacts": {
+        "id": "ip-heavy-user-matrix",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "c212d694104af4d9d679af023fada57a2f93a4cc4c1892172cab49ba0a4b46b0",
+        "reportSha256": "b981c061d44cd240636bacabf6123f9c28f5e560bbdbf45c10ea0f7b769a5a8b",
+        "files": 195,
+        "bytes": 24889426,
+        "jsonlFiles": 38,
+        "compressedResponses": 94,
+        "diagnosticJournals": 20,
+        "nativeJournals": 6,
+        "nativeStacks": 2,
+        "trials": 2,
+        "measuredWorkOffers": 1000,
+        "correctnessResponses": 74
+      },
+      "trials": [
+        {
+          "directory": "008-ip-heavy-user-matrix-comparison-1-baseline",
+          "label": "baseline",
+          "reportSha256": "26d9cdd990bf2f7dd0a20ad20ed2b62fa4df2fc8878c60922bf781ce36e1d269",
+          "firstRequest": {
+            "case": "ordinary-1000",
+            "elapsedMs": 461.43225,
+            "bytes": 1225548,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "status": 200
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 35.38537499999802,
+            "p95Ms": 363.77008299999943,
+            "p99Ms": 429.49012500000026,
+            "maxMs": 793.0238339999996,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.014041999999790278
+          },
+          "outcomes": {
+            "offered": 500,
+            "outcomes": {
+              "success": 500
+            },
+            "failures": 0,
+            "failureRatePp": 0,
+            "lateSuccesses": 0,
+            "deadlineMs": 15000,
+            "penalizedP95Ms": 363.77008299999943,
+            "successfulResponses": {
+              "p50Ms": 35.38537499999802,
+              "p95Ms": 363.77008299999943,
+              "maximumMs": 793.0238339999996
+            }
+          },
+          "health": {
+            "coverage": "Every performance-trial health offer, including warmup and drain",
+            "offered": 700,
+            "misses": 4,
+            "maximumMs": 1002.0383340000008,
+            "outcomes": {
+              "success": 696,
+              "timeout": 4
+            },
+            "failures": 4,
+            "failureRatePp": 0.5714285714285714,
+            "lateSuccesses": 0,
+            "deadlineMs": 1000,
+            "penalizedP95Ms": 357.41904200000135,
+            "successfulResponses": {
+              "p50Ms": 121.60208300000522,
+              "p95Ms": 349.60791699999754,
+              "maximumMs": 979.4807079999991
+            }
+          },
+          "rawMetricValues": {
+            "ordinary-default/sqlMeanMs": 29.223573099999804,
+            "ordinary-default/httpP50Ms": 32.913332999999966,
+            "ordinary-default/httpP95Ms": 35.39541600000007,
+            "ordinary-1/sqlMeanMs": 0.731054120000008,
+            "ordinary-1/httpP50Ms": 1.6287919999999758,
+            "ordinary-1/httpP95Ms": 2.112583000000086,
+            "ordinary-200/sqlMeanMs": 29.380151080000015,
+            "ordinary-200/httpP50Ms": 33.14499999999998,
+            "ordinary-200/httpP95Ms": 33.760249999999814,
+            "ordinary-1000/sqlMeanMs": 369.10270832000003,
+            "ordinary-1000/httpP50Ms": 363.77008299999943,
+            "ordinary-1000/httpP95Ms": 483.12737500000003,
+            "terminatable-default/sqlMeanMs": 192.70531918,
+            "terminatable-default/httpP50Ms": 201.73099999999977,
+            "terminatable-default/httpP95Ms": 212.94150000000081,
+            "terminatable-1/sqlMeanMs": 1.2363859200010483,
+            "terminatable-1/httpP50Ms": 2.54766699999891,
+            "terminatable-1/httpP95Ms": 3.713707999995677,
+            "terminatable-200/sqlMeanMs": 33.376048380000576,
+            "terminatable-200/httpP50Ms": 36.40533300000243,
+            "terminatable-200/httpP95Ms": 42.11570899999788,
+            "terminatable-1000/sqlMeanMs": 192.33843415999903,
+            "terminatable-1000/httpP50Ms": 200.44362499999988,
+            "terminatable-1000/httpP95Ms": 247.62591599999723,
+            "daily-cost/sqlMeanMs": 228.8933524999993,
+            "daily-cost/httpP50Ms": 229.65104099999735,
+            "daily-cost/httpP95Ms": 238.78079100000468,
+            "terminal-status/sqlMeanMs": 0.9790159399973345,
+            "terminal-status/httpP50Ms": 2.6412920000002487,
+            "terminal-status/httpP95Ms": 4.632832999996026
+          },
+          "finalRecovery": null,
+          "correlations": {
+            "offered": 500,
+            "socketMatched": 500,
+            "multipleWrites": 0,
+            "methods": {
+              "request-id-and-ports": 500
+            }
+          },
+          "failureCorrelation": {
+            "count": 0,
+            "serverObserved": 0,
+            "serverFinished": 0,
+            "errorCodes": {}
+          },
+          "listener": {
+            "samples": 670,
+            "samplesWithFullAcceptQueue": 0,
+            "firstFullAtEpoch": null,
+            "lastFullAtEpoch": null,
+            "queueLimits": [128]
+          },
+          "drained": {
+            "pending": {},
+            "serverDrained": true,
+            "unfinished": 0
+          },
+          "process": {
+            "driverPeakInFlight": 0,
+            "cpuMs": 66332.682,
+            "eventLoopP99Ms": 446.955519,
+            "eventLoopMaxMs": 793.247743,
+            "peakRssMiB": 1149.65625,
+            "measuredWorkProcessGaps": {
+              "api": {
+                "maximumGapMs": 1155.5717089999998,
+                "gapsOverTwoSeconds": 0
+              },
+              "driver": {
+                "maximumGapMs": 501.91399999999703,
+                "gapsOverTwoSeconds": 0
+              },
+              "parent": {
+                "maximumGapMs": 504.6827080000003,
+                "gapsOverTwoSeconds": 0,
+                "medianAggregateIdlePercent": 78.06841046277665
+              }
+            }
+          },
+          "nativeProcessWindow": {
+            "startWallMs": 1789406450576.08,
+            "endWallMs": 1789406519152.486,
+            "elapsedMs": 68576.405000031,
+            "cpuMs": 65643.37004166667,
+            "runnableMs": 65979.871875,
+            "pageins": 0,
+            "diskReadBytes": 114663424,
+            "diskWriteBytes": 7772430336,
+            "faults": 655403,
+            "contextSwitches": 113444,
+            "rssBefore": 833945600,
+            "rssAfter": 958464000,
+            "footprintBefore": 815500568,
+            "footprintAfter": 859452888,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 64996.305,
+                "states": {
+                  "1": 621,
+                  "3": 13,
+                  "4": 27
+                }
+              },
+              {
+                "handle": "6122811616",
+                "cpuMs": 174.74,
+                "states": {
+                  "1": 2,
+                  "3": 659
+                }
+              },
+              {
+                "handle": "6131232992",
+                "cpuMs": 163.519,
+                "states": {
+                  "1": 1,
+                  "3": 660
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 6,
+              "incompleteQueue": 0,
+              "receiveBytes": 397,
+              "sendBytes": 242845
+            },
+            "hostVmDelta": null
+          },
+          "nativeClockOffsetRangeMs": {
+            "api": 0.001220703125,
+            "parent": 0.001220703125,
+            "driver": 0.001220703125
+          },
+          "stacks": [
+            {
+              "phase": "matrix:ordinary-1000",
+              "report": "native-stack-matrix-ordinary-1000.log",
+              "sha256": "d0560ed80817bbf4ff5fa590964af38201c10530ad7fcb9b3b09729e89b957dd",
+              "startedAt": 1789406454404,
+              "endedAt": 1789406476031
+            }
+          ]
+        },
+        {
+          "directory": "009-ip-heavy-user-matrix-comparison-1-candidate",
+          "label": "candidate",
+          "reportSha256": "a84175f56a388e8101398e2b27d28399a7c83b5aaea40776f62bfb6dadd952e3",
+          "firstRequest": {
+            "case": "ordinary-1000",
+            "elapsedMs": 390.47337500000003,
+            "bytes": 1225548,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "status": 200
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 35.01929099999688,
+            "p95Ms": 359.2337919999991,
+            "p99Ms": 408.64158300000054,
+            "maxMs": 475.3218749999942,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.0018749999999272404
+          },
+          "outcomes": {
+            "offered": 500,
+            "outcomes": {
+              "success": 500
+            },
+            "failures": 0,
+            "failureRatePp": 0,
+            "lateSuccesses": 0,
+            "deadlineMs": 15000,
+            "penalizedP95Ms": 359.2337919999991,
+            "successfulResponses": {
+              "p50Ms": 35.01929099999688,
+              "p95Ms": 359.2337919999991,
+              "maximumMs": 475.3218749999942
+            }
+          },
+          "health": {
+            "coverage": "Every performance-trial health offer, including warmup and drain",
+            "offered": 702,
+            "misses": 0,
+            "maximumMs": 511.09500000000116,
+            "outcomes": {
+              "success": 702
+            },
+            "failures": 0,
+            "failureRatePp": 0,
+            "lateSuccesses": 0,
+            "deadlineMs": 1000,
+            "penalizedP95Ms": 324.9883750000008,
+            "successfulResponses": {
+              "p50Ms": 119.12445800000569,
+              "p95Ms": 324.9883750000008,
+              "maximumMs": 511.09500000000116
+            }
+          },
+          "rawMetricValues": {
+            "ordinary-default/sqlMeanMs": 29.000291799999903,
+            "ordinary-default/httpP50Ms": 32.553249999999935,
+            "ordinary-default/httpP95Ms": 34.424749999999676,
+            "ordinary-1/sqlMeanMs": 0.7147865400001501,
+            "ordinary-1/httpP50Ms": 1.5871250000000146,
+            "ordinary-1/httpP95Ms": 1.9535000000000764,
+            "ordinary-200/sqlMeanMs": 29.075838499999918,
+            "ordinary-200/httpP50Ms": 32.66600000000017,
+            "ordinary-200/httpP95Ms": 33.297124999999596,
+            "ordinary-1000/sqlMeanMs": 350.76476664,
+            "ordinary-1000/httpP50Ms": 357.1670840000006,
+            "ordinary-1000/httpP95Ms": 410.8493330000001,
+            "terminatable-default/sqlMeanMs": 198.13294832000008,
+            "terminatable-default/httpP50Ms": 203.8792089999988,
+            "terminatable-default/httpP95Ms": 237.7531250000029,
+            "terminatable-1/sqlMeanMs": 1.0619857800001045,
+            "terminatable-1/httpP50Ms": 1.9154169999965234,
+            "terminatable-1/httpP95Ms": 2.2330829999991693,
+            "terminatable-200/sqlMeanMs": 32.53652174000017,
+            "terminatable-200/httpP50Ms": 35.75562499999796,
+            "terminatable-200/httpP95Ms": 37.94158299999981,
+            "terminatable-1000/sqlMeanMs": 204.32321167999922,
+            "terminatable-1000/httpP50Ms": 204.45429100000183,
+            "terminatable-1000/httpP95Ms": 284.72491699999955,
+            "daily-cost/sqlMeanMs": 241.15130498000087,
+            "daily-cost/httpP50Ms": 231.61275000000023,
+            "daily-cost/httpP95Ms": 348.54570799999783,
+            "terminal-status/sqlMeanMs": 0.9800382399995579,
+            "terminal-status/httpP50Ms": 2.658957999999984,
+            "terminal-status/httpP95Ms": 4.3179589999926975
+          },
+          "finalRecovery": null,
+          "correlations": {
+            "offered": 500,
+            "socketMatched": 500,
+            "multipleWrites": 0,
+            "methods": {
+              "request-id-and-ports": 500
+            }
+          },
+          "failureCorrelation": {
+            "count": 0,
+            "serverObserved": 0,
+            "serverFinished": 0,
+            "errorCodes": {}
+          },
+          "listener": {
+            "samples": 676,
+            "samplesWithFullAcceptQueue": 0,
+            "firstFullAtEpoch": null,
+            "lastFullAtEpoch": null,
+            "queueLimits": [128]
+          },
+          "drained": {
+            "pending": {},
+            "serverDrained": true,
+            "unfinished": 0
+          },
+          "process": {
+            "driverPeakInFlight": 0,
+            "cpuMs": 65934.242,
+            "eventLoopP99Ms": 411.566079,
+            "eventLoopMaxMs": 475.529215,
+            "peakRssMiB": 1375.84375,
+            "measuredWorkProcessGaps": {
+              "api": {
+                "maximumGapMs": 821.8978749999951,
+                "gapsOverTwoSeconds": 0
+              },
+              "driver": {
+                "maximumGapMs": 502.31658400000015,
+                "gapsOverTwoSeconds": 0
+              },
+              "parent": {
+                "maximumGapMs": 512.4502909999865,
+                "gapsOverTwoSeconds": 0,
+                "medianAggregateIdlePercent": 79.09545627176715
+              }
+            }
+          },
+          "nativeProcessWindow": {
+            "startWallMs": 1789406523816.485,
+            "endWallMs": 1789406592688.821,
+            "elapsedMs": 68872.33600002527,
+            "cpuMs": 65263.55470833333,
+            "runnableMs": 65527.32579166666,
+            "pageins": 0,
+            "diskReadBytes": 184143872,
+            "diskWriteBytes": 7779504128,
+            "faults": 654198,
+            "contextSwitches": 108472,
+            "rssBefore": 834748416,
+            "rssAfter": 1155825664,
+            "footprintBefore": 816451056,
+            "footprintAfter": 1066102744,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 64652.468,
+                "states": {
+                  "1": 619,
+                  "3": 11,
+                  "4": 34
+                }
+              },
+              {
+                "handle": "6162444512",
+                "cpuMs": 162.263,
+                "states": {
+                  "1": 2,
+                  "3": 662
+                }
+              },
+              {
+                "handle": "6170865888",
+                "cpuMs": 155.839,
+                "states": {
+                  "1": 2,
+                  "3": 662
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 2,
+              "incompleteQueue": 0,
+              "receiveBytes": 387,
+              "sendBytes": 917504
+            },
+            "hostVmDelta": null
+          },
+          "nativeClockOffsetRangeMs": {
+            "api": 0.001220703125,
+            "parent": 0.001220703125,
+            "driver": 0.001220703125
+          },
+          "stacks": [
+            {
+              "phase": "matrix:ordinary-1000",
+              "report": "native-stack-matrix-ordinary-1000.log",
+              "sha256": "bfb16b6bb427460804652b4c18e9807e7e4a2e452754b8b29388e5eef06952ad",
+              "startedAt": 1789406527608,
+              "endedAt": 1789406547759
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mixed-user-load",
+      "scope": "user",
+      "applicationForBothLabels": "7c45ca7cec5c379defd2430d2bb28d92bc8430b0",
+      "fixture": {
+        "profile": "mixed",
+        "small": false,
+        "hotRows": 2200,
+        "statusId": "list-d-000011",
+        "session": "claude:list-session-a",
+        "seedMs": 11406.540625000001,
+        "now": 1789041600000,
+        "counts": {
+          "deployments": 18664,
+          "container_specs": 18664,
+          "vms": 285564,
+          "deployment_events": 1994751,
+          "credentials": 2,
+          "workers": 0,
+          "clusters": 0
+        },
+        "vmShape": {
+          "nullIp": 217436,
+          "withIp": 68128,
+          "emptyIp": 0,
+          "live": 880
+        },
+        "logicalSha256": "7ee05390561747e6e1b20667720e204ad8a869b8f812423079048871a32a6044"
+      },
+      "artifacts": {
+        "id": "mixed-user-load",
+        "status": "complete",
+        "qualification": "diagnostic-or-partial",
+        "inventorySha256": "2a5d7ae1f59da86d41492101096ea8a0355533b0d348b4fb7146b182e8c4a7d0",
+        "reportSha256": "e536a98c5ad5d51fc30f24600e8b464738bd948f1aec430447e884aef866ae6a",
+        "files": 191,
+        "bytes": 59587119,
+        "jsonlFiles": 38,
+        "compressedResponses": 84,
+        "diagnosticJournals": 20,
+        "nativeJournals": 6,
+        "nativeStacks": 4,
+        "trials": 2,
+        "measuredWorkOffers": 1536,
+        "correctnessResponses": 74
+      },
+      "trials": [
+        {
+          "directory": "008-mixed-user-load-comparison-1-baseline",
+          "label": "baseline",
+          "reportSha256": "d046fb82d747ce66d23e74be4c9dea3f440d9704e2bb7bea22fa2efa007c35b7",
+          "firstRequest": {
+            "case": "ordinary-1000",
+            "elapsedMs": 649.935375,
+            "bytes": 1215517,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "status": 200
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 711,
+            "timedOut": 25,
+            "deadlineMisses": 25,
+            "httpErrors": 0,
+            "transportErrors": 32,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 770.5724580000024,
+            "p95Ms": 2036.169458000004,
+            "p99Ms": 2802.7104580000014,
+            "maxMs": 11688.680417000003,
+            "responseBytes": 490192854,
+            "maxOfferDelayMs": 42.245875000000524
+          },
+          "outcomes": {
+            "offered": 768,
+            "outcomes": {
+              "success": 711,
+              "timeout": 25,
+              "transport-error": 32
+            },
+            "failures": 57,
+            "failureRatePp": 7.421875,
+            "lateSuccesses": 0,
+            "deadlineMs": 15000,
+            "penalizedP95Ms": 15000,
+            "successfulResponses": {
+              "p50Ms": 770.5724580000024,
+              "p95Ms": 2036.169458000004,
+              "maximumMs": 11688.680417000003
+            }
+          },
+          "health": {
+            "coverage": "Every performance-trial health offer, including warmup and drain",
+            "offered": 1820,
+            "misses": 602,
+            "maximumMs": 1163.3717909999978,
+            "outcomes": {
+              "success": 1218,
+              "timeout": 602
+            },
+            "failures": 602,
+            "failureRatePp": 33.07692307692307,
+            "lateSuccesses": 0,
+            "deadlineMs": 1000,
+            "penalizedP95Ms": 1000,
+            "successfulResponses": {
+              "p50Ms": 3.7617500000051223,
+              "p95Ms": 300.57583399999567,
+              "maximumMs": 950.6916670000064
+            }
+          },
+          "rawMetricValues": {
+            "normal/ordinary-1000/penalizedP95Ms": 625.0785420000002,
+            "normal/ordinary-1000/failureRatePp": 0,
+            "normal/terminatable-1000/penalizedP95Ms": 419.9231659999996,
+            "normal/terminatable-1000/failureRatePp": 0,
+            "normal/session-1000/penalizedP95Ms": 309.43375000000015,
+            "normal/session-1000/failureRatePp": 0,
+            "normal/daily-cost/penalizedP95Ms": 268.7432910000007,
+            "normal/daily-cost/failureRatePp": 0,
+            "normal/terminal-status/penalizedP95Ms": 29.089749999999185,
+            "normal/terminal-status/failureRatePp": 0,
+            "normal/health/penalizedP95Ms": 300.57583399999567,
+            "normal/health/failureRatePp": 0,
+            "overload/ordinary-1000/penalizedP95Ms": 15000,
+            "overload/ordinary-1000/failureRatePp": 15.625,
+            "overload/terminatable-1000/penalizedP95Ms": 15000,
+            "overload/terminatable-1000/failureRatePp": 12.5,
+            "overload/session-1000/penalizedP95Ms": 15000,
+            "overload/session-1000/failureRatePp": 11.458333333333334,
+            "overload/daily-cost/penalizedP95Ms": 15000,
+            "overload/daily-cost/failureRatePp": 9.375,
+            "overload/terminal-status/penalizedP95Ms": 15000,
+            "overload/terminal-status/failureRatePp": 10.416666666666666,
+            "overload/health/penalizedP95Ms": 1000,
+            "overload/health/failureRatePp": 91.83333333333333,
+            "recovery/ordinary-1000/penalizedP95Ms": 350.9910840000084,
+            "recovery/ordinary-1000/failureRatePp": 0,
+            "recovery/terminatable-1000/penalizedP95Ms": 316.5923749999929,
+            "recovery/terminatable-1000/failureRatePp": 0,
+            "recovery/session-1000/penalizedP95Ms": 228.47004200000083,
+            "recovery/session-1000/failureRatePp": 0,
+            "recovery/daily-cost/penalizedP95Ms": 293.7287079999951,
+            "recovery/daily-cost/failureRatePp": 0,
+            "recovery/terminal-status/penalizedP95Ms": 96.2470420000027,
+            "recovery/terminal-status/failureRatePp": 0,
+            "recovery/health/penalizedP95Ms": 1000,
+            "recovery/health/failureRatePp": 5.666666666666667,
+            "recovery-final30/ordinary-1000/penalizedP95Ms": 305.8793749999895,
+            "recovery-final30/ordinary-1000/failureRatePp": 0,
+            "recovery-final30/terminatable-1000/penalizedP95Ms": 236.69187499998952,
+            "recovery-final30/terminatable-1000/failureRatePp": 0,
+            "recovery-final30/session-1000/penalizedP95Ms": 228.47004200000083,
+            "recovery-final30/session-1000/failureRatePp": 0,
+            "recovery-final30/daily-cost/penalizedP95Ms": 129.48454200002016,
+            "recovery-final30/daily-cost/failureRatePp": 0,
+            "recovery-final30/terminal-status/penalizedP95Ms": 107.62570800000685,
+            "recovery-final30/terminal-status/failureRatePp": 0,
+            "recovery-final30/health/penalizedP95Ms": 160.12783300000592,
+            "recovery-final30/health/failureRatePp": 0
+          },
+          "finalRecovery": {
+            "work": {
+              "offered": 72,
+              "outcomes": {
+                "success": 72
+              },
+              "failures": 0,
+              "failureRatePp": 0,
+              "lateSuccesses": 0,
+              "deadlineMs": 15000,
+              "penalizedP95Ms": 260.2332500000193,
+              "successfulResponses": {
+                "p50Ms": 142.21012500001234,
+                "p95Ms": 260.2332500000193,
+                "maximumMs": 305.8793749999895
+              }
+            },
+            "endpoints": {
+              "terminatable-1000": {
+                "offered": 15,
+                "outcomes": {
+                  "success": 15
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 236.69187499998952,
+                "successfulResponses": {
+                  "p50Ms": 157.31670900000609,
+                  "p95Ms": 236.69187499998952,
+                  "maximumMs": 236.69187499998952
+                }
+              },
+              "session-1000": {
+                "offered": 15,
+                "outcomes": {
+                  "success": 15
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 228.47004200000083,
+                "successfulResponses": {
+                  "p50Ms": 143.1077079999959,
+                  "p95Ms": 228.47004200000083,
+                  "maximumMs": 228.47004200000083
+                }
+              },
+              "daily-cost": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 129.48454200002016,
+                "successfulResponses": {
+                  "p50Ms": 123.05437500000698,
+                  "p95Ms": 129.48454200002016,
+                  "maximumMs": 129.48454200002016
+                }
+              },
+              "terminal-status": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 107.62570800000685,
+                "successfulResponses": {
+                  "p50Ms": 14.331666999991285,
+                  "p95Ms": 107.62570800000685,
+                  "maximumMs": 107.62570800000685
+                }
+              },
+              "ordinary-1000": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 305.8793749999895,
+                "successfulResponses": {
+                  "p50Ms": 252.75408299997798,
+                  "p95Ms": 305.8793749999895,
+                  "maximumMs": 305.8793749999895
+                }
+              }
+            },
+            "health": {
+              "offered": 300,
+              "outcomes": {
+                "success": 300
+              },
+              "failures": 0,
+              "failureRatePp": 0,
+              "lateSuccesses": 0,
+              "deadlineMs": 1000,
+              "penalizedP95Ms": 160.12783300000592,
+              "successfulResponses": {
+                "p50Ms": 3.474207999999635,
+                "p95Ms": 160.12783300000592,
+                "maximumMs": 252.7860830000136
+              }
+            }
+          },
+          "correlations": {
+            "offered": 768,
+            "socketMatched": 736,
+            "multipleWrites": 0,
+            "methods": {
+              "request-id-and-ports": 714,
+              "unique-request-id-with-missing-port": 22,
+              "unmatched": 32
+            }
+          },
+          "failureCorrelation": {
+            "count": 57,
+            "serverObserved": 25,
+            "serverFinished": 25,
+            "errorCodes": {
+              "20": 25,
+              "ETIMEDOUT": 32
+            }
+          },
+          "listener": {
+            "samples": 1712,
+            "samplesWithFullAcceptQueue": 432,
+            "firstFullAtEpoch": 1789406675694.75,
+            "lastFullAtEpoch": 1789406721715.765,
+            "queueLimits": [128]
+          },
+          "drained": {
+            "pending": {},
+            "serverDrained": true,
+            "unfinished": 0
+          },
+          "process": {
+            "driverPeakInFlight": 37,
+            "cpuMs": 97076.604,
+            "eventLoopP99Ms": 357.826559,
+            "eventLoopMaxMs": 1528.823807,
+            "peakRssMiB": 1829.90625,
+            "measuredWorkProcessGaps": {
+              "api": {
+                "maximumGapMs": 1528.1872079999957,
+                "gapsOverTwoSeconds": 0
+              },
+              "driver": {
+                "maximumGapMs": 517.8857089999947,
+                "gapsOverTwoSeconds": 0
+              },
+              "parent": {
+                "maximumGapMs": 555.8543340000033,
+                "gapsOverTwoSeconds": 0,
+                "medianAggregateIdlePercent": 79.31726907630522
+              }
+            }
+          },
+          "nativeProcessWindow": {
+            "startWallMs": 1789406628705.999,
+            "endWallMs": 1789406808573.524,
+            "elapsedMs": 179867.52500003576,
+            "cpuMs": 96416.87420833333,
+            "runnableMs": 97175.204875,
+            "pageins": 1,
+            "diskReadBytes": 462012416,
+            "diskWriteBytes": 5361635328,
+            "faults": 855655,
+            "contextSwitches": 313044,
+            "rssBefore": 855064576,
+            "rssAfter": 1110884352,
+            "footprintBefore": 839901168,
+            "footprintAfter": 1016934368,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 93768.288,
+                "states": {
+                  "1": 932,
+                  "3": 635,
+                  "4": 128
+                }
+              },
+              {
+                "handle": "6182531296",
+                "cpuMs": 677.115,
+                "states": {
+                  "1": 3,
+                  "3": 1692
+                }
+              },
+              {
+                "handle": "6199374048",
+                "cpuMs": 673.755,
+                "states": {
+                  "1": 4,
+                  "3": 1691
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 128,
+              "incompleteQueue": 1,
+              "receiveBytes": 406,
+              "sendBytes": 324381
+            },
+            "hostVmDelta": null
+          },
+          "nativeClockOffsetRangeMs": {
+            "api": 0.008056640625,
+            "parent": 0.001220703125,
+            "driver": 0.001220703125
+          },
+          "stacks": [
+            {
+              "phase": "overload",
+              "report": "native-stack-overload.log",
+              "sha256": "b28cbb9b421cc818c0014a507dfd64358a9f87493ca8f6d8a9fd856677e0f52b",
+              "startedAt": 1789406658772,
+              "endedAt": 1789406680582
+            },
+            {
+              "phase": "recovery",
+              "report": "native-stack-recovery.log",
+              "sha256": "c6c9a8d370ccffb56ba65770f4a8e4757dfb0456374632c9828fd813ab511339",
+              "startedAt": 1789406718772,
+              "endedAt": 1789406738913
+            }
+          ]
+        },
+        {
+          "directory": "009-mixed-user-load-comparison-1-candidate",
+          "label": "candidate",
+          "reportSha256": "6e7faa584c863e9bb347e6ae84f4f3845792ea9b81778941f846645819da3a56",
+          "firstRequest": {
+            "case": "ordinary-1000",
+            "elapsedMs": 265.607167,
+            "bytes": 1215517,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "status": 200
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 746,
+            "timedOut": 13,
+            "deadlineMisses": 13,
+            "httpErrors": 0,
+            "transportErrors": 9,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 283.8062080000018,
+            "p95Ms": 1245.9276249999966,
+            "p99Ms": 5500.200583999998,
+            "maxMs": 12694.053542000001,
+            "responseBytes": 520603427,
+            "maxOfferDelayMs": 52.274916999995185
+          },
+          "outcomes": {
+            "offered": 768,
+            "outcomes": {
+              "success": 746,
+              "timeout": 13,
+              "transport-error": 9
+            },
+            "failures": 22,
+            "failureRatePp": 2.864583333333333,
+            "lateSuccesses": 0,
+            "deadlineMs": 15000,
+            "penalizedP95Ms": 1958.9800419999956,
+            "successfulResponses": {
+              "p50Ms": 283.8062080000018,
+              "p95Ms": 1245.9276249999966,
+              "maximumMs": 12694.053542000001
+            }
+          },
+          "health": {
+            "coverage": "Every performance-trial health offer, including warmup and drain",
+            "offered": 1814,
+            "misses": 442,
+            "maximumMs": 1088.7304170000134,
+            "outcomes": {
+              "success": 1372,
+              "timeout": 442
+            },
+            "failures": 442,
+            "failureRatePp": 24.366041896361633,
+            "lateSuccesses": 0,
+            "deadlineMs": 1000,
+            "penalizedP95Ms": 1000,
+            "successfulResponses": {
+              "p50Ms": 3.493791999993846,
+              "p95Ms": 461.1341250000114,
+              "maximumMs": 967.1987500000396
+            }
+          },
+          "rawMetricValues": {
+            "normal/ordinary-1000/penalizedP95Ms": 620.9682500000017,
+            "normal/ordinary-1000/failureRatePp": 0,
+            "normal/terminatable-1000/penalizedP95Ms": 416.3972500000018,
+            "normal/terminatable-1000/failureRatePp": 0,
+            "normal/session-1000/penalizedP95Ms": 212.6880000000001,
+            "normal/session-1000/failureRatePp": 0,
+            "normal/daily-cost/penalizedP95Ms": 233.6116659999998,
+            "normal/daily-cost/failureRatePp": 0,
+            "normal/terminal-status/penalizedP95Ms": 17.473332999998092,
+            "normal/terminal-status/failureRatePp": 0,
+            "normal/health/penalizedP95Ms": 258.92183300000033,
+            "normal/health/failureRatePp": 0,
+            "overload/ordinary-1000/penalizedP95Ms": 11316.750957999997,
+            "overload/ordinary-1000/failureRatePp": 4.166666666666667,
+            "overload/terminatable-1000/penalizedP95Ms": 2231.459667000003,
+            "overload/terminatable-1000/failureRatePp": 2.0833333333333335,
+            "overload/session-1000/penalizedP95Ms": 15000,
+            "overload/session-1000/failureRatePp": 5.208333333333333,
+            "overload/daily-cost/penalizedP95Ms": 15000,
+            "overload/daily-cost/failureRatePp": 6.25,
+            "overload/terminal-status/penalizedP95Ms": 15000,
+            "overload/terminal-status/failureRatePp": 5.208333333333333,
+            "overload/health/penalizedP95Ms": 1000,
+            "overload/health/failureRatePp": 73.66666666666667,
+            "recovery/ordinary-1000/penalizedP95Ms": 314.44383299999754,
+            "recovery/ordinary-1000/failureRatePp": 0,
+            "recovery/terminatable-1000/penalizedP95Ms": 269.77308399998583,
+            "recovery/terminatable-1000/failureRatePp": 0,
+            "recovery/session-1000/penalizedP95Ms": 158.59725000002072,
+            "recovery/session-1000/failureRatePp": 0,
+            "recovery/daily-cost/penalizedP95Ms": 153.212583000015,
+            "recovery/daily-cost/failureRatePp": 0,
+            "recovery/terminal-status/penalizedP95Ms": 15.327250000002095,
+            "recovery/terminal-status/failureRatePp": 0,
+            "recovery/health/penalizedP95Ms": 170.5147500000312,
+            "recovery/health/failureRatePp": 0,
+            "recovery-final30/ordinary-1000/penalizedP95Ms": 343.11779099999694,
+            "recovery-final30/ordinary-1000/failureRatePp": 0,
+            "recovery-final30/terminatable-1000/penalizedP95Ms": 354.9859160000051,
+            "recovery-final30/terminatable-1000/failureRatePp": 0,
+            "recovery-final30/session-1000/penalizedP95Ms": 196.27362500000163,
+            "recovery-final30/session-1000/failureRatePp": 0,
+            "recovery-final30/daily-cost/penalizedP95Ms": 153.90116700000362,
+            "recovery-final30/daily-cost/failureRatePp": 0,
+            "recovery-final30/terminal-status/penalizedP95Ms": 13.779917000007117,
+            "recovery-final30/terminal-status/failureRatePp": 0,
+            "recovery-final30/health/penalizedP95Ms": 171.00258299999405,
+            "recovery-final30/health/failureRatePp": 0
+          },
+          "finalRecovery": {
+            "work": {
+              "offered": 72,
+              "outcomes": {
+                "success": 72
+              },
+              "failures": 0,
+              "failureRatePp": 0,
+              "lateSuccesses": 0,
+              "deadlineMs": 15000,
+              "penalizedP95Ms": 282.11295899999095,
+              "successfulResponses": {
+                "p50Ms": 144.83970900002168,
+                "p95Ms": 282.11295899999095,
+                "maximumMs": 354.9859160000051
+              }
+            },
+            "endpoints": {
+              "terminatable-1000": {
+                "offered": 15,
+                "outcomes": {
+                  "success": 15
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 354.9859160000051,
+                "successfulResponses": {
+                  "p50Ms": 172.58900000000722,
+                  "p95Ms": 354.9859160000051,
+                  "maximumMs": 354.9859160000051
+                }
+              },
+              "session-1000": {
+                "offered": 15,
+                "outcomes": {
+                  "success": 15
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 196.27362500000163,
+                "successfulResponses": {
+                  "p50Ms": 145.1979589999828,
+                  "p95Ms": 196.27362500000163,
+                  "maximumMs": 196.27362500000163
+                }
+              },
+              "daily-cost": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 153.90116700000362,
+                "successfulResponses": {
+                  "p50Ms": 122.08370799999102,
+                  "p95Ms": 153.90116700000362,
+                  "maximumMs": 153.90116700000362
+                }
+              },
+              "terminal-status": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 13.779917000007117,
+                "successfulResponses": {
+                  "p50Ms": 11.626416000013705,
+                  "p95Ms": 13.779917000007117,
+                  "maximumMs": 13.779917000007117
+                }
+              },
+              "ordinary-1000": {
+                "offered": 14,
+                "outcomes": {
+                  "success": 14
+                },
+                "failures": 0,
+                "failureRatePp": 0,
+                "lateSuccesses": 0,
+                "deadlineMs": 15000,
+                "penalizedP95Ms": 343.11779099999694,
+                "successfulResponses": {
+                  "p50Ms": 242.81862500001444,
+                  "p95Ms": 343.11779099999694,
+                  "maximumMs": 343.11779099999694
+                }
+              }
+            },
+            "health": {
+              "offered": 300,
+              "outcomes": {
+                "success": 300
+              },
+              "failures": 0,
+              "failureRatePp": 0,
+              "lateSuccesses": 0,
+              "deadlineMs": 1000,
+              "penalizedP95Ms": 171.00258299999405,
+              "successfulResponses": {
+                "p50Ms": 2.7752500000060536,
+                "p95Ms": 171.00258299999405,
+                "maximumMs": 308.8690840000054
+              }
+            }
+          },
+          "correlations": {
+            "offered": 768,
+            "socketMatched": 759,
+            "multipleWrites": 0,
+            "methods": {
+              "request-id-and-ports": 753,
+              "unique-request-id-with-missing-port": 6,
+              "unmatched": 9
+            }
+          },
+          "failureCorrelation": {
+            "count": 22,
+            "serverObserved": 13,
+            "serverFinished": 13,
+            "errorCodes": {
+              "20": 13,
+              "ETIMEDOUT": 9
+            }
+          },
+          "listener": {
+            "samples": 1695,
+            "samplesWithFullAcceptQueue": 261,
+            "firstFullAtEpoch": 1789406878919.784,
+            "lastFullAtEpoch": 1789406908869.305,
+            "queueLimits": [128]
+          },
+          "drained": {
+            "pending": {},
+            "serverDrained": true,
+            "unfinished": 0
+          },
+          "process": {
+            "driverPeakInFlight": 24,
+            "cpuMs": 94559.065,
+            "eventLoopP99Ms": 311.164927,
+            "eventLoopMaxMs": 1317.011455,
+            "peakRssMiB": 1842.25,
+            "measuredWorkProcessGaps": {
+              "api": {
+                "maximumGapMs": 1316.5829589999921,
+                "gapsOverTwoSeconds": 0
+              },
+              "driver": {
+                "maximumGapMs": 503.03141700000197,
+                "gapsOverTwoSeconds": 0
+              },
+              "parent": {
+                "maximumGapMs": 522.1677499999932,
+                "gapsOverTwoSeconds": 0,
+                "medianAggregateIdlePercent": 80.19968319493111
+              }
+            }
+          },
+          "nativeProcessWindow": {
+            "startWallMs": 1789406818568.622,
+            "endWallMs": 1789406998423.599,
+            "elapsedMs": 179854.9769999981,
+            "cpuMs": 93989.05354166667,
+            "runnableMs": 94681.27633333333,
+            "pageins": 0,
+            "diskReadBytes": 576356352,
+            "diskWriteBytes": 5660532736,
+            "faults": 826407,
+            "contextSwitches": 242091,
+            "rssBefore": 851542016,
+            "rssAfter": 1152253952,
+            "footprintBefore": 836378608,
+            "footprintAfter": 1058599216,
+            "threadCounters": [
+              {
+                "handle": "8424071008",
+                "cpuMs": 91627.613,
+                "states": {
+                  "1": 879,
+                  "2": 1,
+                  "3": 706,
+                  "4": 96
+                }
+              },
+              {
+                "handle": "6120632544",
+                "cpuMs": 614.882,
+                "states": {
+                  "1": 5,
+                  "3": 1677
+                }
+              },
+              {
+                "handle": "6137475296",
+                "cpuMs": 587.199,
+                "states": {
+                  "1": 8,
+                  "3": 1674
+                }
+              }
+            ],
+            "socketMaxima": {
+              "acceptQueue": 128,
+              "incompleteQueue": 0,
+              "receiveBytes": 406,
+              "sendBytes": 912333
+            },
+            "hostVmDelta": null
+          },
+          "nativeClockOffsetRangeMs": {
+            "api": 0.01318359375,
+            "parent": 0.003173828125,
+            "driver": 0.001220703125
+          },
+          "stacks": [
+            {
+              "phase": "overload",
+              "report": "native-stack-overload.log",
+              "sha256": "f13e4e154f2d6506dc9833f3b86c1bd0e50b45f8feb6c6a64e2731a3364ef709",
+              "startedAt": 1789406848641,
+              "endedAt": 1789406869012
+            },
+            {
+              "phase": "recovery",
+              "report": "native-stack-recovery.log",
+              "sha256": "5b21318bcbe18020f43ea38a14cde3036cf8d829ade1f2c802723ae53d346853",
+              "startedAt": 1789406908641,
+              "endedAt": 1789406928783
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+export default {
+  $schema: './node_modules/@stryker-mutator/core/schema/stryker-schema.json',
+  testRunner: 'vitest',
+  checkers: ['typescript'],
+  tsconfigFile: 'test/mutation/tsconfig.json',
+  typescriptChecker: { prioritizePerformanceOverAccuracy: false },
+  concurrency: 4,
+  coverageAnalysis: 'perTest',
+  ignoreStatic: false,
+  inPlace: false,
+  vitest: {
+    configFile: 'vitest.mutation.config.mjs',
+    related: true,
+  },
+  mutate: [
+    'test/integration/e2e/internal/cleanup.ts',
+    'test/integration/e2e/internal/wait.ts',
+    'test/integration/e2e/internal/controller-session.ts',
+    'test/integration/e2e/internal/persistent-vm-submission.ts',
+    'test/integration/e2e/internal/contracts/persistent-vm-policy.ts',
+    'test/integration/e2e/internal/contracts/persistent-vm-running.ts',
+  ],
+  // Keep the exact test allowlist in Vitest. Stryker 10's testFiles filter
+  // activates static mutants too late: stryker-mutator/stryker-js#6144.
+  // Stryker does not consult .gitignore when copying its sandbox.
+  ignorePatterns: [
+    '**/.env*',
+    '**/.context/**',
+    '**/.dev.vars*',
+    '**/.mcp.*',
+    '**/.claude/**',
+    '**/.wrangler/**',
+    '/dist/**',
+    '/get-dist/**',
+    '/binaries/**',
+    '/website/**',
+    '/reports/**',
+    '/.stryker-tmp/**',
+  ],
+  reporters: ['clear-text', 'progress', 'html', 'json'],
+  htmlReporter: { fileName: 'reports/mutation/harness/index.html' },
+  jsonReporter: { fileName: 'reports/mutation/harness/mutation.json' },
+  tempDirName: '.stryker-tmp',
+  thresholds: { high: 80, low: 60, break: 0 },
+};

@@ -1,0 +1,49 @@
+name: Mutation Harness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Qualify sandbox and static activation
+        run: node test/mutation/qualify-sandbox.mjs
+
+      - name: Run mutation harness
+        run: yarn test:mutation:harness
+
+      - name: Upload mutation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-harness-${{ github.sha }}
+          path: reports/mutation/harness/
+          if-no-files-found: error
+          retention-days: 7

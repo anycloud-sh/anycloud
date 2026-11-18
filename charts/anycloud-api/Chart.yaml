@@ -1,0 +1,12 @@
+apiVersion: v2
+# The OCI package name (ghcr.io/anycloud-sh/api-k8-chart). Templates never
+# read it: labels, selectors and the release name stay `anycloud-api`.
+name: api-k8-chart
+description: AnyCloud API system installation on the installation's Kubernetes cluster
+type: application
+# Published with each release at the release version (`yarn -s chart:publish`
+# packages it with `--version` and `--app-version`), and the API image built
+# with it names it by digest. An upgrade moves the HelmChart to the target
+# image's chart and values in one write.
+version: 0.0.0
+appVersion: '0.0.0'

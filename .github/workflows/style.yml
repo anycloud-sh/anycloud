@@ -1,0 +1,57 @@
+name: Style
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  style:
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      # Run the repository policy checks before repository-local actions and
+      # install hooks that could replace node/yarn through GITHUB_PATH.
+      - name: Install policy dependencies without lifecycle scripts
+        run: |
+          command -v yarn >/dev/null || corepack enable
+          yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Check all repository boundaries
+        run: yarn check:boundaries
+
+      - uses: ./.github/actions/ci-backend
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+
+      # CloudFormation rejects an invalid property only at change-set time,
+      # after the user's create has begun; cfn-lint checks it offline.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      - name: Lint the AWS seed's CloudFormation template
+        run: |
+          python -m pip install 'cfn-lint==1.60.0'
+          cfn-lint --regions us-east-1 us-west-2 eu-west-1 -- src/cli/seed/aws-stack.json
+
+      - name: Run style check
+        run: yarn style

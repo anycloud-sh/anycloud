@@ -1,0 +1,87 @@
+/* Self-contained dark chart panel. Kept dark in both site themes on purpose:
+   the cyan/purple/green line palette is calibrated for a near-black background
+   and would lose contrast on a light surface (same as the site's code blocks). */
+.frame {
+  position: relative;
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
+  border-radius: 12px;
+  border: 1px solid #243352;
+  background: #0a0f1a;
+  padding: 30px 12px 6px;
+}
+
+.tag {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  z-index: 2;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Legend mirrors the chart's color/marker vocabulary. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 6px 4px;
+  margin: 0;
+  font-size: 12.5px;
+  color: #9aa8bd;
+}
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sw {
+  width: 15px;
+  height: 5px;
+  border-radius: 3px;
+}
+.diamond {
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border: 1.5px solid #7c8ba8;
+}
+.bolt {
+  color: #fbbf24;
+}
+.handoff {
+  width: 15px;
+  height: 0;
+  border-top: 2px dotted #5e6e86;
+}
+
+/* Pulses a preemption marker once it appears. */
+.blink {
+  animation: precovPulse 1s infinite;
+}
+
+@keyframes precovPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink {
+    animation: none;
+  }
+}

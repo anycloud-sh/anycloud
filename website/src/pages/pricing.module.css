@@ -1,0 +1,93 @@
+/* Pricing page — extends index.module.css. The shared `.page` selector
+   provides the CSS variable scope (--accent, --ink, --bg-soft, etc.). */
+
+.tiers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  max-width: 820px;
+  margin: 8px 0 0;
+}
+@media (max-width: 640px) {
+  .tiers {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tier {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  border-radius: 14px;
+  padding: 32px 30px;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.tier:hover {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -28px rgba(8, 145, 178, 0.35);
+}
+
+.tierName {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin: 0 0 14px;
+}
+
+.tierPrice {
+  font-size: 36px;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 6px;
+  line-height: 1.1;
+}
+.tierPriceUnit {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink-mute);
+  margin-left: 6px;
+  letter-spacing: 0;
+}
+
+.tierQualifier {
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  margin: 0 0 22px;
+  line-height: 1.55;
+}
+
+.tierList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.tierItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--ink-soft);
+}
+.tierCheck {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.tierCta {
+  align-self: flex-start;
+}

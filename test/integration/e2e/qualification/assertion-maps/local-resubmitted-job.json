@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "member": "local-resubmitted-job",
+  "candidate": "e2e.sh local-resubmitted-job --vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "The spec selects only its registered member and cannot supply lifecycle callbacks, placement overrides or completion evidence.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: job-policy.ts capturedMember/JOB_TARGET_PROFILES; closed-spec ESLint and Vitest discovery controls; thin dedicated-job spec."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a complete new inventory fence precede every send; original controller incarnation, credential, placement and provisional/native histories survive failures and resubmission.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/job-submission.ts; test/integration/e2e/internal/workloads.ts: JobAttemptLedger with before/after controller checks; JobNativeCleanup.creationStarted/capture; submitJob and direct final-send controller guard; kernel.reserveWithCleanupVerification; original private process environment."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup and zero live rows are prerequisites; independent native absence of every owned attempt is required before release, with uncertain history retained.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: JobNativeCleanup with independent cleanup readers/signal/deadline; historical attempt ledger; DedicatedJobContract.#finalize; no API-only manifest discharge."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims completion once, after exact run/reference/generation-bound progress, all required extension/terminal records and release of every child and shared resource.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: JobRecords begin/progress/extension/terminal/claim; DedicatedJobContract.#finalize; missing/copied/reused/early evidence regressions."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "A named forced failure leaves no completion; automatic cleanup and raw unresolved registrations are inspected independently, preserving primary and secondary errors and 30-day compact success/failure records.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: E2E_JOB_FORCE_CLEANUP in DedicatedJobContract; cleanup stack/native/storage/authorization records; common.sh manifest guard; protected job-comparison-evidence uploads; source/run/attempt metadata."
+    },
+    {
+      "id": "terminal-submission",
+      "requirement": "Use the original credentialless Local BusyBox command and ten-second active interval; terminal-before-active is typed explicitly and cannot satisfy forced live cleanup.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: LocalSmolvmJobAdapter.submitTerminal; DedicatedJobContract.#terminalMember/#progress; JobRecords typed active or terminal-before-active."
+    },
+    {
+      "id": "terminal-event-exit-code",
+      "requirement": "Retain the expected terminal state, completed timestamp and exact event exit code.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: DedicatedJobContract.#assertExit validates Completed/0 or Errored/3 and completedAt; terminal records and finalizer."
+    },
+    {
+      "id": "first-generation-armed",
+      "requirement": "Prove first-generation persisted/native absence while retaining the original armed Workload reference; no resubmitted event exists yet.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: JobNativeCleanup.generationAbsence; LocalSmolvmJobTransport.firstGenerationAbsence; JobRecords.prepareResubmission; pre-resubmission artifact referenceReleased:false."
+    },
+    {
+      "id": "one-resubmit-send",
+      "requirement": "The CLI reports the exact same-ID resubmission once. The second send has a fresh awaited inventory fence; ended rows cannot resolve a lost later reply.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/local-smolvm-job.ts: LocalSmolvmJobTransport.resubmit; resubmitJob; JobNativeCleanup.creationStarted generation proof; JobRecords begin generation 2 and resubmitted extension."
+    },
+    {
+      "id": "second-generation-and-history",
+      "requirement": "Within one 300-second startup/completion budget, observe a new native attempt and second Errored event with exit three, preserving all first-generation rows and exactly one resubmission.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/job-attempt-ledger.ts: DedicatedJobContract.#terminalMember secondObservation and original-row checks; JobAttemptLedger; post-resubmission artifact and finalizer generation 2."
+    },
+    {
+      "id": "second-generation-forced-cleanup",
+      "requirement": "The one forced cleanup reaches generation 2 after first-generation persisted/native absence and an acknowledged fenced resubmit. It requires fresh Running evidence, one new live attempt, exact ended original history and one own ordered resubmission event before its distinct fault record. Early terminal, missing/foreign/stale evidence and failed writes retain the reference without completion.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/job-native-cleanup.ts: DedicatedJobContract.#terminalMember generation-2 forced-resubmission artifact; JobNativeCleanup authorizedCreates=2, per-send row baselines and full historical absence; e2e-local-terminal-job negative controls; the local-resubmitted-job Vitest run is the transport control."
+    }
+  ]
+}

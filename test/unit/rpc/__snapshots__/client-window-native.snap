@@ -1,0 +1,94 @@
+{
+  "logs": {
+    "method": "GET",
+    "expressPath": "/workloads/:id/logs",
+    "path": "/workloads/{id}/logs",
+    "successStatus": 200,
+    "transport": "ndjson",
+    "request": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "follow": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "params",
+        "query"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "exec": {
+    "method": "POST",
+    "expressPath": "/workloads/:id/exec",
+    "path": "/workloads/{id}/exec",
+    "successStatus": 200,
+    "transport": "ndjson",
+    "request": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "replica": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "params",
+        "body"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

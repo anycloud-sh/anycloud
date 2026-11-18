@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /next/
+
+Sitemap: https://anycloud.sh/sitemap.xml

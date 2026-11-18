@@ -1,0 +1,196 @@
+# Helm alone owns this native Deployment and Service. AnyCloud's update path
+# changes the HelmChart's values; it never patches these objects directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+spec:
+  # Reached only through Traefik on the management Node (templates/ingress.yaml).
+  type: ClusterIP
+  selector:
+    {{- include "anycloud-api.selector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.api.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+  annotations:
+    {{- include "anycloud-api.releaseAnnotations" . | nindent 4 }}
+spec:
+  # One API process owns one SQLite database.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "anycloud-api.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "anycloud-api.selector" . | nindent 8 }}
+      annotations:
+        {{- include "anycloud-api.releaseAnnotations" . | nindent 8 }}
+    spec:
+      serviceAccountName: anycloud-api
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Kubernetes creates emptyDir mounts with mode 0777. The API SSH runtime
+      # guard requires root ownership and mode 0700 before writing keys.
+      initContainers:
+        - name: prepare-ssh-runtime
+          image: {{ .Values.release.image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [chmod, '0700', /run/anycloud-ssh]
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: ssh-runtime
+              mountPath: /run/anycloud-ssh
+        {{- if .Values.state.restoreFromBackup }}
+        {{- $_ := required "state.restoreFromBackup requires backup" .Values.backup }}
+        # A cluster created from an existing backup: fills the empty state
+        # volume with the backup's cipher key and database before the API's
+        # first start. A volume that already has a database is left alone.
+        - name: restore-state
+          image: {{ .Values.release.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args: [node, ./dist/api/restore-state.js]
+          # The refusal text becomes the termination message bootstrap reports.
+          terminationMessagePolicy: FallbackToLogsOnError
+          env:
+            - name: ANYCLOUD_DIR
+              value: /mnt/checkpoint
+            - name: ANYCLOUD_BACKUP_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: anycloud-api-backup
+                  key: config
+          volumeMounts:
+            - name: state
+              mountPath: /mnt/checkpoint
+        {{- end }}
+      containers:
+        - name: api
+          image: {{ .Values.release.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - node
+            - ./dist/api/server.js
+            - --hosted-api-owner
+            - {{ .Values.installation.ownerUsername | quote }}
+            - --hosted-api-owner-id
+            - {{ .Values.installation.ownerUserId | quote }}
+          env:
+            - name: ANYCLOUD_DIR
+              value: /mnt/checkpoint
+            - name: WORKLOAD_ID
+              value: {{ .Values.installation.id | quote }}
+            - name: ANYCLOUD_WORKLOAD_API_URL
+              value: {{ .Values.installation.apiUrl | quote }}
+            - name: PORT
+              value: {{ .Values.api.port | quote }}
+            # Marks a Helm-managed API: enables the self-update surface, which
+            # patches this HelmChart through the API's in-cluster ServiceAccount.
+            - name: ANYCLOUD_SYSTEM_RELEASE
+              value: helm
+            # The digest-pinned image this release runs, which the API
+            # reports as its own cluster's release.
+            - name: ANYCLOUD_RELEASE_IMAGE
+              value: {{ .Values.release.image | quote }}
+            - name: ANYCLOUD_CLUSTER_NAME
+              value: {{ .Values.cluster.name | quote }}
+            - name: ANYCLOUD_CLUSTER_IDENTITY
+              value: {{ .Values.cluster.kubernetesIdentity | quote }}
+            - name: ANYCLOUD_CLUSTER_JOIN_ENDPOINT
+              value: {{ .Values.cluster.joinEndpoint | quote }}
+            - name: ANYCLOUD_CLUSTER_CA
+              value: {{ .Values.cluster.certificateAuthorityData | quote }}
+            {{- if .Values.e2eAccess }}
+            # Test-only: the boot script's e2e access kubeconfig, which the
+            # API hands to the harness through the checkpoint bucket.
+            - name: ANYCLOUD_E2E_ACCESS
+              value: /mnt/e2e-access/kubeconfig
+            {{- end }}
+            {{- if .Values.selfDelete }}
+            # How a seeded cluster's API deletes its own cloud resources last
+            # (RFC 0049 C26 (e)); never secret.
+            - name: ANYCLOUD_SELF_DELETE
+              value: {{ toJson .Values.selfDelete | quote }}
+            {{- end }}
+            {{- if .Values.cluster.record }}
+            - name: ANYCLOUD_CLUSTER_RECORD
+              value: {{ .Values.cluster.record | toJson | quote }}
+            {{- end }}
+            {{- if .Values.backup }}
+            - name: ANYCLOUD_BACKUP_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: anycloud-api-backup
+                  key: config
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # 1 s probes shorten an upgrade's gap; the startup budget stays 180 s.
+            periodSeconds: 1
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 1
+            # A few seconds' SQLite stall must not take the only Pod out of service.
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /mnt/checkpoint
+            - name: ssh-runtime
+              mountPath: /run/anycloud-ssh
+            {{- if .Values.e2eAccess }}
+            - name: e2e-access
+              mountPath: /mnt/e2e-access
+            {{- end }}
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: anycloud-api-state
+        {{- if .Values.e2eAccess }}
+        # Test-only (management-boot.ts, E2E_ACCESS_KUBECONFIG_PATH).
+        - name: e2e-access
+          hostPath:
+            path: /var/lib/anycloud/e2e-access
+            type: DirectoryOrCreate
+        {{- end }}
+        # Root-only tmpfs for OpenSSH control sockets and transient keys.
+        - name: ssh-runtime
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

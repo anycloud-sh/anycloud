@@ -1,0 +1,6 @@
+yarn.lock binary
+src/assets/clouds/* binary
+experiments/** -diff linguist-generated
+python/generated/** -diff linguist-generated
+
+src/shared/api-contract/openapi.generated.json linguist-generated=true

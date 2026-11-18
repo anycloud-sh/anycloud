@@ -1,0 +1,36 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/cli/index.ts",
+    "src/runner/index.ts",
+    "src/api/server.ts",
+    "src/api/services/gateways/ssh-process-helper.ts",
+    "src/api/system-release-hook.ts",
+    "src/api/host-step.ts",
+    "src/api/restore-state.ts",
+    "src/api/index.ts",
+    "ci/**/*.{ts,mjs}",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "test/integration/e2e/**/*.ts",
+    "test/integration/helpers/**/*.ts",
+    "test/integration/credentials-onboarding/**/*.ts",
+    "experiments/**/*.ts"
+  ],
+  "project": ["src/**/*.ts"],
+  "includeEntryExports": false,
+  "stryker": {
+    "config": ["stryker.harness.config.mjs"]
+  },
+  "ignoreDependencies": [
+    "bun",
+    "@types/libsodium-wrappers",
+    "@stryker-mutator/instrumenter"
+  ],
+  "ignoreBinaries": [
+    "gcloud",
+    "ssh-keygen",
+    "nsenter",
+    "list-aggregation-must-not-execute"
+  ]
+}

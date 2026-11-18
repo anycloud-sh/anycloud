@@ -1,0 +1,95 @@
+# Values are versioned with the chart. Bootstrap supplies every `release.*`
+# and `installation.*` value from the durable installation record; the
+# defaults below document the shape and never install a usable release on
+# their own (the image has no digest).
+
+release:
+  # Monotonic revision from the installation's release-intent ledger. The
+  # HelmChart carries it as an annotation so a re-applied older intent is
+  # detected before it can touch the release.
+  revision: 0
+  # Operation identity bound to this revision.
+  operationId: ''
+  # Digest-pinned API image; tags alone are refused by the bootstrap.
+  image: ''
+  # API version the image is expected to serve.
+  version: ''
+
+installation:
+  # Cluster identity; the API derives its stable identity from it.
+  id: ''
+  # GitHub account the hosted API is bound to.
+  ownerUsername: ''
+  ownerUserId: ''
+  # Externally reachable API origin: https://<cluster-id>.anycloud.sh.
+  apiUrl: ''
+
+# The cluster this API runs in, as bootstrap observed it. The API records the
+# cluster on first start with its in-cluster ServiceAccount and refuses to
+# start when the kube-system namespace UID it sees differs from this one.
+cluster:
+  name: ''
+  # kube-system namespace UID observed by bootstrap.
+  kubernetesIdentity: ''
+  # Public control-plane endpoint node pool VMs join through
+  # (https://<public-ip>:6443) and the base64 cluster certificate authority.
+  joinEndpoint: ''
+  certificateAuthorityData: ''
+  # What delete and upgrade need from the creating machine: cloud and account,
+  # region, zone, VM type, management VM id, network scope, K3s pin and the
+  # checkpoint bucket. The API stores it on its own cluster row. No secrets.
+  record: null
+
+# Where the API backs its SQLite database up: hourly and before every
+# self-update, to one fixed key relying on bucket versioning for history.
+# Bootstrap fills this from the installation's checkpoint bucket and compute
+# credential (rendered into the anycloud-api-backup Secret); null disables
+# backups and with them the self-update surface.
+backup: null
+
+# A seeded cluster's own teardown (RFC 0049 C26 (e)): what the API deletes
+# last, per cloud, from the seed's release values. Null on clusters before it.
+selfDelete: null
+
+# Test-only: hand the e2e harness the boot script's access kubeconfig.
+e2eAccess: false
+
+api:
+  port: 8080
+  # Management capacity only: the API never shares a Node with node pool work.
+  # The management Node carries the standard control-plane taint
+  # (management-host.ts), which
+  # the API, its hook Jobs and K3s's own add-ons tolerate; node pool Pods do not.
+  # Only the API sets this label, never a Node itself: a pool Node that
+  # re-registers with the management label and taint still gets no API Pod.
+  nodeSelector:
+    node-restriction.kubernetes.io/anycloud-management: 'true'
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  terminationGracePeriodSeconds: 120
+
+# Retained primary state (SQLite database and cipher key). The claim is kept
+# on uninstall so a failed or removed release never deletes the database.
+state:
+  storageClassName: local-path
+  size: 20Gi
+  # Set by bootstrap when the checkpoint bucket already holds a backup: an
+  # initContainer fills the empty volume from it before the API first starts.
+  restoreFromBackup: false
+
+# The API is reached on its hostname through Cloudflare → the API's own Traefik
+# release on the management Node (bootstrap renders it as a bootstrap HelmChart
+# in kube-system) → this release's ClusterIP Service. `traefik` is the only mode this
+# chart implements; other modes are refused by the template.
+ingress:
+  mode: traefik
+  # <installation-id>.anycloud.sh, filled by bootstrap.
+  host: ''

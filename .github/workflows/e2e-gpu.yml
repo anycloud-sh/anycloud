@@ -1,0 +1,608 @@
+name: E2E GPU Qualification
+
+# Manually dispatched real-cloud GPU qualification. Select one provider or all;
+# each selected provider first proves basic GPU serve passthrough, then performs
+# one region-qualified MACE full pull and CUDA inference. GCP also verifies every root
+# disk-tier request against the created disk. MACE-only runs require tracked
+# workload cleanup and skip account-wide provider sweeps.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider to qualify
+        required: true
+        type: choice
+        options:
+          - all
+          - aws
+          - azure
+          - gcp
+          - lambda
+      service_cleanup_audit:
+        description: Read-only AWS/GCP/Lambda original resource scope as JSON; excludes all provisioning and sweeps
+        type: string
+        default: ''
+      force_service_cleanup:
+        description: Fail Service cells before finalization to inspect native, DNS and secret cleanup
+        type: boolean
+        default: false
+      mace_only:
+        description: Run only MACE with tracked cleanup, without provider sweeps
+        type: boolean
+        default: false
+      azure_ghcr_probe_only:
+        description: Run only the Azure GHCR probe; requires provider=azure
+        type: boolean
+        default: false
+      vm_type:
+        description: Azure NC-series CUDA VM type (matches GPU qualification).
+        required: true
+        type: string
+        default: Standard_NC4as_T4_v3
+      region:
+        description: Azure region to provision in.
+        required: true
+        type: string
+        default: westus2
+      disk_size:
+        description: Root disk size in GiB.
+        required: true
+        type: string
+        default: '100'
+      disk_tier:
+        description: >-
+          Azure OS-disk performance tier. high maps to Premium_LRS (needs a
+          premium-capable 's'/'as' VM).
+        required: true
+        type: choice
+        options:
+          - high
+          - medium
+          - ultra
+        default: high
+      spot:
+        description: Use Azure Spot capacity (NC spot is scarce).
+        required: true
+        type: boolean
+        default: false
+      probe_image:
+        description: Digest-pinned GHCR image whose largest layer is sampled.
+        required: true
+        type: string
+        default: ghcr.io/anycloud-sh/mace@sha256:c60574d120937bd1db9c0c579d427f2b48d307f44c552888952354bf77c2d19d
+      sample_bytes:
+        description: Bytes to pull at each connection-count level.
+        required: true
+        type: string
+        default: '268435456'
+      ladder:
+        description: Space-separated connection counts to sweep.
+        required: true
+        type: string
+        default: '1 4 8 16'
+      pull_concurrency:
+        description: Maximum parallel requests used by containerd per pull.
+        required: true
+        type: string
+        default: '3'
+      pull_chunk_bytes:
+        description: Bytes per same-layer multipart fetch chunk (128 MiB by default).
+        required: true
+        type: string
+        default: '134217728'
+      force_job_cleanup:
+        description: Fail only the GHCR Job after detached pull launch to inspect cleanup
+        type: boolean
+        default: false
+      measure_baseline:
+        description: >-
+          Also time an ordinary single-stream docker pull to measure the
+          transfer-vs-default delta. Re-downloads the image, so it roughly
+          doubles the pull time.
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ inputs.azure_ghcr_probe_only && format('e2e-azure-ghcr-probe-{0}', github.ref) || format('e2e-gpu-qualification-{0}', github.ref) }}
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-gpu-serve-vitest:
+    name: e2e-gpu-serve-vitest / ${{ matrix.provider }}
+    if: ${{ !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit }}
+    continue-on-error: false
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        provider: ${{ fromJSON(inputs.provider == 'all' && '["aws","azure","gcp","lambda"]' || format('["{0}"]', inputs.provider)) }}
+    concurrency:
+      # Provider accounts have shared GPU quota. Queue every pending leg across
+      # refs instead of allowing GitHub's default single-pending replacement.
+      group: e2e-gpu-qualification-${{ matrix.provider }}
+      queue: max
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      E2E_TEST_TIMEOUT_SECONDS: '7200'
+      E2E_SERVE_FORCE_FAILURE_BEFORE_FINALIZE: ${{ inputs.force_service_cleanup && '1' || '' }}
+      RESULTS_DIR: /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: ./.github/actions/serve-e2e-setup
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+
+      - name: Run GPU Service
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/service-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.provider }}-gpu-serve --vitest
+
+      - name: Retain GPU Service evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-comparison-evidence-gpu-${{ matrix.provider }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/service-comparison-source-sha.txt
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/e2e-run.json
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/workloads-to-clean
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/vitest-fixture/**/*cleanup-observations*.json
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/vitest-fixture/**/*native-*.json
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/vitest-fixture/**/*service-*.json
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/vitest-fixture/**/*gpu-serve-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload GPU Service diagnostics
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-gpu-service-${{ matrix.provider }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  # Standalone probes retain targeted cleanup; no account sweep is selected.
+  azure-ghcr-probe-vitest:
+    if: ${{ inputs.azure_ghcr_probe_only }}
+    continue-on-error: false
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    concurrency:
+      group: e2e-gpu-qualification-azure
+      queue: max
+      cancel-in-progress: false
+    # Headroom for the opt-in baseline, which adds a second full image pull.
+    timeout-minutes: 120
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      E2E_JOB_FORCE_CLEANUP: ${{ inputs.force_job_cleanup && '1' || '' }}
+      RESULTS_DIR: /tmp/e2e-results-azure-ghcr-probe-${{ github.run_id }}-${{ github.run_attempt }}
+      GITHUB_TOKEN: ${{ github.token }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.measure_baseline && '5400' || '3600' }}
+      PROBE_IMAGE: ${{ inputs.probe_image }}
+      PROBE_VM_TYPE: ${{ inputs.vm_type }}
+      PROBE_REGION: ${{ inputs.region }}
+      PROBE_DISK_SIZE: ${{ inputs.disk_size }}
+      PROBE_DISK_TIER: ${{ inputs.disk_tier }}
+      PROBE_SPOT: ${{ inputs.spot && 'true' || 'false' }}
+      PROBE_SAMPLE_BYTES: ${{ inputs.sample_bytes }}
+      PROBE_LADDER: ${{ inputs.ladder }}
+      PROBE_PULL_CONCURRENCY: ${{ inputs.pull_concurrency }}
+      PROBE_PULL_CHUNK_BYTES: ${{ inputs.pull_chunk_bytes }}
+      PROBE_MEASURE_BASELINE: ${{ inputs.measure_baseline && '1' || '0' }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Validate Azure probe-only selection
+        env:
+          PROBE_WORKFLOW_PROVIDER: ${{ inputs.provider }}
+          PROBE_WORKFLOW_MACE_ONLY: ${{ inputs.mace_only && 'true' || 'false' }}
+          PROBE_WORKFLOW_SERVICE_CLEANUP_AUDIT: ${{ inputs.service_cleanup_audit }}
+          PROBE_WORKFLOW_FORCE_SERVICE_CLEANUP: ${{ inputs.force_service_cleanup && 'true' || 'false' }}
+        run: |
+          if [[ "$PROBE_WORKFLOW_PROVIDER" != azure ||
+                "$PROBE_WORKFLOW_MACE_ONLY" != false ||
+                -n "$PROBE_WORKFLOW_SERVICE_CLEANUP_AUDIT" ||
+                "$PROBE_WORKFLOW_FORCE_SERVICE_CLEANUP" != false ]]; then
+            printf '%s\n' 'Azure GHCR probe-only mode requires provider=azure and excludes other GPU modes.' >&2
+            exit 1
+          fi
+
+      - name: Validate runtime capability guard
+        run: ./test/integration/probe-containerd-parallel-pull.sh --self-test
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ github.token }}
+
+      - name: Run GHCR Job
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ./test/integration/e2e.sh azure-ghcr-probe --vitest
+
+      - name: Retain GHCR Job evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-ghcr-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-azure-ghcr-probe-*/e2e-run.json
+            /tmp/e2e-results-azure-ghcr-probe-*/workloads-to-clean
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/metadata.json
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/cleanup-observations.json
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/job-*.json
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/job-*.txt
+            /tmp/e2e-results-azure-ghcr-probe-*/vitest-fixture/**/dedicated-job-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload probe logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-ghcr-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          include-hidden-files: true
+          retention-days: 3
+
+  e2e-mace-vitest:
+    name: e2e-mace-vitest / ${{ matrix.provider }}
+    if: ${{ !inputs.azure_ghcr_probe_only && !inputs.service_cleanup_audit }}
+    continue-on-error: false
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        provider: ${{ fromJSON(inputs.provider == 'all' && '["aws","azure","gcp","lambda"]' || format('["{0}"]', inputs.provider)) }}
+    concurrency:
+      # Provider accounts have shared GPU quota. Queue every pending leg across
+      # refs instead of allowing GitHub's default single-pending replacement.
+      group: e2e-gpu-qualification-${{ matrix.provider }}
+      queue: max
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      MACE_FULL_PULL_IMAGE: ghcr.io/anycloud-sh/mace@sha256:c60574d120937bd1db9c0c579d427f2b48d307f44c552888952354bf77c2d19d
+      E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.mace_only && '9000' || '7200' }}
+      E2E_JOB_FORCE_CLEANUP: ${{ inputs.force_job_cleanup && '1' || '' }}
+      RESULTS_DIR: /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: ./.github/actions/serve-e2e-setup
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+
+      - name: Run MACE Job
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.provider }}-mace-full-pull --vitest
+
+      - name: Require completed MACE Job tracked cleanup
+        if: always() && inputs.mace_only
+        run: |
+          test -f "$RESULTS_DIR/workloads-to-clean"
+          test ! -s "$RESULTS_DIR/workloads-to-clean"
+
+      - name: Retain MACE Job evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-gpu-mace-${{ matrix.provider }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/e2e-run.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/workloads-to-clean
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/*cleanup-observations*.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/*native-*.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/metadata.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/job-*.json
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/vitest-fixture/**/dedicated-job-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload MACE Job diagnostics
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-gpu-mace-${{ matrix.provider }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  e2e-disk-tier-vitest:
+    name: e2e-disk-tier-vitest / gcp
+    if: ${{ !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit && (inputs.provider == 'all' || inputs.provider == 'gcp') }}
+    continue-on-error: false
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    concurrency:
+      # Provider accounts have shared GPU quota. Queue every pending leg across
+      # refs instead of allowing GitHub's default single-pending replacement.
+      group: e2e-gpu-qualification-gcp
+      queue: max
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      E2E_TEST_TIMEOUT_SECONDS: '7200'
+      E2E_JOB_FORCE_CLEANUP: ${{ inputs.force_job_cleanup && '1' || '' }}
+      RESULTS_DIR: /tmp/e2e-results-gcp-disk-tier-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: ./.github/actions/serve-e2e-setup
+        with:
+          backend: ${{ vars.CI_BACKEND }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+
+      - name: Run GCP disk-tier Job
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ./test/integration/e2e.sh gcp-disk-tier --vitest
+
+      - name: Retain GCP disk-tier Job evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-gpu-disk-tier-gcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-gcp-disk-tier-*/e2e-run.json
+            /tmp/e2e-results-gcp-disk-tier-*/workloads-to-clean
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/fixture-record.json
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/*cleanup-observations*.json
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/*native-*.json
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/metadata.json
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/job-*.json
+            /tmp/e2e-results-gcp-disk-tier-*/vitest-fixture/**/dedicated-job-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload GCP disk-tier Job diagnostics
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-gpu-disk-tier-gcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-results-gcp-disk-tier-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  post-cleanup-aws:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
+    if: >-
+      always() && !cancelled() && !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit &&
+      (inputs.provider == 'all' || inputs.provider == 'aws')
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - run: yarn build
+      - name: Sweep remaining AWS resources
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
+
+  post-cleanup-azure:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
+    if: >-
+      always() && !cancelled() && !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit &&
+      (inputs.provider == 'all' || inputs.provider == 'azure')
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - run: yarn build
+      - name: Sweep current-run serve resources
+        continue-on-error: true
+        run: npx tsx ci/cleanup/azure-serve-run.ts
+      - name: Sweep remaining Azure resources
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
+
+  post-cleanup-gcp:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
+    if: >-
+      always() && !cancelled() && !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit &&
+      (inputs.provider == 'all' || inputs.provider == 'gcp')
+    concurrency:
+      group: e2e-gpu-qualification-gcp
+      queue: max
+      cancel-in-progress: false
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - run: yarn build
+      - name: Sweep remaining GCP resources
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
+
+  post-cleanup-lambda:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
+    if: >-
+      always() && !cancelled() && !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit &&
+      (inputs.provider == 'all' || inputs.provider == 'lambda')
+    concurrency:
+      group: e2e-gpu-qualification-lambda
+      queue: max
+      cancel-in-progress: false
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - run: yarn build
+      - name: Sweep remaining Lambda resources
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/lambda.ts
+
+  service-native-audit:
+    if: ${{ !inputs.azure_ghcr_probe_only && inputs.service_cleanup_audit != '' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    timeout-minutes: 10
+    concurrency:
+      group: e2e-gpu-qualification-${{ inputs.provider }}
+      queue: max
+      cancel-in-progress: false
+    env:
+      AWS_ACCESS_KEY_ID: ${{ inputs.provider == 'aws' && secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ inputs.provider == 'aws' && secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      AWS_SESSION_TOKEN: ${{ inputs.provider == 'aws' && secrets.AWS_SESSION_TOKEN || '' }}
+      GCP_PROJECT_ID: ${{ inputs.provider == 'gcp' && secrets.GCP_PROJECT_ID || '' }}
+      GCP_PRIVATE_KEY: ${{ inputs.provider == 'gcp' && secrets.GCP_PRIVATE_KEY || '' }}
+      GCP_CLIENT_EMAIL: ${{ inputs.provider == 'gcp' && secrets.GCP_CLIENT_EMAIL || '' }}
+      LAMBDA_API_KEY: ${{ inputs.provider == 'lambda' && secrets.LAMBDA_API_KEY || '' }}
+      SERVICE_CLEANUP_AUDIT: ${{ inputs.service_cleanup_audit }}
+      SERVICE_CLEANUP_AUDIT_PROVIDER: ${{ inputs.provider }}
+      SERVICE_CLEANUP_AUDIT_FORCE: ${{ inputs.force_service_cleanup && 'true' || 'false' }}
+      SERVICE_CLEANUP_AUDIT_MACE_ONLY: ${{ inputs.mace_only && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+      - run: bash scripts/ci-install-dependencies.sh
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - run: bash ci/check-cloud-tools.sh
+      - name: Observe only the declared original native and DNS identities
+        env:
+          SERVICE_CLEANUP_AUDIT_OUTPUT: ${{ runner.temp }}/service-cleanup-audit
+        run: yarn audit:service-cleanup
+      - name: Retain successful and failed scoped observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-comparison-evidence-native-audit-${{ inputs.provider }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/service-cleanup-audit/*.json
+          if-no-files-found: error
+          retention-days: 30

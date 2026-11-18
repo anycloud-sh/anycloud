@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "member": "long-history-responsiveness",
+  "candidate": "yarn test:long-history-responsiveness:vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "historical-fixture",
+      "requirement": "Seed the real migrated database with exactly 3,700 historical Workloads and the deterministic event/VM/session shape.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs.longHistory seed; historyManifestSchema"
+    },
+    {
+      "id": "inactive-history",
+      "requirement": "Before API startup and after immediate active recovery, require all historical Workloads to remain terminal, every historical VM to remain ended, and zero deploying Workloads.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-probes.ts inspectHistory via history-child.ts and history-recover-child.ts; assertHistoryInvariants"
+    },
+    {
+      "id": "isolated-api",
+      "requirement": "Start a sole loopback API/database process without lifecycle monitors; readiness is bounded to 20 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-serve-child.ts serve; ManagedProcess; parseHistoryReady with owned PID"
+    },
+    {
+      "id": "health-list-heavy-status",
+      "requirement": "Real health, unfiltered CLI list and the heavy-history CLI status complete within the existing six-second probe budget.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs.longHistory health/CLI probes and assertCommand"
+    },
+    {
+      "id": "cleanup-discovery",
+      "requirement": "The monitor's terminal cleanup candidates equal all pending cleanup rows for the actual seeded owner.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-probes.ts queryHistory via history-child.ts pendingCleanupCount/pendingCleanupCandidates"
+    },
+    {
+      "id": "terminate-picker",
+      "requirement": "The real Workload store returns min(pending-cleanup count, 1,000) terminatable rows.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-probes.ts listTerminatable and probeTerminatePickerBoundary via history-child.ts; the boundary probe lends limit + 1 pending-cleanup rows and requires an exactly full page"
+    },
+    {
+      "id": "cost-isolation",
+      "requirement": "The aider-filtered cost window contains no other agent attribution.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-probes.ts getCostReportInWindow via history-child.ts and byAgent assertion"
+    },
+    {
+      "id": "monitor-queries",
+      "requirement": "Retain timed reconciliation, retry-by-ID, terminal range, queued, deploying, VM-cost and named-credential queries plus active Spot, running Job and stuck-active counts.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: history-probes.ts queryHistory via history-child.ts timed operations and result summary"
+    },
+    {
+      "id": "session-selection",
+      "requirement": "Through the real CLI/API, label, exact ID, agent:prefix, bare prefix and no-match filters produce exact counts capped at 1,000 within six seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: historySessionCases; assertHistorySessionSelection; ReadModelProofs CLI loop"
+    },
+    {
+      "id": "warning-free-api",
+      "requirement": "Reject the original warning/error, unhandled, fatal, SQLite, OOM and out-of-memory log signatures.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs long-history-api diagnostics and log assertion"
+    },
+    {
+      "id": "ordered-database-copy",
+      "requirement": "Stop and reap the sole live API/database owner before copying its historical database and sidecars into billing children.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs api.stop before billing responsiveness; LIFO cleanup registration"
+    },
+    {
+      "id": "billing-health-overlap",
+      "requirement": "Add the same synthetic billable groups to the historical database; require at least ten overlapping health offers, the six-second gate, and every eligible row settled.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: billing-driver.ts responsiveness; assertResponsiveBilling and assertSettledFixture"
+    },
+    {
+      "id": "evidence-private-state",
+      "requirement": "Retain source-bound outcomes, query/session counts and raw billing health while removing private databases and retaining failed cleanup as failed evidence.",
+      "candidateEvidence": "test/integration/e2e/internal/read-models/: ReadModelProofs outcome/finally; fixture cleanup"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "base": "9662ff2c1eb538400b8a507785a1441151ef7b32",
+  "head": "76fd6202ff713424d6eaa1a7536f8cff0e03ce9f",
+  "moves": [
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/notifications-digest.ts",
+      "symbols": "*"
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/cost-calculation/monitor.ts",
+      "symbols": "*"
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/catalog-readiness.ts",
+      "symbols": ["CATALOG_REFRESH_INTERVAL_MS", "refreshCatalogs"]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/routes/new.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/billing-monitor.spec.mjs",
+      "test/unit/services/cloud-config.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/notifications-monitor.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts"
+    ],
+    "head": [
+      "test/unit/routes/new.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/billing-monitor.spec.mjs",
+      "test/unit/services/cloud-config.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/cost-calculation/monitor.spec.ts",
+      "test/unit/services/deployment-digest.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/notifications-digest.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts"
+    ]
+  }
+}

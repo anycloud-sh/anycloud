@@ -1,0 +1,112 @@
+{
+  "base": "60f6adec31929fc22432f3301a4a543736e35118",
+  "head": "4493a0a742256be9f7db89877e841c905491d533",
+  "moves": [
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/workload-workflows/vm-host-startup.ts",
+      "symbols": [
+        "shouldRunDeployStep",
+        "runResumableDeployStep",
+        "marksSuccessfulInPlaceRestart",
+        "deploy",
+        "resumeOnExistingVM",
+        "provisionStep",
+        "initializeStep",
+        "downloadStep",
+        "startStep",
+        "shouldStartWorkloadContainer",
+        "startServeStep",
+        "syncStep"
+      ]
+    },
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/host-runtime/host-startup.ts",
+      "symbols": [
+        "SSH_POLL_INTERVAL_MS",
+        "waitForSshReady",
+        "waitForDockerReady",
+        "initializeAllVMs",
+        "pullImages",
+        "startContainers",
+        "resolveContainerRuntime",
+        "waitForContainerHealth"
+      ]
+    },
+    {
+      "from": "src/api/services/docker.ts",
+      "to": "src/api/services/host-runtime/image-delivery.ts",
+      "symbols": [
+        "PullError",
+        "makeImagePullTelemetry",
+        "normalizeTransferReason",
+        "classifyTransferFailure",
+        "AUTHENTICATION_FAILURE_MESSAGES",
+        "AUTHENTICATION_TIMEOUT_PATTERN",
+        "DOCKER_CLIENT_SETUP_FAILURE_PATTERN",
+        "REGISTRY_CREDENTIAL_FAILURE_PATTERN",
+        "classifyAuthenticationResult",
+        "classifyAuthenticationError",
+        "authenticationErrorOutput",
+        "redactAuthenticationOutput",
+        [
+          "DockerManager.execAuthenticationCommand",
+          "execAuthenticationCommand"
+        ],
+        ["DockerManager.pullImage", "pullImage"],
+        ["DockerManager.pullImageDirect", "pullImageDirect"]
+      ]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/cli/submit-interactive.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/ssh-access.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/conduct.spec.ts",
+      "test/unit/services/credential-invalid-notify.spec.ts",
+      "test/unit/services/deploy.spec.ts",
+      "test/unit/services/docker.spec.ts",
+      "test/unit/services/gateways/azure.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/vm-runtime-storage.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts"
+    ],
+    "head": [
+      "test/unit/cli/submit-interactive.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/ssh-access.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/conduct.spec.ts",
+      "test/unit/services/credential-invalid-notify.spec.ts",
+      "test/unit/services/deploy.spec.ts",
+      "test/unit/services/docker.spec.ts",
+      "test/unit/services/gateways/azure.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/host-runtime/image-delivery.spec.ts",
+      "test/unit/services/host-runtime/terminate-step.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/vm-runtime-storage.spec.ts",
+      "test/unit/services/workload-container-specs.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/vm-host-startup.spec.ts"
+    ]
+  }
+}

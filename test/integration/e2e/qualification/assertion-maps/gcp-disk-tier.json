@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "member": "gcp-disk-tier",
+  "candidate": "e2e.sh gcp-disk-tier --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "Specs select only the closed member and assert its completion; capabilities, profile resolution and lifecycle policy remain in the existing family.",
+      "candidateEvidence": "test/integration/e2e/internal/: job-policy.ts; targets/job-profiles.ts; closed-spec ESLint and discovery regressions."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and complete inventory fencing precede every actual CLI create. Preserve original controller, credential, placement, legal provisional transitions, ended attempts, partial history and lost replies; never replay an unknown send.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobAttemptLedger; JobNativeCleanup; PublicCloudJobTransport; WorkloadMutationTransport; actual CLI parser and partial-history regressions."
+    },
+    {
+      "id": "active-baseline",
+      "requirement": "Require an original live Running record and native attempt, requested and resolved placement, and the actual Docker image configuration before extension work. Terminal-before-active evidence cannot satisfy these resource-dependent extensions.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.#cloudProgress; JobRecords.progress; exact native credential/identity and imageConfigDigest reader; terminal/foreign/optional placement regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims each original run/reference/generation-bound progress and required extension once, then releases all children and resources and emits one completion. Copied, missing, mismatched, early and reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobRecords begin/progress/extension/terminal/claim and DedicatedJobContract.#finalize; existing ownership and finalizer controls."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Require persisted terminal cleanup, complete native history and exact provider absence before release. Independent teardown cancellation and remaining deadlines retain primary and secondary failures. Credentials outlive their dependent resources; rescue cannot replace failed automatic-cleanup proof.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing JobNativeCleanup, credential/session owners and cleanup stack; raw fixture-record, cleanup-observations, attempt/native/resource readback regressions."
+    },
+    {
+      "id": "private-credentials-and-output",
+      "requirement": "Register original bootstrap API credential intent before import. Sanitize actual child environments and suppress secret-producing output before artifact recording; exact original-controller API absence gates credential release. No unrelated storage credential is acquired for members without storage.",
+      "candidateEvidence": "test/integration/e2e/internal/: PublicCloudJobTransport; JobAuthorization; JobPrivateCommands/isolatedJobEnvironment; real Lambda MACE no-AWS preparation; redaction and original-controller controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named live forced failure produces no completion. Retain compact success and failure records at least 30 days with exact source/profile/run/attempt/generation and durations; inspect inner outcomes and raw cleanup registrations before cleanup backstops.",
+      "candidateEvidence": "test/integration/e2e/internal/: GPU/GHCR Job workflow cells, unchanged companion/backstop authority and protected job-comparison-evidence prefix; workflow/retention regressions. No live result or formal qualification is claimed by this map."
+    },
+    {
+      "id": "all-six-cases",
+      "requirement": "Complete all six serial original cases: unset E2 -> pd-ssd; C4 medium/high/ultra -> hyperdisk-balanced; E2 medium -> pd-standard and ultra -> pd-ssd. Each case owns a distinct reference and record; none may be omitted or substituted.",
+      "candidateEvidence": "test/integration/e2e/internal/: Registered diskTier capability and frozen six-case profile; #diskTierMember serial child loop; missing/duplicate/reference tests."
+    },
+    {
+      "id": "original-disk-profile",
+      "requirement": "Preserve c4-standard-2/e2-standard-2, us-east4/c, Ubuntu 24.04 sleep 7200, original override precedence and the absent explicit disk-size flag. Each case has its own 1200-second Running and 2700-second cleanup budget.",
+      "candidateEvidence": "test/integration/e2e/internal/: jobMemberProfile/jobStageBudget; PublicCloudJobAdapter per-case flags; real CLI parses every case and rejects malformed placement before allocation."
+    },
+    {
+      "id": "exact-native-vm-and-boot-disk",
+      "requirement": "Read the original GCP instance and its one boot-disk resource under the original credential/project/zone. Preserve numeric native VM/disk IDs and reject foreign resource links, ambiguous boot disks, copied reference/row, wrong VM, region or zone and unsafe numeric fields.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing JobRecoveryTransport.#gcpDisk via diskTier; exact native parser and family identity equality; string/number and malformed native response controls."
+    },
+    {
+      "id": "native-type-and-performance",
+      "requirement": "Assert the native disk type in every case. High and ultra Hyperdisk require 100 GiB, respectively 8000 and 16000 provisioned IOPS, and 1000 MiB/s. This checks the requested disk target, not realized throughput of the deliberately limited C4 machine.",
+      "candidateEvidence": "test/integration/e2e/internal/: Family disk-tier assertion and actual provider reader; wrong type/size/IOPS/throughput controls."
+    },
+    {
+      "id": "serial-cleanup-and-final-release",
+      "requirement": "Actual persisted and independent native cleanup of one case precedes the next create. Keep all references armed until the family finalizer claims every case. Forced failure occurs after all six disk assertions while the last child is live.",
+      "candidateEvidence": "test/integration/e2e/internal/: #diskTierMember waitForCleanupRecorded/nativeAbsence before next submit; #finalize claims all six before release; ordering, later-child failure and forced cleanup controls."
+    }
+  ]
+}

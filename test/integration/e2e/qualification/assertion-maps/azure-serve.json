@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "member": "azure-serve",
+  "candidate": "e2e.sh azure-serve --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "tracked-before-create",
+      "requirement": "Arm Workload cleanup and native verification before resource creation; every CLI mutation requires that exact tracked reference.",
+      "candidateEvidence": "contracts/serve.ts submitServe; service-cleanup.ts reserve; persistent-vm-cleanup.ts reserveWithProfile and creationStarted; workload-mutations.ts trackedCliMutations."
+    },
+    {
+      "id": "accepted-service-identity",
+      "requirement": "Submission succeeds and status belongs to the exact Service ID, canonical Service type and submitted image.",
+      "candidateEvidence": "contracts/serve.ts submitServe/assertServeStatus; targets/public-cloud-serve.ts or targets/local-smolvm-serve.ts. Human CLI presentation stays in test/unit/cli/serve-command.spec.ts; the candidate reads typed persisted identity and DNS instead of parsing logs."
+    },
+    {
+      "id": "running-capacity",
+      "requirement": "Reach persisted Running with exactly one live backing VM, preserving its native ID, region and zone.",
+      "candidateEvidence": "contracts/serve.ts awaitServeReady/serveBackingHosts; vm-ledger.ts snapshotStatusVmLedger and liveVmCount; persistent-vm-cleanup.ts retains every database attempt."
+    },
+    {
+      "id": "terminal-cleanup-order",
+      "requirement": "Explicit Terminated and finite ordered completedAt/cleanedAt values precede release.",
+      "candidateEvidence": "contracts/serve.ts observeServeTermination/assertServeCleanupRecorded; service-cleanup.ts independent cleanupApi terminal readback before fallback release; workloads.ts waitForCleanupRecorded and release."
+    },
+    {
+      "id": "cleared-vm-ledger",
+      "requirement": "No live capacity row remains before tracking is released.",
+      "candidateEvidence": "contracts/serve.ts observeServeTermination; vm-ledger.ts assertCleared; workloads.ts bound cleanup and ledger proofs."
+    },
+    {
+      "id": "all-native-attempts",
+      "requirement": "Independently prove every historical, ended, replaced and partially observed native identity absent using its original credential, region and zone; unknown or synthetic reservations retain obligations.",
+      "candidateEvidence": "persistent-vm-cleanup.ts complete database capture, original credential binding and verify; transports/public-cloud-vm-host-presence.ts strict observations or transports/local-smolvm.ts exact/owned inventory."
+    },
+    {
+      "id": "failure-cleanup-evidence",
+      "requirement": "The before-finalize fault captures the completed journey, then diagnostics precede independent LIFO cleanup; primary and cleanup failures survive and unresolved resources remain tracked.",
+      "candidateEvidence": "contracts/serve.ts serviceCleanupFault; context.ts finalizeE2ELifecycle/dispose; cleanup.ts CleanupStack; service-cleanup.ts; e2e-fixture.spec.ts forced GPU cancellation/readback controls. helpers/common.sh mark_e2e_cleanup_workload_done preserves candidate tracking through outer API-only cleanup."
+    },
+    {
+      "id": "single-completion",
+      "requirement": "Only the finalizer publishes success after required evidence, child cleanup and Workload release; no failed or concurrent finalizer can complete twice.",
+      "candidateEvidence": "contracts/serve-baseline.ts privately owned WeakMap phases and finish; Local/AWS upgrade run finalizers release children before kernel.release and result artifacts."
+    },
+    {
+      "id": "persisted-public-dns",
+      "requirement": "Persist the Service DNS record ID and use exactly https://<Workload ID>.anycloud.sh.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve.ts; test/integration/e2e/internal/targets/serve-types.ts; test/integration/e2e/internal/targets/public-cloud-serve.ts: dnsUnmet requires the persisted dnsRecordId; assertReadyIdentity requires the exact publicServeUrl and the DNS-observation invariant its exact hostname; observeEndpoint observes that endpoint."
+    },
+    {
+      "id": "direct-https-markers",
+      "requirement": "The direct public endpoint returns HTTP 200 and every expected startup marker; redirects never establish the endpoint identity.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve.ts; test/integration/e2e/internal/transports/public-cloud-serve.ts; test/integration/e2e/internal/transports/http.ts: waitForReadyObservation requires a ready (HTTP 200) observation with no missingMarkers; observeEndpoint probes with redirect: 'error', and the HTTP transport rejects any redirect."
+    },
+    {
+      "id": "authoritative-dns-absence",
+      "requirement": "Every distinct delegated authority must return an exact negative A answer for the original hostname after native termination; empty, unavailable, foreign or partial evidence is not absence.",
+      "candidateEvidence": "transports/service-dns.ts ServiceDnsProbe/ServiceDnsTransport; service-cleanup.ts verifies exact authority coverage before release; contracts/serve.ts absence assertions."
+    },
+    {
+      "id": "environment-precedence",
+      "requirement": "Resolve a fixture env-file value plus a conflicting direct flag and serve the direct value, file marker and Service marker.",
+      "candidateEvidence": "probes/environment.ts EnvironmentProbeFixture; contracts/serve-baseline.ts builds the submission; contracts/serve-workload.ts emits resolved startup values; targets/public-cloud-serve.ts sends --env-file and --env."
+    },
+    {
+      "id": "named-bundle-digest",
+      "requirement": "A user-named secret bundle is injected and compared by digest; no plaintext is retained in endpoint or evidence.",
+      "candidateEvidence": "probes/named-secret.ts registers redaction before creation; contracts/serve-workload.ts compares the SHA-256 digest; contracts/serve-baseline.ts requires secret-ok."
+    },
+    {
+      "id": "durable-bundle-absence",
+      "requirement": "Delete the original named bundle and read back its exact absence before normal or fallback Workload release.",
+      "candidateEvidence": "secrets.ts deleteForCleanup/delete await ApiClient.deleteSecret exact-name list readback; API delete and read share the original absolute budget and fallback uses an independent cleanup client. service-cleanup.ts joins named-bundle readback into native verification; baseline finish also awaits probe release."
+    },
+    {
+      "id": "cpu-profile-compatibility",
+      "requirement": "Keep the existing azure CPU profile, disk/image and supported placement settings.",
+      "candidateEvidence": "test/integration/e2e/internal/profiles.ts; test/integration/e2e/internal/contracts/serve-policy.ts; test/integration/e2e/internal/targets/serve.ts: the serve profile reuses the CPU vmTypes and disk; ServeTargetFactory.adapter stays distinct from gpuAdapter."
+    },
+    {
+      "id": "retained-comparison-metadata",
+      "requirement": "Retain exact revision, observed image digest/profile/host coordinates and actual cleanup facts on successful and failed comparisons for at least 30 days; preserve prior observations and explicit unknowns.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/serve-baseline.ts; test/integration/e2e/internal/contracts/serve.ts; .github/workflows/e2e-serve.yml: service-finalization-boundary and result artifacts, Service/native cleanup and fixture records; the protected service-comparison-evidence-cloud upload in e2e-serve.yml."
+    }
+  ]
+}

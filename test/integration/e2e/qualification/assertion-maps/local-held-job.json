@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "member": "local-held-job",
+  "candidate": "e2e.sh local-held-job --vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "credentialless-cli",
+      "requirement": "An ordinary credentialless Job submission selects the Local VM-host path.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobAdapter.submit; LocalSmolvmJobTransport.prepare; DedicatedJobContract.run baseline."
+    },
+    {
+      "id": "input-hydration",
+      "requirement": "Input seed and checkpoint seed are present before workload startup; the shared Syncing state is recorded.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobAdapter.submit command; DedicatedJobContract.run Syncing assertion."
+    },
+    {
+      "id": "output-checkpoint-sync",
+      "requirement": "Output and checkpoint files reach their independently owned buckets within 90 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.run storage wait; LocalJobStorage.read validates exact owned directories and regular files."
+    },
+    {
+      "id": "one-time-input",
+      "requirement": "A file added after hydration is not continuously copied into the guest.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.lateInputRemainsAbsent; DedicatedJobContract.run requires exit-1 absence."
+    },
+    {
+      "id": "local-placement",
+      "requirement": "Status retains Local provider, local region and VM type.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.run matches captured profile/provider and Local placement."
+    },
+    {
+      "id": "native-ssh-identity",
+      "requirement": "Exactly one live VM identifies ac-local-<id>-0 and localhost with a positive SSH port.",
+      "candidateEvidence": "test/integration/e2e/internal/: VmLedgerProbe.snapshot/liveEntries and DedicatedJobContract.run exact native/SSH assertions."
+    },
+    {
+      "id": "stored-docker-secret-path",
+      "requirement": "Stored Docker command uses /run/anycloud-secrets/env and contains no inline GITHUB_TOKEN assignment.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.run dockerCommand assertion."
+    },
+    {
+      "id": "container-exec",
+      "requirement": "CLI exec reaches the Job container and reports its exact WORKLOAD_ID.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration workloadExec; family requires the named fact."
+    },
+    {
+      "id": "named-secret",
+      "requirement": "The named secret is injected at runtime without recording the plaintext environment.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration hashes the runtime value and compares its original digest; commands suppress raw artifacts."
+    },
+    {
+      "id": "github-runtime-auth",
+      "requirement": "The named secret's own GITHUB_TOKEN reaches the container environment unchanged and is present in the runtime secret file; GITHUB_USER is absent.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration compares the GITHUB_TOKEN digest with the secret's and checks GITHUB_USER is unset, without printing values."
+    },
+    {
+      "id": "environment-precedence",
+      "requirement": "The file environment and explicit override reach the workload; explicit CLI env overrides the file default.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.prepare environment file; LocalSmolvmJobAdapter.submit; configuration checks."
+    },
+    {
+      "id": "secret-file-owner-mode",
+      "requirement": "The guest runtime secret file is owned by cluster with mode 0600.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration runtimeSecretFile."
+    },
+    {
+      "id": "durable-labels",
+      "requirement": "Docker container name and managed, workload role and durable sh.anycloud.deployment-id labels match the Job.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration filtered Docker inspection; no full Config.Env output."
+    },
+    {
+      "id": "docker-resource-options",
+      "requirement": "Docker preserves 128 MiB shm, 256 MiB memory, 0.5 CPUs, and one nofile soft/hard 2048 limit.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobAdapter.submit options; configuration dockerOptions."
+    },
+    {
+      "id": "stdout-stderr-logs",
+      "requirement": "CLI logs returns the distinct stdout and stderr markers on their corresponding streams.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration stdoutLogs/stderrLogs."
+    },
+    {
+      "id": "host-exec",
+      "requirement": "API-authorized SSH reaches the guest host Docker socket, matching the legacy cli_exec --vm helper.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalSmolvmJobTransport.configuration hostExec through RemoteExecutor and API SSH access; test/integration/e2e/specs/contracts/dedicated-job/local-held-job.spec.ts exercises the public container exec grammar and private host transport."
+    },
+    {
+      "id": "termination",
+      "requirement": "Explicit termination reaches Terminated within the original 180-second budget.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.run termination, exact terminal observation and finalizer."
+    },
+    {
+      "id": "persisted-and-native-cleanup",
+      "requirement": "Persisted cleanup, no live VM rows, every observed native host absent, and a complete owned-machine inventory precede tracked-reference release.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobAttemptLedger, JobNativeCleanup.verify, LocalSmolvmJobTransport.nativeAbsence and DedicatedJobContract.run release."
+    },
+    {
+      "id": "cleanup-intent-and-history",
+      "requirement": "Cleanup is registered before mutations; each create has a completed inventory fence; lost replies and partial/ended history stay armed.",
+      "candidateEvidence": "test/integration/e2e/internal/: TrackedWorkloadKernel.reserveWithCleanupVerification; submitJob; JobAttemptLedger partial-prefix retention; JobNativeCleanup creation generations."
+    },
+    {
+      "id": "local-storage-ownership",
+      "requirement": "Each bucket is registered before creation and retained until native children are absent; cleanup independently reads exact host/root/name absence.",
+      "candidateEvidence": "test/integration/e2e/internal/: LocalJobStorage uses original canonical cluster and directory identity, collision/symlink rejection and complete root inventories."
+    },
+    {
+      "id": "secret-cleanup",
+      "requirement": "Named secret cleanup is armed before creation and read back from the strict API after deletion.",
+      "candidateEvidence": "test/integration/e2e/internal/: SecretManager registrations; ApiClient.deleteSecret uses a shared operation deadline/signal for delete and schema-validated list."
+    },
+    {
+      "id": "opaque-completion",
+      "requirement": "Only one family finalizer accepts original active/extension/terminal records from the same run/ref/generation; terminal-only progress cannot satisfy live extensions.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobRecords WeakMap ownership/generation checks; DedicatedJobContract.run sole completion/release; closed ESLint member shape."
+    },
+    {
+      "id": "comparison-source-and-observations",
+      "requirement": "Compact Bash and candidate records retain observed image, placement, native identities, cleanup, source/run/attempt bindings and durations without raw secret-bearing status fields.",
+      "candidateEvidence": "test/integration/e2e/internal/: Job profile/active/container-image/attempt/native/storage/resource-release records, fixture metadata and raw cleanup observations; protected 30-day Integration evidence upload."
+    },
+    {
+      "id": "forced-cleanup-and-retention",
+      "requirement": "A named active-stage failure exercises independent fallback cleanup and retains failed outcomes, partial histories and raw cleanup registrations for at least 30 days.",
+      "candidateEvidence": "test/integration/e2e/internal/: E2E_JOB_FORCE_CLEANUP before finalization; independent cleanup composition; common.sh preserves retained Job tracking after API-only rescue; integration Local Vitest cell and protected job-comparison-evidence uploads."
+    }
+  ]
+}

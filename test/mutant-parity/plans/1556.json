@@ -1,0 +1,74 @@
+{
+  "base": "8c35fcf2ecfb260fc30aa316e81bc2751712743b",
+  "head": "d5b9aea0348a752f302efa6cd7348111cb9f242b",
+  "moves": [
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/workload-workflows/targeted-job.ts",
+      "symbols": [
+        [
+          "reconcileTargetedJob",
+          [
+            "reconcileTargetedJob",
+            "src/api/services/repositories/workload-lifecycle.ts:WorkloadLifecycleStore.failExhaustedTargetedJob"
+          ]
+        ]
+      ]
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/monitor.ts",
+      "symbols": ["reconcileWorkloadWork"]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/repositories/deployment-executions.spec.ts",
+      "test/unit/services/repositories/workload-lifecycle.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/persistent-vm-repair.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/workload-pipeline.spec.ts"
+    ],
+    "head": [
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor-targeted-jobs.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/repositories/deployment-executions.spec.ts",
+      "test/unit/services/repositories/workload-lifecycle.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/persistent-vm-repair.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/targeted-job.spec.ts",
+      "test/unit/services/workload-workflows/workload-pipeline.spec.ts"
+    ]
+  }
+}

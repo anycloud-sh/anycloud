@@ -1,0 +1,230 @@
+{
+  "kubernetesDeployment": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "annotations": {
+        "anycloud.sh/deployment-id": "svc-a",
+        "anycloud.sh/owner-api": "00000000000000000000000000000001",
+        "anycloud.sh/user-id": "alice"
+      },
+      "labels": {
+        "anycloud.sh/deployment-hash": "645fcba02891a65e",
+        "app.kubernetes.io/component": "kubernetes-serve",
+        "app.kubernetes.io/managed-by": "anycloud"
+      },
+      "name": "anycloud-serve-svc-a-645fcba028",
+      "namespace": "anycloud-serve-svc-a-645fcba028"
+    },
+    "spec": {
+      "minReadySeconds": 30,
+      "replicas": 1,
+      "revisionHistoryLimit": 1,
+      "selector": {
+        "matchLabels": {
+          "anycloud.sh/deployment-hash": "645fcba02891a65e",
+          "app.kubernetes.io/component": "kubernetes-serve",
+          "app.kubernetes.io/managed-by": "anycloud"
+        }
+      },
+      "strategy": {
+        "type": "Recreate"
+      },
+      "template": {
+        "metadata": {
+          "annotations": {
+            "anycloud.sh/deployment-id": "svc-a",
+            "anycloud.sh/owner-api": "00000000000000000000000000000001",
+            "anycloud.sh/user-id": "alice"
+          },
+          "labels": {
+            "anycloud.sh/deployment-hash": "645fcba02891a65e",
+            "app.kubernetes.io/component": "kubernetes-serve",
+            "app.kubernetes.io/managed-by": "anycloud"
+          }
+        },
+        "spec": {
+          "affinity": {
+            "nodeAffinity": {
+              "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                  {
+                    "matchExpressions": [
+                      {
+                        "key": "node-restriction.kubernetes.io/anycloud-node-pool",
+                        "operator": "In",
+                        "values": [
+                          "node-pool-a"
+                        ]
+                      },
+                      {
+                        "key": "anycloud.sh/cluster",
+                        "operator": "In",
+                        "values": [
+                          "cluster-a"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "args": [
+                "serve"
+              ],
+              "env": [
+                {
+                  "name": "WORKLOAD_ID",
+                  "value": "svc-a"
+                },
+                {
+                  "name": "DEPLOYMENT_ID",
+                  "value": "svc-a"
+                },
+                {
+                  "name": "PORT",
+                  "value": "9000"
+                }
+              ],
+              "envFrom": [
+                {
+                  "secretRef": {
+                    "name": "anycloud-serve-svc-a-application-env-645fcba028"
+                  }
+                }
+              ],
+              "image": "ghcr.io/acme/api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "name": "workload",
+              "ports": [
+                {
+                  "containerPort": 9000,
+                  "name": "http"
+                }
+              ],
+              "readinessProbe": {
+                "periodSeconds": 5,
+                "tcpSocket": {
+                  "port": 9000
+                }
+              },
+              "resources": {
+                "limits": {
+                  "cpu": "4",
+                  "memory": "8Gi",
+                  "nvidia.com/gpu": "2"
+                },
+                "requests": {
+                  "cpu": "4",
+                  "memory": "8Gi",
+                  "nvidia.com/gpu": "2"
+                }
+              },
+              "startupProbe": {
+                "failureThreshold": 120,
+                "periodSeconds": 5,
+                "tcpSocket": {
+                  "port": 9000
+                }
+              },
+              "volumeMounts": [
+                {
+                  "mountPath": "/dev/shm",
+                  "name": "dev-shm"
+                },
+                {
+                  "mountPath": "/scratch",
+                  "name": "scratch-0"
+                }
+              ]
+            }
+          ],
+          "dnsPolicy": "Default",
+          "imagePullSecrets": [
+            {
+              "name": "anycloud-serve-svc-a-registry-auth-645fcba028"
+            }
+          ],
+          "nodeSelector": {
+            "anycloud.sh/ingress-entry": "node-pool-a",
+            "node-restriction.kubernetes.io/anycloud-node-pool": "node-pool-a"
+          },
+          "restartPolicy": "Always",
+          "runtimeClassName": "nvidia",
+          "tolerations": [
+            {
+              "effect": "NoSchedule",
+              "key": "anycloud.sh/node-pool",
+              "operator": "Equal",
+              "value": "node-pool-a"
+            }
+          ],
+          "volumes": [
+            {
+              "emptyDir": {
+                "medium": "Memory",
+                "sizeLimit": "1Gi"
+              },
+              "name": "dev-shm"
+            },
+            {
+              "emptyDir": {},
+              "name": "scratch-0"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "secrets": [
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {
+        "annotations": {
+          "anycloud.sh/deployment-id": "svc-a",
+          "anycloud.sh/owner-api": "00000000000000000000000000000001",
+          "anycloud.sh/user-id": "alice"
+        },
+        "labels": {
+          "anycloud.sh/deployment-hash": "645fcba02891a65e",
+          "app.kubernetes.io/component": "kubernetes-serve",
+          "app.kubernetes.io/managed-by": "anycloud"
+        },
+        "name": "anycloud-serve-svc-a-registry-auth-645fcba028",
+        "namespace": "anycloud-serve-svc-a-645fcba028"
+      },
+      "stringData": {
+        ".dockerconfigjson": "{\"auths\":{\"ghcr.io\":{\"username\":\"x-access-token\",\"password\":\"ghp_token\",\"auth\":\"eC1hY2Nlc3MtdG9rZW46Z2hwX3Rva2Vu\"}}}"
+      },
+      "type": "kubernetes.io/dockerconfigjson"
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Secret",
+      "metadata": {
+        "annotations": {
+          "anycloud.sh/deployment-id": "svc-a",
+          "anycloud.sh/owner-api": "00000000000000000000000000000001",
+          "anycloud.sh/user-id": "alice"
+        },
+        "labels": {
+          "anycloud.sh/deployment-hash": "645fcba02891a65e",
+          "app.kubernetes.io/component": "kubernetes-serve",
+          "app.kubernetes.io/managed-by": "anycloud"
+        },
+        "name": "anycloud-serve-svc-a-application-env-645fcba028",
+        "namespace": "anycloud-serve-svc-a-645fcba028"
+      },
+      "stringData": {
+        "DB_PASSWORD": "secret",
+        "MODE": "prod",
+        "PORT": "9000"
+      },
+      "type": "Opaque"
+    }
+  ]
+}

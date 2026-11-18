@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "member": "hosted-api-access-policy",
+  "candidate": "yarn test:hosted-api-access-policy:vitest",
+  "qualificationClass": "local-or-no-provision",
+  "assertions": [
+    {
+      "id": "username-only-startup",
+      "requirement": "Username-only hosted startup must exit nonzero within 10 seconds with both owner arguments required.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts; test/integration/e2e/internal/local-api-process.ts: ApiAuthScenarios.accessPolicy rejected startup via LocalApiProcess.create with the owner username only; rejectedCommand within 10 seconds."
+    },
+    {
+      "id": "durable-owner-seed",
+      "requirement": "The shipped hosted server seeds owner username and immutable GitHub ID before protected requests succeed.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy #hosted owner anycloud-test id 1; #policy reads owner_username and owner_user_id."
+    },
+    {
+      "id": "restoration-and-rename",
+      "requirement": "Copy real persisted API state after graceful shutdown, restart under a renamed owner with the same ID, and require authentication to refresh display metadata without changing identity.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts; test/integration/e2e/internal/local-api-process.ts: ApiAuthScenarios.accessPolicy restoreFrom the stopped original, start as renamed-owner with id 1, #policy owner_user_id unchanged and username refreshed."
+    },
+    {
+      "id": "legacy-rows-unmodified",
+      "requirement": "Bind a pre-durable owner policy without rewriting legacy Workload owner IDs; hosted members can read both current and earlier captured usernames.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy #seed legacy rows; rewritten count 0 via databaseInteger; #workloadIds includes legacy-current-handle and legacy-previous-handle."
+    },
+    {
+      "id": "same-name-wrong-id-denied",
+      "requirement": "A caller matching the owner username but using a different GitHub account ID is denied.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy other-owner fixture; #denied asserts rejectedCommand with API access denied."
+    },
+    {
+      "id": "allowlist-persistence-revocation",
+      "requirement": "An allowlisted immutable ID survives restart, then loses protected-route access immediately after CLI removal.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy #allowed after restart keeps user_id 1; the owner's removal then #denied without an API restart."
+    },
+    {
+      "id": "shipped-sharing-cli",
+      "requirement": "CLI add and list identify the owner and resolve a member to a nonempty immutable account ID.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy api access add/list; list.owner.userId 1, member-user with a numeric userId."
+    },
+    {
+      "id": "departed-member-workload",
+      "requirement": "A remaining member can read and terminate a departed member's Workload after revocation.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy departed fixture; #workloadIds includes member-workload and #terminate succeeds."
+    },
+    {
+      "id": "local-caller-isolation",
+      "requirement": "A local API lists its caller's Workload and hides other immutable owners and legacy rows captured under another username.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy local fixture; localIds include own-workload and exclude other-user-workload and legacy-other-handle."
+    },
+    {
+      "id": "real-authenticated-peers",
+      "requirement": "A second test-mode GitHub token signs in as a real caller, lists access and terminates the owner's Workload but is refused granting or removing access; a never-added stranger is denied.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts: ApiAuthScenarios.accessPolicy peers fixture; teammate lists access, is refused api access add third-user and remove teammate, #terminate owner-workload; #denied for test-token:stranger."
+    },
+    {
+      "id": "no-native-resources",
+      "requirement": "Every local ownership fixture proves zero VM rows and tears down its shipped server process; external cleanup is Not applicable.",
+      "candidateEvidence": "test/integration/e2e/internal/api-auth.ts; test/integration/e2e/internal/local-api-process.ts: ApiAuthScenarios.accessPolicy #noProvision after every fixture; LocalApiProcess.stop reaps the shipped server."
+    }
+  ]
+}

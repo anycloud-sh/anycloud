@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "member": "aws-concurrent-output",
+  "candidate": "e2e.sh aws-concurrent-output --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "The spec selects only its registered member and cannot supply lifecycle callbacks, placement overrides or completion evidence.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: job-policy.ts capturedMember/JOB_TARGET_PROFILES; closed-spec ESLint and Vitest discovery controls; thin dedicated-job spec."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a complete new inventory fence precede every send; original controller incarnation, credential, placement and provisional/native histories survive failures and resubmission.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger with before/after controller checks; JobNativeCleanup.creationStarted/capture; submitJob and direct final-send controller guard; kernel.reserveWithCleanupVerification; original private process environment."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup and zero live rows are prerequisites; independent native absence of every owned attempt is required before release, with uncertain history retained.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobNativeCleanup with independent cleanup readers/signal/deadline; historical attempt ledger; DedicatedJobContract.#finalize; no API-only manifest discharge."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims completion once, after exact run/reference/generation-bound progress, all required extension/terminal records and release of every child and shared resource.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobRecords begin/progress/extension/terminal/claim; DedicatedJobContract.#finalize; missing/copied/reused/early evidence regressions."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "A named forced failure leaves no completion; automatic cleanup and raw unresolved registrations are inspected independently, preserving primary and secondary errors and 30-day compact success/failure records.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: E2E_JOB_FORCE_CLEANUP in DedicatedJobContract; cleanup stack/native/storage/authorization records; common.sh manifest guard; protected job-comparison-evidence uploads; source/run/attempt metadata."
+    },
+    {
+      "id": "credential-intent-and-readback",
+      "requirement": "API and native credential intent precedes creation/import. Original account/principal/project identity, canonical credential hash and original controller remain pinned through complete absence readback.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization; job-aws-credential.ts, job-azure-credential.ts, job-gcp-credential.ts reuse onboarding owners; Azure acknowledged application-ID observations retain partial exact IDs and retry only complete missing directory reads within 60 seconds/remaining deadline; independent cleanup scope can finish binding after cancellation; directory cleanup uses the original isolated tenant session while only ARM role operations receive the subscription flag. ApiClient and complete credential database inventory; controller/send and alias-adoption regressions."
+    },
+    {
+      "id": "private-authentication",
+      "requirement": "Actual child environments exclude ambient credentials/endpoints/profiles. Secret-producing commands suppress artifacts before redaction; native authentication, fetch/body and cleanup remain within their independent deadlines.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobPrivateCommands recognizes both complete AWS error formats under unchanged truncation/authentication/privacy guards; isolatedJobEnvironment; JobCloudSession; private HTTP/error boundaries; command/session/credential privacy controls."
+    },
+    {
+      "id": "bucket-intent-and-native-scope",
+      "requirement": "Every explicit/automatic bucket has pre-mutation intent, exact API/native readback and immutable owner metadata. Empty contents never prove absence; malformed, foreign, truncated, unauthorized or redirected observations retain intent.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobCloudStorage reserve/create/beginAutomatic/observe/remove; one complete reread only for a previously unadopted automatic creation race, retaining both contradictory reads under the original deadline; JobBucketNativeReader original S3 account/region, GCS project number/location and Azure subscription/account/container; complete paginated Azure parent/container witnesses."
+    },
+    {
+      "id": "dependent-resource-lifetime",
+      "requirement": "All native children and owned storage must be absent before generated credentials are removed; uncertain or lost replies cannot adopt foreign resources or clear registrations.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport shared group childrenAbsent/dependentsAbsent; JobCloudStorage and JobAuthorization single-use lifetime; independent cleanup after cancellation and failed partial group setup."
+    },
+    {
+      "id": "observed-image-and-placement",
+      "requirement": "Active evidence binds requested image/selectors, actual Docker configuration digest, API manifest observation, original native attempt, credential and exact resolved live VM coordinates to the owning run; global placement and ordered fallback selectors remain distinct from resolved placement.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#cloudProgress; PublicCloudJobTransport.imageConfigDigest; active-baseline/profile/credential-binding artifacts; absent optional API zones normalize to the original null zone, while known-zone mismatches still fail; actual manifest absence stays explicit."
+    },
+    {
+      "id": "three-original-submissions",
+      "requirement": "Submit exactly three distinct Jobs with original non-spot nginx:alpine/100 GiB provider profile and one shared output bucket before waits or writes.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobAdapter; DedicatedJobContract.#cloudMember three fixtures and drained Promise.allSettled sends; PublicCloudJobTransport group owner."
+    },
+    {
+      "id": "independent-running-budgets",
+      "requirement": "Each child receives its own full 1800-second Running budget and must supply a live active baseline.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract sequential #cloudProgress calls after all sends; budget regressions."
+    },
+    {
+      "id": "three-parallel-writes",
+      "requirement": "Each child writes its unique exact contents to job-N/output.txt; initial verification reads and matches all three within 120 seconds.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport.writeConcurrent/concurrentContents; DedicatedJobContract.#concurrent same() checks all three expected payloads."
+    },
+    {
+      "id": "sync-cycle-content-retention",
+      "requirement": "After 70 seconds, all three contents survive. At most three ordinary consistency reads separated by 30 seconds preserve the Bash retry behavior.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: PublicCloudJobTransport.syncCycle/verificationRetry; DedicatedJobContract.#concurrent stable contents."
+    },
+    {
+      "id": "all-children-before-storage-release",
+      "requirement": "Terminate and prove cleanup/native absence for all three children, then verify all three contents before any shared bucket/credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#concurrent group termination/cleanup/native loops, after-termination content artifact and finalizer release sequence."
+    },
+    {
+      "id": "partial-group-failure",
+      "requirement": "Drain every pending child send/write on failure; any unresolved child keeps shared bucket and credential registrations armed.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: DedicatedJobContract.#settle; PublicCloudJobTransport childrenAbsent/dependentsAbsent; actual composition lost-send and lifetime regressions."
+    },
+    {
+      "id": "region-list",
+      "requirement": "Each Job submitted with a two-region `--regions` list keeps that list in its record, and the native read finds its VM, of the type status reports, in one of those regions.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #cloudProgress region-list check; test/integration/e2e/internal/targets/job-profiles.ts concurrentOutput.regions."
+    }
+  ]
+}

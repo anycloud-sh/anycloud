@@ -1,0 +1,37 @@
+name: Notify Slack
+
+on:
+  workflow_call:
+    inputs:
+      message:
+        description: Message to send to Slack
+        required: true
+        type: string
+    secrets:
+      SLACK_CI_WEBHOOK_URL:
+        required: true
+
+permissions: {}
+
+jobs:
+  notify:
+    if: ${{ !cancelled() }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    permissions: {}
+    timeout-minutes: 2
+    steps:
+      - name: Send Slack message
+        env:
+          SLACK_CI_WEBHOOK_URL: ${{ secrets.SLACK_CI_WEBHOOK_URL }}
+          SLACK_MESSAGE: ${{ inputs.message }}
+        shell: bash
+        run: |
+          if [ -z "$SLACK_CI_WEBHOOK_URL" ]; then
+            echo "::error::SLACK_CI_WEBHOOK_URL is not configured"
+            exit 1
+          fi
+          jq -n --arg text "$SLACK_MESSAGE" '{text: $text}' |
+            curl --fail --silent --show-error \
+              --connect-timeout 10 --max-time 30 \
+              --header 'Content-Type: application/json' \
+              --data-binary @- "$SLACK_CI_WEBHOOK_URL"

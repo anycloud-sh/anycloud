@@ -1,0 +1,15 @@
+node_modules
+dist
+.wrangler
+.context
+python/.pytest_cache
+# Helm templates are Go templates, not YAML Prettier can parse.
+charts/*/templates
+# Generated from the commander tree; one command per line for review (yarn generate:cli-surface).
+test/integration/e2e/internal/cli-surface.generated.ts
+# Canonical JSON from the API contract (yarn generate:openapi).
+src/shared/api-contract/openapi.generated.json
+# Golden renders compared byte for byte against JSON.stringify output.
+test/unit/services/kubernetes/golden
+# Third-party licence texts, kept verbatim (release/build-binaries.sh, Dockerfile).
+release/licenses

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rootDir": ".",
+    "target": "ES2023",
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "experiments/**/*.ts",
+    "benchmarks/**/*.ts",
+    "ci/**/*.ts"
+  ],
+  "exclude": ["ci/canary"]
+}

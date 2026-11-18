@@ -1,0 +1,131 @@
+{
+  "base": "d5341669e15b10d48af723d199f76576e75083c5",
+  "head": "763eaff7ff3010ff9eaefe8b778537a4fe8dac75",
+  "moves": [
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/workload-workflows/persistent-vm-repair.ts",
+      "symbols": [
+        "VM_HOST_MISSING_REASON",
+        "VM_REPAIR_LOG_DEDUP_MS",
+        "vmRepairLastLog",
+        "logVmRepairOutcome",
+        "reconcileRunningVm",
+        "reconcileUnobservableRunningVmHost"
+      ]
+    },
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/host-runtime/vm-container-repair.ts",
+      "symbols": ["classifyExistingVmContainer", "reconcileRunningVmContainer"]
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/workload-workflows/workload-pipeline.ts",
+      "symbols": [
+        "provisioningAttemptRef",
+        "provisioningAttemptPlacementMismatch",
+        "moveActivePipelineToRetry",
+        "applyProvisioningIntent",
+        "prepareWorkloadPipeline",
+        "launchWorkloadPipeline",
+        "applyWorkloadPipelineOutcome",
+        "workloadPipelineFailureOutcome",
+        "runWorkloadPipeline",
+        "wakeWorkloadPipeline",
+        "reconcileActivePipelineCandidate"
+      ]
+    },
+    {
+      "from": "src/api/services/monitor.ts",
+      "to": "src/api/services/workload-workflows/provisioning-scheduler.ts",
+      "symbols": [
+        "runProvisioningScheduler",
+        "SPEND_BLOCK_ALERT_COOLDOWN_MS",
+        "BUDGET_PERIOD_MS",
+        "spendBlockAttribution",
+        "maybeNotifySpendBlock"
+      ]
+    },
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/credential-auth-failure.ts",
+      "symbols": [
+        "CREDENTIAL_INVALID_ALERT_COOLDOWN_MS",
+        "credentialInvalidAlerts",
+        "_resetCredentialInvalidAlerts",
+        "maybeNotifyCredentialInvalid",
+        "markCredentialOnAuthFailure"
+      ]
+    },
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/provisioning-failure.ts",
+      "symbols": ["resolveProvisioningFailureDisposition"]
+    },
+    {
+      "from": "src/api/services/conduct.ts",
+      "to": "src/api/services/workload-admission-checks.ts",
+      "symbols": ["validateId", "validateCredentials"]
+    }
+  ],
+  "specs": {
+    "base": [
+      "test/unit/e2e-cluster-cloud-hosted-stage.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/conduct.spec.ts",
+      "test/unit/services/credential-invalid-notify.spec.ts",
+      "test/unit/services/deploy.spec.ts",
+      "test/unit/services/gateways/azure.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts"
+    ],
+    "head": [
+      "test/unit/e2e-cluster-cloud-hosted-stage.spec.ts",
+      "test/unit/routes/new.spec.ts",
+      "test/unit/routes/spend-controls.spec.ts",
+      "test/unit/routes/terminate.spec.ts",
+      "test/unit/server/deploy-background.spec.ts",
+      "test/unit/services/azure-t4-unpinned-regression.spec.ts",
+      "test/unit/services/compute-validation.spec.ts",
+      "test/unit/services/credential-auth-failure.spec.ts",
+      "test/unit/services/credential-invalid-notify.spec.ts",
+      "test/unit/services/gateways/azure.spec.ts",
+      "test/unit/services/gpu-resolution.spec.ts",
+      "test/unit/services/host-runtime/vm-container-repair.spec.ts",
+      "test/unit/services/job-completion-scale.spec.ts",
+      "test/unit/services/lambda-boot-timeout-rotation.spec.ts",
+      "test/unit/services/monitor.spec.ts",
+      "test/unit/services/node-pool-service-cleanup-lane.spec.ts",
+      "test/unit/services/optimizer.spec.ts",
+      "test/unit/services/preemption-scale.spec.ts",
+      "test/unit/services/provisioning-failure.spec.ts",
+      "test/unit/services/region-failover.spec.ts",
+      "test/unit/services/retry-release.spec.ts",
+      "test/unit/services/scheduler-starvation.spec.ts",
+      "test/unit/services/workload-admission-checks.spec.ts",
+      "test/unit/services/workload-reconcile-scale.spec.ts",
+      "test/unit/services/workload-workflows/cleanup.spec.ts",
+      "test/unit/services/workload-workflows/completion-reconcile.spec.ts",
+      "test/unit/services/workload-workflows/persistent-vm-repair.spec.ts",
+      "test/unit/services/workload-workflows/provisioning-scheduler.spec.ts",
+      "test/unit/services/workload-workflows/retry-recovery.spec.ts",
+      "test/unit/services/workload-workflows/workload-pipeline.spec.ts"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+name: Cloudflare IP Ranges
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 13 * * 1' # Weekly Monday check
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Check Cloudflare IP ranges
+        run: npx tsx ci/check-cloudflare-ips.ts

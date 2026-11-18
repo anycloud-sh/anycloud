@@ -1,0 +1,29 @@
+name: Validate CI backend
+description: Validate and report the repository CI backend selection
+
+inputs:
+  backend:
+    description: Repository CI_BACKEND variable
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Validate backend
+      shell: bash
+      env:
+        CI_BACKEND_INPUT: ${{ inputs.backend }}
+      run: |
+        case "$CI_BACKEND_INPUT" in
+          ''|backmesh|hosted)
+            ;;
+          *)
+            echo "::error::CI_BACKEND must be 'backmesh' or 'hosted'; got '$CI_BACKEND_INPUT'"
+            exit 1
+            ;;
+        esac
+
+        effective_backend=${CI_BACKEND_INPUT:-backmesh}
+        echo "CI backend: $effective_backend"
+        echo "### CI backend: \`$effective_backend\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "member": "azure-ghcr-probe",
+  "candidate": "e2e.sh azure-ghcr-probe --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "Specs select only the closed member and assert its completion; capabilities, profile resolution and lifecycle policy remain in the existing family.",
+      "candidateEvidence": "test/integration/e2e/internal/: job-policy.ts; targets/job-profiles.ts; closed-spec ESLint and discovery regressions."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and complete inventory fencing precede every actual CLI create. Preserve original controller, credential, placement, legal provisional transitions, ended attempts, partial history and lost replies; never replay an unknown send.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobAttemptLedger; JobNativeCleanup; PublicCloudJobTransport; WorkloadMutationTransport; actual CLI parser and partial-history regressions."
+    },
+    {
+      "id": "active-baseline",
+      "requirement": "Require an original live Running record and native attempt, requested and resolved placement, and the actual Docker image configuration before extension work. Terminal-before-active evidence cannot satisfy these resource-dependent extensions.",
+      "candidateEvidence": "test/integration/e2e/internal/: DedicatedJobContract.#cloudProgress; JobRecords.progress; exact native credential/identity and imageConfigDigest reader; terminal/foreign/optional placement regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer claims each original run/reference/generation-bound progress and required extension once, then releases all children and resources and emits one completion. Copied, missing, mismatched, early and reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobRecords begin/progress/extension/terminal/claim and DedicatedJobContract.#finalize; existing ownership and finalizer controls."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Require persisted terminal cleanup, complete native history and exact provider absence before release. Independent teardown cancellation and remaining deadlines retain primary and secondary failures. Credentials outlive their dependent resources; rescue cannot replace failed automatic-cleanup proof.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing JobNativeCleanup, credential/session owners and cleanup stack; raw fixture-record, cleanup-observations, attempt/native/resource readback regressions."
+    },
+    {
+      "id": "private-credentials-and-output",
+      "requirement": "Register original bootstrap API credential intent before import. Sanitize actual child environments and suppress secret-producing output before artifact recording; exact original-controller API absence gates credential release. No unrelated storage credential is acquired for members without storage.",
+      "candidateEvidence": "test/integration/e2e/internal/: PublicCloudJobTransport; JobAuthorization; JobPrivateCommands/isolatedJobEnvironment; real Lambda MACE no-AWS preparation; redaction and original-controller controls."
+    },
+    {
+      "id": "failure-evidence-and-retention",
+      "requirement": "The named live forced failure produces no completion. Retain compact success and failure records at least 30 days with exact source/profile/run/attempt/generation and durations; inspect inner outcomes and raw cleanup registrations before cleanup backstops.",
+      "candidateEvidence": "test/integration/e2e/internal/: GPU/GHCR Job workflow cells, unchanged companion/backstop authority and protected job-comparison-evidence prefix; workflow/retention regressions. No live result or formal qualification is claimed by this map."
+    },
+    {
+      "id": "held-host-and-separate-pinned-probe",
+      "requirement": "Preserve the held Ubuntu 24.04 GPU Job on Standard_NC4as_T4_v3/westus2 with 100 GiB high-tier disk, on-demand by default, and a separately pinned MACE probe image. Preserve original validated VM/region/disk/spot and probe inputs; spot retains its owned checkpoint cleanup.",
+      "candidateEvidence": "test/integration/e2e/internal/: ghcrProbe capability, JobMemberProfile.ghcr and actual CLI parsing for both spot modes; unsupported profile and pinned-image controls."
+    },
+    {
+      "id": "image-resolution-facts",
+      "requirement": "Resolve the declared GHCR digest to linux/amd64 layer facts with private anonymous authorization, bounded reads and redirect/schema checks. Preserve the original VM auto-resolution fallback with imageBytes=0 and the original resolution failure; unknown bytes cannot invent comparable baseline throughput.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobGhcrTransport.prepare/#imageFacts with existing TargetHttpClient; pinned index/layer, private token, fallback and image fact identity controls."
+    },
+    {
+      "id": "original-ssh-host",
+      "requirement": "Pin the original Workload SSH endpoint, key and captured host key once; reject a foreign Workload/IP before key creation or commands. Every foreground probe verifies the original live native row/credential/placement before and after; cleanup uses this original host and independent cancellation. Sanitize the actual initial and subsequent SSH child environments and suppress raw command recording before execution.",
+      "candidateEvidence": "test/integration/e2e/internal/: Existing RemoteExecutor.pinHost expectedHost and per-command deadline/signal/private-output options preserve Service defaults; JobGhcrTransport bind and public transport owner; shared Service and foreign-attempt regressions. Real ProcessRunner child regression verifies ambient provider credentials are absent from both the initial pin and later commands, with zero raw command artifacts."
+    },
+    {
+      "id": "shared-throughput-payload",
+      "requirement": "Run the unchanged probe-ghcr-throughput.sh on the original host with 268435456 sample bytes and ladder 1/4/8/16 by default. Preserve original overrides, private output, fingerprints and a named throughput verdict; a failing or incomplete payload cannot pass.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobGhcrTransport.throughput and jobGhcrThroughput; shared payload byte and malformed verdict controls; raw PROBE output retained in its existing format."
+    },
+    {
+      "id": "detached-pull-and-lost-reply",
+      "requirement": "Record unit intent before sending the unchanged containerd payload through the original detached systemd unit. Preserve its EXIT status trap, 1200/2400-second pull timeout, 15-second polling and whole 3600/5400-second runner budget. Reject malformed/nonzero/truncated replies and three consecutive terminal unit reads without an exit record; retain lost starts and partial diagnostics.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobGhcrTransport startPull/poll/capture with existing cleanup stack and pinned SSH; family wait/rejection/remaining deadline; lost-send, cancellation, terminal-without-status and partial nonzero SSH controls."
+    },
+    {
+      "id": "docker-visibility-and-automatic-cleanup",
+      "requirement": "Require exit zero, Docker visibility PASS, verdict SUPPORTED and the shared payload cleanup PASS before accepting the pull. Daemon rescue or subsequent VM deletion cannot erase a failed automatic-cleanup assertion.",
+      "candidateEvidence": "test/integration/e2e/internal/: jobGhcrPull canonical predicates; existing probe-containerd-parallel-pull.sh; failed automatic cleanup and primary/secondary cleanup regressions."
+    },
+    {
+      "id": "explicit-cold-baseline",
+      "requirement": "Keep baseline disabled by default and record whether it was requested. If enabled, require one error-free cold baseline, finite positive transfer/baseline rates, and transfer strictly faster. Reject missing, cached, malformed, zero, equal/slower and undeclared baseline observations.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobGhcrProfile and jobGhcrPull; both workflow legs bind identical baseline input/budgets; explicit baseline controls."
+    },
+    {
+      "id": "probe-finalization-and-native-cleanup",
+      "requirement": "The probe closes only its SSH material; the family owns Job termination/completion/release, and the existing native owner owns VM/unit/daemon cleanup. Register diagnostics before commands, stop/capture only the original unit after cancellation, retain failures and still run native cleanup. Fault after detached launch exercises a live host.",
+      "candidateEvidence": "test/integration/e2e/internal/: JobGhcrTransport cleanup registration/finish and family #ghcrMember/#finalize; cleanup after cancelled/lost SSH, material errors and native-owner continuation tests; shared Azure provider lock."
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+name: Serve E2E setup
+description: >-
+  Shared setup for the serve e2e jobs: check the cloud toolchain, validate the
+  DNS-publishing token, set up Node + yarn, install deps, and log in to GHCR (so
+  resolve-deps-image.sh can read the prebuilt deps base).
+  Checkout must run before this — local actions need the repo on disk.
+inputs:
+  backend:
+    description: Repository CI_BACKEND value; an empty value means backmesh.
+    required: false
+    default: ''
+  ghcr-token:
+    description: Workflow GITHUB_TOKEN, used for the GHCR login (and image push).
+    required: true
+  dns-token:
+    description: >-
+      E2E_SERVE_GITHUB_TOKEN PAT used to publish *.anycloud.sh DNS records;
+      validated up front so a missing/expired token fails the job fast.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check cloud toolchain
+      shell: bash
+      run: bash ci/check-cloud-tools.sh
+
+    - name: Validate DNS token
+      shell: bash
+      env:
+        DNS_TOKEN: ${{ inputs.dns-token }}
+      run: |
+        if [ -z "${DNS_TOKEN:-}" ]; then
+          echo "E2E_SERVE_GITHUB_TOKEN is required for serve e2e DNS publishing"
+          exit 1
+        fi
+        curl -fsS -H "Authorization: Bearer $DNS_TOKEN" https://api.github.com/user >/dev/null
+
+    - name: Setup Node.js 22
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: ${{ inputs.backend == 'hosted' && 'yarn' || '' }}
+
+    - name: Install dependencies
+      shell: bash
+      run: bash scripts/ci-install-dependencies.sh
+
+    - name: Log in to GHCR
+      uses: ./.github/actions/ghcr-login
+      with:
+        token: ${{ inputs.ghcr-token }}

@@ -1,0 +1,4436 @@
+{
+  "formatVersion": 1,
+  "studyId": "list-aa-merged-main-20260914-v1",
+  "studySha256": "d8b06886114adb00598e90313bb61bfeb02de75e147681a58bcacc3207113234",
+  "analyzedAt": "2026-09-14T22:48:48.442Z",
+  "workflowRun": 34901951049,
+  "harnessSourceSha": "8b7f1cd190564460d0af80e194e71e1bfa2386db",
+  "applicationSourceSha": "62ed9a28c522f2f2ee638b80074b81da55e127b4",
+  "status": "complete",
+  "decision": "inconclusive",
+  "promotion": false,
+  "cases": [
+    {
+      "id": "ip-heavy-user-matrix",
+      "decision": "inconclusive",
+      "trialCount": 12,
+      "gates": 30,
+      "passingGates": 22,
+      "inconclusiveGates": 8,
+      "whollyOutsideBand": 3,
+      "work": {
+        "offered": 6000,
+        "admitted": 6000,
+        "completed": 6000,
+        "timedOut": 0,
+        "deadlineMisses": 0,
+        "httpErrors": 0,
+        "transportErrors": 0,
+        "bodyLimits": 0,
+        "schedulingSkipped": 0,
+        "admissionSkipped": 0,
+        "unfinished": 0,
+        "responseBytes": 2292631200
+      },
+      "recoveryFinal30Work": {
+        "offered": 0,
+        "failures": 0,
+        "lateSuccesses": 0
+      },
+      "allRetainedHealth": {
+        "offered": 12699,
+        "misses": 5,
+        "transportOrTimeout": 5,
+        "lateSuccesses": 0
+      },
+      "scheduledHealth": {
+        "offered": 0,
+        "misses": 0,
+        "transportOrTimeout": 0,
+        "lateSuccesses": 0
+      },
+      "recoveryFinal30Health": {
+        "offered": 0,
+        "misses": 0,
+        "transportOrTimeout": 0,
+        "lateSuccesses": 0
+      },
+      "correctnessResponses": 74,
+      "evidence": {
+        "files": 350,
+        "bytes": 35193908,
+        "gzipResponses": 194,
+        "requests": 7212,
+        "serverObservations": 7212,
+        "health": 12699,
+        "journalFiles": 42,
+        "correctnessRequestRecords": 74,
+        "correctnessServerObservations": 74
+      },
+      "harnessSha256": "117eccf0afaba2783ce113cf2b79da2b5d8fc27ce8e700de8abdc89d91873e08",
+      "acceptanceSha256": "abcf54408182886b400cb5f2eb7e693994674f8a9cd4445e86c8282d3b23ca2a",
+      "fixture": {
+        "profile": "ip-heavy",
+        "small": false,
+        "hotRows": 2200,
+        "statusId": "list-d-000011",
+        "session": "claude:list-session-a",
+        "seedMs": 3377.3072609999995,
+        "now": 1789041600000,
+        "counts": {
+          "deployments": 2400,
+          "container_specs": 2400,
+          "vms": 281801,
+          "deployment_events": 9600,
+          "credentials": 2,
+          "workers": 0,
+          "clusters": 0
+        },
+        "vmShape": {
+          "nullIp": 2200,
+          "withIp": 279601,
+          "emptyIp": 0,
+          "live": 880
+        },
+        "logicalSha256": "8afe7395b77c065bd28fa9a1d4f1e1ec40bf1e5338f4a608cc34699da5bb610d"
+      },
+      "runtime": {
+        "node": "v22.14.0",
+        "platform": "linux",
+        "arch": "x64",
+        "cpuModel": "AMD EPYC 7763 64-Core Processor",
+        "logicalCpus": 2,
+        "totalMemoryBytes": 8323973120
+      },
+      "runner": {
+        "environment": "github-hosted",
+        "name": "GitHub Actions 1000001295",
+        "os": "Linux",
+        "arch": "X64",
+        "imageOS": "ubuntu24",
+        "imageVersion": "20260907.300.1",
+        "hostname": "runnervmlun5p",
+        "kernel": "6.17.0-1022-azure"
+      },
+      "revisions": {
+        "baseline": {
+          "sourceSha": "62ed9a28c522f2f2ee638b80074b81da55e127b4",
+          "sourceDirty": false,
+          "buildSha256": "1a72956ec38139dd08fd0834866340596d3a7c34759f90e3063712619ac617a6",
+          "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+          "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+          "version": "0.1.63"
+        },
+        "candidate": {
+          "sourceSha": "62ed9a28c522f2f2ee638b80074b81da55e127b4",
+          "sourceDirty": false,
+          "buildSha256": "1a72956ec38139dd08fd0834866340596d3a7c34759f90e3063712619ac617a6",
+          "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+          "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+          "version": "0.1.63"
+        }
+      },
+      "runtimeFiles": {
+        "nodeExecutableSha256": "1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1",
+        "versions": {
+          "node": "22.14.0",
+          "acorn": "8.14.0",
+          "ada": "2.9.2",
+          "amaro": "0.3.0",
+          "ares": "1.34.4",
+          "brotli": "1.1.0",
+          "cjs_module_lexer": "1.4.1",
+          "cldr": "46.0",
+          "icu": "76.1",
+          "llhttp": "9.2.1",
+          "modules": "127",
+          "napi": "10",
+          "nbytes": "0.1.1",
+          "ncrypto": "0.0.1",
+          "nghttp2": "1.64.0",
+          "nghttp3": "1.6.0",
+          "ngtcp2": "1.10.0",
+          "openssl": "3.0.15+quic",
+          "simdjson": "3.10.1",
+          "simdutf": "6.0.3",
+          "sqlite": "3.47.2",
+          "tz": "2024b",
+          "undici": "6.21.1",
+          "unicode": "16.0",
+          "uv": "1.49.2",
+          "uvwasi": "0.0.21",
+          "v8": "12.4.254.21-node.22",
+          "zlib": "1.3.0.1-motley-82a5fec"
+        },
+        "databaseBindings": {
+          "baseline": {
+            "version": "11.10.0",
+            "packageSha256": "58e81504576abccfacbfd08dc9432dc3a00d0fc0454685cb7a76aaf976cf25a9",
+            "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+          },
+          "candidate": {
+            "version": "11.10.0",
+            "packageSha256": "58e81504576abccfacbfd08dc9432dc3a00d0fc0454685cb7a76aaf976cf25a9",
+            "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+          }
+        }
+      },
+      "preflightIdlePercent": {
+        "min": 98.5,
+        "max": 100
+      },
+      "correlation": {
+        "success": {
+          "offered": 6000,
+          "observed": 6000,
+          "notObserved": 0
+        }
+      },
+      "transportCauses": {},
+      "intervals": [
+        {
+          "id": "ordinary-default/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9886438925839497,
+          "lower": 0.9733534101370575,
+          "upper": 1.0054468551319773,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9768978119963498, 0.9630001760185958, 0.9766302706748391,
+            0.983880018590459, 1.0202237947545771, 1.0125023813743537
+          ],
+          "descriptive": {
+            "baselineMedian": 58.39300371000023,
+            "candidateMedian": 57.23300557999992,
+            "armMedianRatio": 0.9801346384618052,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-default/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9810449715650926,
+          "lower": 0.9584250209445473,
+          "upper": 1.004566150173802,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9602813587215638, 0.9398551352027112, 0.9707159565558919,
+            0.980252267611202, 1.0199962626482355, 1.017760226684437
+          ],
+          "descriptive": {
+            "baselineMedian": 65.91579250000018,
+            "candidateMedian": 63.77989700000012,
+            "armMedianRatio": 0.967596604410088,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-default/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9699148545273507,
+          "lower": 0.9507320373873837,
+          "upper": 0.9941258926718161,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9678681410423008, 0.9621698182437765, 0.9351011249788922,
+            0.967996538023837, 0.964141208342454, 1.0243791047157933
+          ],
+          "descriptive": {
+            "baselineMedian": 74.80154650000031,
+            "candidateMedian": 72.60820249999983,
+            "armMedianRatio": 0.9706778254912086,
+            "pairedLower": 5,
+            "pairedEqual": 0,
+            "pairedHigher": 1
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-1/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9914638489722548,
+          "lower": 0.9757236363515384,
+          "upper": 1.0085957805155237,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9882406920540511, 0.9673136113376553, 1.0292853849116346,
+            0.9699480468896027, 1.003414361114852, 0.9918972309470411
+          ],
+          "descriptive": {
+            "baselineMedian": 1.919511509999702,
+            "candidateMedian": 1.9114679899999283,
+            "armMedianRatio": 0.9958096005374957,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-1/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0026438287632933,
+          "lower": 0.9893988178151336,
+          "upper": 1.014779772725304,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9763526144351172, 0.9874872771282562, 1.0219282598382173,
+            1.0076812899718077, 1.0085506029086182, 1.0146134399603601
+          ],
+          "descriptive": {
+            "baselineMedian": 3.4969734999995126,
+            "candidateMedian": 3.5081749999999374,
+            "armMedianRatio": 1.0032031984229868,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-1/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9892853064049852,
+          "lower": 0.9275180200669493,
+          "upper": 1.0578308105183143,
+          "resamples": 46656,
+          "pairedValues": [
+            0.8854799996224317, 1.1473081693568143, 0.9945199388686067,
+            0.9009941514414217, 1.0238017282950918, 1.005817494014152
+          ],
+          "descriptive": {
+            "baselineMedian": 4.362731499999882,
+            "candidateMedian": 4.35014050000018,
+            "armMedianRatio": 0.9971139640384236,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "ordinary-200/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9895847126349675,
+          "lower": 0.9716167704477754,
+          "upper": 1.0066244222058454,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0083548844798045, 0.9568537631784889, 1.0042385677142416,
+            0.9865977743104856, 1.0162497884468802, 0.9666770183910492
+          ],
+          "descriptive": {
+            "baselineMedian": 58.61162055999983,
+            "candidateMedian": 57.702576799999875,
+            "armMedianRatio": 0.9844903834544315,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-200/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9938617865803865,
+          "lower": 0.9772570680799088,
+          "upper": 1.009090446110729,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9953962962809177, 0.9583363613919585, 0.9997361791976319,
+            0.981085802309396, 1.0095392536616192, 1.0202964092249371
+          ],
+          "descriptive": {
+            "baselineMedian": 65.34071549999999,
+            "candidateMedian": 64.71106500000087,
+            "armMedianRatio": 0.9903635811885299,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-200/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9301347804756525,
+          "lower": 0.8154747361434409,
+          "upper": 1.0161692919510428,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0103036177326783, 0.9053650608321269, 1.0290693182850457,
+            0.9919593591818157, 1.0185867507268056, 0.6808683313214775
+          ],
+          "descriptive": {
+            "baselineMedian": 69.33475800000042,
+            "candidateMedian": 69.25027699999919,
+            "armMedianRatio": 0.9987815490752671,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "ordinary-1000/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0002111773128368,
+          "lower": 0.9936656764923874,
+          "upper": 1.0066233593675993,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0042567015083697, 0.9889746862220027, 0.9899441246743415,
+            1.0009924081907318, 1.0069707464293849, 1.0103270635538277
+          ],
+          "descriptive": {
+            "baselineMedian": 507.45655571999987,
+            "candidateMedian": 506.26414056,
+            "armMedianRatio": 0.9976502123254511,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-1000/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0009720019779003,
+          "lower": 0.9952990986975265,
+          "upper": 1.0066756408881306,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0035156998075223, 0.9918239828256916, 0.9918145351498033,
+            1.0010862168319337, 1.0059323681756311, 1.0118172288871004
+          ],
+          "descriptive": {
+            "baselineMedian": 539.3614510000007,
+            "candidateMedian": 538.8181050000003,
+            "armMedianRatio": 0.9989926124698141,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "ordinary-1000/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0072957598930012,
+          "lower": 0.9986590142083258,
+          "upper": 1.0160002848655305,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0166852178113255, 1.0056641836703684, 0.9921676009532346,
+            0.9951268636824793, 1.022581486103587, 1.011908224549144
+          ],
+          "descriptive": {
+            "baselineMedian": 549.3083009999991,
+            "candidateMedian": 553.8159810000016,
+            "armMedianRatio": 1.0082061020956652,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-default/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.000052090545486,
+          "lower": 0.9927761327364044,
+          "upper": 1.0054537675098305,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9998909513323917, 0.9835746383695675, 1.0092895906337194,
+            1.004241451958112, 1.0014438762333655, 1.0020634442332028
+          ],
+          "descriptive": {
+            "baselineMedian": 266.9425552100008,
+            "candidateMedian": 267.18315470999994,
+            "armMedianRatio": 1.0009013156400255,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-default/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.000228123382633,
+          "lower": 0.9949313006198689,
+          "upper": 1.0049582854711971,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9949638475897545, 0.9892573575256847, 1.0062484304548134,
+            1.00073290599054, 1.0033822405481934, 1.0069037828831588
+          ],
+          "descriptive": {
+            "baselineMedian": 289.7490300000027,
+            "candidateMedian": 289.8191420000003,
+            "armMedianRatio": 1.0002419749256715,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-default/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0026541878577087,
+          "lower": 0.9900186123905164,
+          "upper": 1.020770212148319,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9933281398902102, 0.987582173390321, 1.0458129954287756,
+            1.0076750776290724, 0.9880810493576393, 0.9946583443264535
+          ],
+          "descriptive": {
+            "baselineMedian": 298.1448705000039,
+            "candidateMedian": 297.77018899999894,
+            "armMedianRatio": 0.9987432904702449,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-1/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0042338197097782,
+          "lower": 0.9893309786735465,
+          "upper": 1.0201425003656919,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0150314541617311, 1.0014652981597278, 0.9819694897015199,
+            0.9802365265982318, 1.0105457795763197, 1.0373105246365726
+          ],
+          "descriptive": {
+            "baselineMedian": 2.415371369999048,
+            "candidateMedian": 2.4404846000006364,
+            "armMedianRatio": 1.010397254150445,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-1/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0097754750215862,
+          "lower": 0.9971191129158845,
+          "upper": 1.0238667106100954,
+          "resamples": 46656,
+          "pairedValues": [
+            1.00561587183372, 0.9850365967592675, 1.0003657749472188,
+            1.0078070325873145, 1.022196061772284, 1.0384701388367927
+          ],
+          "descriptive": {
+            "baselineMedian": 3.630205000001297,
+            "candidateMedian": 3.6574575000013283,
+            "armMedianRatio": 1.0075071517999732,
+            "pairedLower": 1,
+            "pairedEqual": 0,
+            "pairedHigher": 5
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-1/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0384327981890478,
+          "lower": 0.9673415150735613,
+          "upper": 1.113945032465954,
+          "resamples": 46656,
+          "pairedValues": [
+            1.1718967616669018, 0.9111275283324347, 1.0165040067232707,
+            1.0840776782069161, 0.9484516122685649, 1.123614100871236
+          ],
+          "descriptive": {
+            "baselineMedian": 6.518934000003355,
+            "candidateMedian": 6.694641499998397,
+            "armMedianRatio": 1.0269534098665443,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "terminatable-200/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.001204197575914,
+          "lower": 0.9724943562468855,
+          "upper": 1.0257282552428348,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0099496319778654, 0.939463722857303, 0.9836923264628579,
+            1.0477295671763636, 1.011430746824676, 1.0183840885945632
+          ],
+          "descriptive": {
+            "baselineMedian": 59.40058495999896,
+            "candidateMedian": 59.44350554000019,
+            "armMedianRatio": 1.0007225615712394,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-200/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0041107242654361,
+          "lower": 0.9772027306901209,
+          "upper": 1.0325325680149862,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0041635133884435, 0.9521297194683461, 0.9800982901428499,
+            1.0587674115031922, 0.9957999235675752, 1.037401303178691
+          ],
+          "descriptive": {
+            "baselineMedian": 65.82573799999955,
+            "candidateMedian": 66.03117749999728,
+            "armMedianRatio": 1.0031209600718451,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-200/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0173628845023877,
+          "lower": 0.9647813219981132,
+          "upper": 1.0549087788819622,
+          "resamples": 46656,
+          "pairedValues": [
+            1.019340387046581, 0.896941897818688, 1.0310191942406626,
+            1.0633944916340792, 1.0686198517483223, 1.0351121355950275
+          ],
+          "descriptive": {
+            "baselineMedian": 68.21369050000067,
+            "candidateMedian": 70.15555099999983,
+            "armMedianRatio": 1.0284673133173925,
+            "pairedLower": 1,
+            "pairedEqual": 0,
+            "pairedHigher": 5
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "terminatable-1000/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9981878312330481,
+          "lower": 0.9956685325484643,
+          "upper": 1.0009888641388647,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9944846035785078, 0.9946985175110671, 1.0007318253692181,
+            1.003159396983888, 1.0009993319283836, 0.995090654407179
+          ],
+          "descriptive": {
+            "baselineMedian": 267.71026853999837,
+            "candidateMedian": 266.9057948099985,
+            "armMedianRatio": 0.9969949836650376,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-1000/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9989620047959686,
+          "lower": 0.9957208917592192,
+          "upper": 1.0026930848074767,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9951478686003254, 0.9940891305981455, 0.9973986356259315,
+            1.0063993471361825, 1.0031072444890556, 0.9976871904207402
+          ],
+          "descriptive": {
+            "baselineMedian": 289.9909614999997,
+            "candidateMedian": 289.12460799999826,
+            "armMedianRatio": 0.9970124810252011,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "terminatable-1000/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0000591517549486,
+          "lower": 0.9887868364856616,
+          "upper": 1.0137645818396483,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9845266103361836, 1.0031899858383395, 1.0003420435851824,
+            1.0318609368739797, 0.9822879726597897, 0.9989297869163956
+          ],
+          "descriptive": {
+            "baselineMedian": 297.4740715000007,
+            "candidateMedian": 297.99862450000364,
+            "armMedianRatio": 1.001763357046071,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "daily-cost/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9987329767096808,
+          "lower": 0.9923479713310034,
+          "upper": 1.0031803696834714,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0028860396855486, 1.005627448566719, 0.9838310644152087,
+            0.9982531151489642, 1.0008659032270948, 1.0010840336400195
+          ],
+          "descriptive": {
+            "baselineMedian": 396.2530626300008,
+            "candidateMedian": 395.90840871000154,
+            "armMedianRatio": 0.9991302176500246,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "daily-cost/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9981420402449527,
+          "lower": 0.9926021685949149,
+          "upper": 1.0024396326917517,
+          "resamples": 46656,
+          "pairedValues": [
+            0.995172943834202, 1.0033504359908851, 0.9859879869870487,
+            0.9981881052120397, 1.0027808773186142, 1.0034894834039296
+          ],
+          "descriptive": {
+            "baselineMedian": 397.25130000000354,
+            "candidateMedian": 395.0730429999967,
+            "armMedianRatio": 0.9945166774784454,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "daily-cost/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0388739322498761,
+          "lower": 0.99647101839408,
+          "upper": 1.115189824296714,
+          "resamples": 46656,
+          "pairedValues": [
+            1.2340450509094159, 1.004052766338961, 0.9862019592413502,
+            1.01528196101545, 0.9944585807854643, 1.0189439889814733
+          ],
+          "descriptive": {
+            "baselineMedian": 425.3016869999992,
+            "candidateMedian": 443.74093550000543,
+            "armMedianRatio": 1.0433556909451107,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "terminal-status/sqlMeanMs",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.6256133124008267,
+          "lower": 1.2269675306155157,
+          "upper": 2.1484501447101625,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9742305392269972, 1.731205009752574, 2.2345583893413576,
+            2.1554904334081995, 0.9888230985391405, 2.297401146339015
+          ],
+          "descriptive": {
+            "baselineMedian": 1.692370339998015,
+            "candidateMedian": 3.331076070001436,
+            "armMedianRatio": 1.9682902679595196,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "terminal-status/httpP50Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.3570408191148962,
+          "lower": 1.0975513281520626,
+          "upper": 1.6896528665000456,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9899296819529733, 1.0087816940310859, 1.7710776786816806,
+            1.8909997949411468, 0.9992007963336981, 1.8688483676583239
+          ],
+          "descriptive": {
+            "baselineMedian": 3.529241500007629,
+            "candidateMedian": 4.966442500000994,
+            "armMedianRatio": 1.4072265952869076,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "terminal-status/httpP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 2.7549966801956467,
+          "lower": 1.6987731418538263,
+          "upper": 4.401010460111596,
+          "resamples": 46656,
+          "pairedValues": [
+            1.068896169838, 3.915561230456416, 4.0871157850165,
+            4.423363916516224, 1.178072101440453, 4.905185719058919
+          ],
+          "descriptive": {
+            "baselineMedian": 6.217920499999309,
+            "candidateMedian": 25.896138500000234,
+            "armMedianRatio": 4.164758700276582,
+            "pairedLower": 0,
+            "pairedEqual": 0,
+            "pairedHigher": 6
+          },
+          "decision": "inconclusive"
+        }
+      ],
+      "trials": [
+        {
+          "repetition": 1,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "008-ip-heavy-user-matrix-calibration-1-baseline",
+          "elapsedMs": 104828.910869,
+          "cpuMs": 105194.835,
+          "peakRssMiB": 746.80078125,
+          "eventLoopMaxMs": 681.050111,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97495.84322999958,
+            "maxMs": 473.9937990000035,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 64.93860800000402,
+            "p95Ms": 538.6637379999956,
+            "p99Ms": 544.6763950000022,
+            "maxMs": 550.6453779999938,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.005149000000528758
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1054,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.738777,
+            "offeredAt": 36.78357,
+            "offerDelayMs": 0.04479299999999853,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 760.212258,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 768.139617,
+            "elapsedMs": 723.428688,
+            "scheduledElapsedMs": 723.473481
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 1,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "009-ip-heavy-user-matrix-calibration-1-candidate",
+          "elapsedMs": 104709.269686,
+          "cpuMs": 104977.901,
+          "peakRssMiB": 741.76953125,
+          "eventLoopMaxMs": 673.185791,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97609.45725400018,
+            "maxMs": 500.6267990000051,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 64.65167600000132,
+            "p95Ms": 540.5575180000014,
+            "p99Ms": 546.992892000002,
+            "maxMs": 561.3501729999989,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.025777999995625578
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1053,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.486459,
+            "offeredAt": 36.531714,
+            "offerDelayMs": 0.04525499999999738,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 752.196863,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 759.14242,
+            "elapsedMs": 715.665149,
+            "scheduledElapsedMs": 715.710404
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 2,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "010-ip-heavy-user-matrix-calibration-2-candidate",
+          "elapsedMs": 104811.113827,
+          "cpuMs": 105233.574,
+          "peakRssMiB": 772.58984375,
+          "eventLoopMaxMs": 679.477247,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97253.68036399991,
+            "maxMs": 474.04897699999856,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 64.00820499999827,
+            "p95Ms": 535.643630999999,
+            "p99Ms": 543.3193610000017,
+            "maxMs": 563.0607010000022,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.02566800000204239
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1054,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.501044,
+            "offeredAt": 36.545888,
+            "offerDelayMs": 0.044843999999997664,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 761.99874,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 769.730252,
+            "elapsedMs": 725.452852,
+            "scheduledElapsedMs": 725.497696
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 2,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "011-ip-heavy-user-matrix-calibration-2-baseline",
+          "elapsedMs": 105478.456177,
+          "cpuMs": 105791.714,
+          "peakRssMiB": 795.1015625,
+          "eventLoopMaxMs": 678.428671,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 98237.191515,
+            "maxMs": 468.98152200000186,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 67.29029699999955,
+            "p95Ms": 540.0591640000057,
+            "p99Ms": 545.9341600000007,
+            "maxMs": 581.1959900000002,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.008735999988857657
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1061,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.786176,
+            "offeredAt": 36.832572,
+            "offerDelayMs": 0.046396000000001436,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 756.933961,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 764.314271,
+            "elapsedMs": 720.1013889999999,
+            "scheduledElapsedMs": 720.147785
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 3,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "012-ip-heavy-user-matrix-calibration-3-baseline",
+          "elapsedMs": 105546.014442,
+          "cpuMs": 105753.562,
+          "peakRssMiB": 740.9765625,
+          "eventLoopMaxMs": 678.428671,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 98320.20452599987,
+            "maxMs": 478.69924300001003,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 67.233954000003,
+            "p95Ms": 541.511212999998,
+            "p99Ms": 550.2380390000035,
+            "maxMs": 566.531500000001,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.005790999995952006
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1061,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.832375,
+            "offeredAt": 36.878261,
+            "offerDelayMs": 0.04588600000000298,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 761.813029,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 769.306863,
+            "elapsedMs": 724.9347680000001,
+            "scheduledElapsedMs": 724.9806540000001
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 3,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "013-ip-heavy-user-matrix-calibration-3-candidate",
+          "elapsedMs": 105359.45427,
+          "cpuMs": 105902.673,
+          "peakRssMiB": 759.7734375,
+          "eventLoopMaxMs": 674.234367,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97853.18066599996,
+            "maxMs": 471.10311300000467,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 66.41762200000085,
+            "p95Ms": 537.0786919999991,
+            "p99Ms": 547.0692390000004,
+            "maxMs": 551.3079499999985,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 1.173251000000164
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1059,
+            "misses": 5,
+            "transportOrTimeout": 5,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.03591,
+            "offeredAt": 38.082487,
+            "offerDelayMs": 0.0465769999999992,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 756.542,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 763.602129,
+            "elapsedMs": 718.459513,
+            "scheduledElapsedMs": 718.5060900000001
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 4,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "014-ip-heavy-user-matrix-calibration-4-candidate",
+          "elapsedMs": 104919.676429,
+          "cpuMs": 105391.201,
+          "peakRssMiB": 764.8046875,
+          "eventLoopMaxMs": 696.778751,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97349.78196799985,
+            "maxMs": 473.53114199999254,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 66.90337599999475,
+            "p95Ms": 536.4603530000022,
+            "p99Ms": 543.6889820000015,
+            "maxMs": 559.4061199999996,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.0034559999985503964
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1055,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.462166,
+            "offeredAt": 36.508232,
+            "offerDelayMs": 0.046065999999996166,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 775.389151,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 782.255,
+            "elapsedMs": 738.880919,
+            "scheduledElapsedMs": 738.926985
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 4,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "015-ip-heavy-user-matrix-calibration-4-baseline",
+          "elapsedMs": 104356.895917,
+          "cpuMs": 104479.869,
+          "peakRssMiB": 743.2734375,
+          "eventLoopMaxMs": 698.875903,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97159.96366599998,
+            "maxMs": 474.126998000007,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 65.04916999999932,
+            "p95Ms": 535.8782730000021,
+            "p99Ms": 542.0532380000004,
+            "maxMs": 574.4775550000049,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.025999000000410888
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1049,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.575056,
+            "offeredAt": 36.619849,
+            "offerDelayMs": 0.044793000000005634,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 780.731449,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 787.746427,
+            "elapsedMs": 744.1116,
+            "scheduledElapsedMs": 744.156393
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 5,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "016-ip-heavy-user-matrix-calibration-5-baseline",
+          "elapsedMs": 106144.896029,
+          "cpuMs": 106374.878,
+          "peakRssMiB": 745.296875,
+          "eventLoopMaxMs": 700.973055,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 98814.37699900007,
+            "maxMs": 481.0352620000049,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 67.89970000000176,
+            "p95Ms": 543.5530560000007,
+            "p99Ms": 550.4061970000039,
+            "maxMs": 556.5638949999993,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.008065000000442524
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1067,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 37.61509,
+            "offeredAt": 37.665785,
+            "offerDelayMs": 0.05069499999999749,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 783.512856,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 790.483248,
+            "elapsedMs": 745.847071,
+            "scheduledElapsedMs": 745.897766
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 5,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "017-ip-heavy-user-matrix-calibration-5-candidate",
+          "elapsedMs": 106577.86206799999,
+          "cpuMs": 106858.403,
+          "peakRssMiB": 745.765625,
+          "eventLoopMaxMs": 681.050111,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 99238.73050199982,
+            "maxMs": 476.7770140000066,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 67.95347699999547,
+            "p95Ms": 546.5945060000013,
+            "p99Ms": 553.2515600000006,
+            "maxMs": 591.767235000003,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.031619000001228414
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1072,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.91082,
+            "offeredAt": 36.95893,
+            "offerDelayMs": 0.04811000000000121,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 760.330178,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 767.839928,
+            "elapsedMs": 723.371248,
+            "scheduledElapsedMs": 723.4193580000001
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 6,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "018-ip-heavy-user-matrix-calibration-6-candidate",
+          "elapsedMs": 105573.898559,
+          "cpuMs": 106172.371,
+          "peakRssMiB": 764.63671875,
+          "eventLoopMaxMs": 677.904383,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97972.65773900022,
+            "maxMs": 472.16019100000267,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 66.57047700000021,
+            "p95Ms": 543.9680759999992,
+            "p99Ms": 553.546752000002,
+            "maxMs": 579.8298030000005,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.0017840000000433065
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1062,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 36.521476,
+            "offeredAt": 36.566911,
+            "offerDelayMs": 0.04543499999999767,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 757.41185,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 764.582412,
+            "elapsedMs": 720.844939,
+            "scheduledElapsedMs": 720.890374
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 6,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "019-ip-heavy-user-matrix-calibration-6-baseline",
+          "elapsedMs": 104632.05495800001,
+          "cpuMs": 105054.229,
+          "peakRssMiB": 745.953125,
+          "eventLoopMaxMs": 682.098687,
+          "sql": {
+            "statements": 2526,
+            "readStatements": 2526,
+            "writeStatements": 0,
+            "totalMs": 97468.83155200008,
+            "maxMs": 473.51357700000517,
+            "maxReturnedRows": 812,
+            "returnedRows": 235443,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 500,
+            "admitted": 500,
+            "completed": 500,
+            "timedOut": 0,
+            "deadlineMisses": 0,
+            "httpErrors": 0,
+            "transportErrors": 0,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 65.69330500000069,
+            "p95Ms": 537.6149570000016,
+            "p99Ms": 543.3344720000023,
+            "maxMs": 581.4754429999994,
+            "responseBytes": 191052600,
+            "maxOfferDelayMs": 0.2150710000005347
+          },
+          "workFailures": {
+            "offered": 500,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1052,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 0,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 0,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 0,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 37.509553,
+            "offeredAt": 37.586957,
+            "offerDelayMs": 0.07740400000000136,
+            "outcome": "success",
+            "bytes": 1225548,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 762.267639,
+            "bodySha256": "f3b300e5d6b9aaef7f37392b1ba04f450e28abcad3882be527dddde780f07dec",
+            "settledAt": 769.6796,
+            "elapsedMs": 724.680682,
+            "scheduledElapsedMs": 724.758086
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-user-load",
+      "decision": "inconclusive",
+      "trialCount": 12,
+      "gates": 48,
+      "passingGates": 26,
+      "inconclusiveGates": 22,
+      "whollyOutsideBand": 1,
+      "work": {
+        "offered": 9216,
+        "admitted": 9216,
+        "completed": 7013,
+        "timedOut": 1792,
+        "deadlineMisses": 1792,
+        "httpErrors": 0,
+        "transportErrors": 411,
+        "bodyLimits": 0,
+        "schedulingSkipped": 0,
+        "admissionSkipped": 0,
+        "unfinished": 0,
+        "responseBytes": 4900871067
+      },
+      "recoveryFinal30Work": {
+        "offered": 861,
+        "failures": 0,
+        "lateSuccesses": 0
+      },
+      "allRetainedHealth": {
+        "offered": 21829,
+        "misses": 12896,
+        "transportOrTimeout": 12896,
+        "lateSuccesses": 0
+      },
+      "scheduledHealth": {
+        "offered": 21600,
+        "misses": 12896,
+        "transportOrTimeout": 12896,
+        "lateSuccesses": 0
+      },
+      "recoveryFinal30Health": {
+        "offered": 3600,
+        "misses": 0,
+        "transportOrTimeout": 0,
+        "lateSuccesses": 0
+      },
+      "correctnessResponses": 74,
+      "evidence": {
+        "files": 290,
+        "bytes": 46648163,
+        "gzipResponses": 134,
+        "requests": 9276,
+        "serverObservations": 8860,
+        "health": 21829,
+        "journalFiles": 42,
+        "correctnessRequestRecords": 74,
+        "correctnessServerObservations": 74
+      },
+      "harnessSha256": "117eccf0afaba2783ce113cf2b79da2b5d8fc27ce8e700de8abdc89d91873e08",
+      "acceptanceSha256": "cb04da10b20fbf913cbf609201f4cd2f0de0318d4a5a47253bb319f98c715783",
+      "fixture": {
+        "profile": "mixed",
+        "small": false,
+        "hotRows": 2200,
+        "statusId": "list-d-000011",
+        "session": "claude:list-session-a",
+        "seedMs": 20992.712674,
+        "now": 1789041600000,
+        "counts": {
+          "deployments": 18664,
+          "container_specs": 18664,
+          "vms": 285564,
+          "deployment_events": 1994751,
+          "credentials": 2,
+          "workers": 0,
+          "clusters": 0
+        },
+        "vmShape": {
+          "nullIp": 217436,
+          "withIp": 68128,
+          "emptyIp": 0,
+          "live": 880
+        },
+        "logicalSha256": "9fa8c1bd9e88af3ee2fc1ad2cce67bd125011409ad8a62d19be3c0b3637bfa50"
+      },
+      "runtime": {
+        "node": "v22.14.0",
+        "platform": "linux",
+        "arch": "x64",
+        "cpuModel": "AMD EPYC 9V74 80-Core Processor",
+        "logicalCpus": 2,
+        "totalMemoryBytes": 8323973120
+      },
+      "runner": {
+        "environment": "github-hosted",
+        "name": "GitHub Actions 1000001294",
+        "os": "Linux",
+        "arch": "X64",
+        "imageOS": "ubuntu24",
+        "imageVersion": "20260907.300.1",
+        "hostname": "runnervmlun5p",
+        "kernel": "6.17.0-1022-azure"
+      },
+      "revisions": {
+        "baseline": {
+          "sourceSha": "62ed9a28c522f2f2ee638b80074b81da55e127b4",
+          "sourceDirty": false,
+          "buildSha256": "1a72956ec38139dd08fd0834866340596d3a7c34759f90e3063712619ac617a6",
+          "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+          "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+          "version": "0.1.63"
+        },
+        "candidate": {
+          "sourceSha": "62ed9a28c522f2f2ee638b80074b81da55e127b4",
+          "sourceDirty": false,
+          "buildSha256": "1a72956ec38139dd08fd0834866340596d3a7c34759f90e3063712619ac617a6",
+          "migrationsSha256": "d7cd910f29feaaa2bc29e520893bccd95c9828f8cae2baee05844112f849a705",
+          "lockfileSha256": "a13af39696a97ee02bfb7a6b0aef879aeaebdd61c379b3fd2750c08a676d0a4c",
+          "version": "0.1.63"
+        }
+      },
+      "runtimeFiles": {
+        "nodeExecutableSha256": "1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1",
+        "versions": {
+          "node": "22.14.0",
+          "acorn": "8.14.0",
+          "ada": "2.9.2",
+          "amaro": "0.3.0",
+          "ares": "1.34.4",
+          "brotli": "1.1.0",
+          "cjs_module_lexer": "1.4.1",
+          "cldr": "46.0",
+          "icu": "76.1",
+          "llhttp": "9.2.1",
+          "modules": "127",
+          "napi": "10",
+          "nbytes": "0.1.1",
+          "ncrypto": "0.0.1",
+          "nghttp2": "1.64.0",
+          "nghttp3": "1.6.0",
+          "ngtcp2": "1.10.0",
+          "openssl": "3.0.15+quic",
+          "simdjson": "3.10.1",
+          "simdutf": "6.0.3",
+          "sqlite": "3.47.2",
+          "tz": "2024b",
+          "undici": "6.21.1",
+          "unicode": "16.0",
+          "uv": "1.49.2",
+          "uvwasi": "0.0.21",
+          "v8": "12.4.254.21-node.22",
+          "zlib": "1.3.0.1-motley-82a5fec"
+        },
+        "databaseBindings": {
+          "baseline": {
+            "version": "11.10.0",
+            "packageSha256": "58e81504576abccfacbfd08dc9432dc3a00d0fc0454685cb7a76aaf976cf25a9",
+            "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+          },
+          "candidate": {
+            "version": "11.10.0",
+            "packageSha256": "58e81504576abccfacbfd08dc9432dc3a00d0fc0454685cb7a76aaf976cf25a9",
+            "nativeSha256": "d7d9272b12d11c1dc2bb787741b1b7c4037d336155f316ace3420410c28fda37"
+          }
+        }
+      },
+      "preflightIdlePercent": {
+        "min": 98.4771573604061,
+        "max": 100
+      },
+      "correlation": {
+        "success": {
+          "offered": 7013,
+          "observed": 7013,
+          "notObserved": 0
+        },
+        "timeout": {
+          "offered": 1792,
+          "observed": 1787,
+          "notObserved": 5
+        },
+        "transport-error": {
+          "offered": 411,
+          "observed": 0,
+          "notObserved": 411
+        }
+      },
+      "transportCauses": {
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:38707, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 27,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:33687, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 34,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:36769, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 26,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:44163, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 38,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:40877, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 35,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:34415, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 34,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:39205, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 40,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:45895, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 39,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:34121, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 32,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:40207, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 40,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:46533, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 42,
+        "{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"cause\":{\"name\":\"ConnectTimeoutError\",\"message\":\"Connect Timeout Error (attempted address: 127.0.0.1:40049, timeout: 10000ms)\",\"code\":\"UND_ERR_CONNECT_TIMEOUT\"}}": 24
+      },
+      "intervals": [
+        {
+          "id": "normal/ordinary-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9902737407517337,
+          "lower": 0.9621184865119045,
+          "upper": 1.0173451705294145,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9345349971817823, 1.0141694809852912, 1.0371932616206636,
+            1.0136635223179185, 0.9665549542170715, 0.9791414015048777
+          ],
+          "descriptive": {
+            "baselineMedian": 395.4791920000001,
+            "candidateMedian": 388.33403099999987,
+            "armMedianRatio": 0.9819329028061727,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/ordinary-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/terminatable-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9877947918319363,
+          "lower": 0.9637793720605866,
+          "upper": 1.0160374705522688,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9442689645684804, 0.9770056115488748, 1.0078975440197635,
+            1.049445553062833, 0.9848410704670532, 0.9666409024156108
+          ],
+          "descriptive": {
+            "baselineMedian": 204.2660565000001,
+            "candidateMedian": 202.0646240000001,
+            "armMedianRatio": 0.9892227199285065,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/terminatable-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/session-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0463364772023374,
+          "lower": 0.9966172473080046,
+          "upper": 1.0993017114340549,
+          "resamples": 46656,
+          "pairedValues": [
+            1.015947850027297, 1.1477365253115703, 1.1392973676369995,
+            1.0152864368631063, 0.9884442114852336, 0.9843209668856464
+          ],
+          "descriptive": {
+            "baselineMedian": 242.2729420000005,
+            "candidateMedian": 247.50498100000004,
+            "armMedianRatio": 1.021595639021049,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "normal/session-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/daily-cost/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9883680797307447,
+          "lower": 0.9405632086495636,
+          "upper": 1.0321330226188101,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0106678248476773, 1.0157823806290642, 1.074637618765571,
+            0.9969810232185918, 0.8931726438851836, 0.9488964160780786
+          ],
+          "descriptive": {
+            "baselineMedian": 199.03611700000056,
+            "candidateMedian": 199.62962599999992,
+            "armMedianRatio": 1.002981916091135,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "normal/daily-cost/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/terminal-status/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9059320692430438,
+          "lower": 0.7414870780678148,
+          "upper": 1.0384757065556318,
+          "resamples": 46656,
+          "pairedValues": [
+            0.5647331996621454, 1.0096886373327656, 1.0214487396717218,
+            1.109403158450191, 0.9673388488523007, 0.8844197011679014
+          ],
+          "descriptive": {
+            "baselineMedian": 12.682844999999816,
+            "candidateMedian": 12.295044000000416,
+            "armMedianRatio": 0.969423185413099,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "normal/terminal-status/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/health/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0045869231259097,
+          "lower": 0.9711394771252185,
+          "upper": 1.037329180493998,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0143065638872852, 0.9718725195859534, 1.0612559913018347,
+            1.0441189687367456, 0.9372964234395013, 1.0039208744107613
+          ],
+          "descriptive": {
+            "baselineMedian": 238.38369500000408,
+            "candidateMedian": 242.70400800008792,
+            "armMedianRatio": 1.0181233578080235,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "normal/health/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/ordinary-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 15000,
+            "candidateMedian": 15000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/ordinary-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": -2.2569444444444446,
+          "lower": -7.638888888888889,
+          "upper": 2.083333333333332,
+          "resamples": 46656,
+          "pairedValues": [
+            -3.125, -3.125, 3.125, 4.166666666666664, 0, -14.583333333333332
+          ],
+          "descriptive": {
+            "baselineMedian": 36.45833333333333,
+            "candidateMedian": 35.9375,
+            "armMedianDifference": -0.5208333333333286,
+            "pairedLower": 3,
+            "pairedEqual": 1,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "overload/terminatable-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 15000,
+            "candidateMedian": 15000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/terminatable-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 5.5555555555555545,
+          "lower": 5.921189464667501e-16,
+          "upper": 11.458333333333334,
+          "resamples": 46656,
+          "pairedValues": [
+            6.2499999999999964, 6.25, -4.166666666666668, 7.291666666666671,
+            -1.0416666666666643, 18.749999999999996
+          ],
+          "descriptive": {
+            "baselineMedian": 32.8125,
+            "candidateMedian": 36.979166666666664,
+            "armMedianDifference": 4.166666666666664,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "overload/session-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 15000,
+            "candidateMedian": 15000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/session-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0.5208333333333334,
+          "lower": -4.340277777777776,
+          "upper": 6.944444444444444,
+          "resamples": 46656,
+          "pairedValues": [
+            0, -2.0833333333333357, 15.625, -7.291666666666664,
+            1.0416666666666643, -4.166666666666664
+          ],
+          "descriptive": {
+            "baselineMedian": 38.541666666666664,
+            "candidateMedian": 36.45833333333333,
+            "armMedianDifference": -2.0833333333333357,
+            "pairedLower": 3,
+            "pairedEqual": 1,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "overload/daily-cost/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 15000,
+            "candidateMedian": 15000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/daily-cost/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 1.2152777777777775,
+          "lower": -3.125,
+          "upper": 6.423611111111111,
+          "resamples": 46656,
+          "pairedValues": [
+            0, -1.0416666666666643, -7.291666666666664, 4.166666666666664,
+            -1.0416666666666714, 12.5
+          ],
+          "descriptive": {
+            "baselineMedian": 35.41666666666667,
+            "candidateMedian": 36.45833333333333,
+            "armMedianDifference": 1.0416666666666572,
+            "pairedLower": 3,
+            "pairedEqual": 1,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "overload/terminal-status/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 15000,
+            "candidateMedian": 15000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/terminal-status/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": -7.638888888888889,
+          "lower": -13.194444444444445,
+          "upper": -1.5625000000000018,
+          "resamples": 46656,
+          "pairedValues": [
+            3.125, -14.583333333333336, -14.583333333333332,
+            -14.583333333333332, -6.25, 1.0416666666666643
+          ],
+          "descriptive": {
+            "baselineMedian": 43.75,
+            "candidateMedian": 34.375,
+            "armMedianDifference": -9.375,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "overload/health/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 1000,
+            "candidateMedian": 1000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "overload/health/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": -0.6111111111111119,
+          "lower": -1.3333333333333381,
+          "upper": 0.16666666666666904,
+          "resamples": 46656,
+          "pairedValues": [
+            -0.3333333333333286, -1.5, 1, 0, -1, -1.8333333333333428
+          ],
+          "descriptive": {
+            "baselineMedian": 95.91666666666667,
+            "candidateMedian": 95.25,
+            "armMedianDifference": -0.6666666666666714,
+            "pairedLower": 4,
+            "pairedEqual": 1,
+            "pairedHigher": 1
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/ordinary-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0892553078700278,
+          "lower": 1.007410954486341,
+          "upper": 1.1788345059067697,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9898300256270344, 1.002059229688122, 1.2478867827386522,
+            1.24100734347881, 0.9791535826442278, 1.1105132374011448
+          ],
+          "descriptive": {
+            "baselineMedian": 548.0559179999909,
+            "candidateMedian": 592.6947924999986,
+            "armMedianRatio": 1.0814494890647426,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/ordinary-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery/terminatable-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.6070280090498156,
+          "lower": 0.1813209445029072,
+          "upper": 1.7100345692391585,
+          "resamples": 46656,
+          "pairedValues": [
+            1, 0.7296319398366986, 0.37542223093333305, 0.04056580081621395, 1,
+            4.502653274442637
+          ],
+          "descriptive": {
+            "baselineMedian": 14980.575741,
+            "candidateMedian": 11057.531742000006,
+            "armMedianRatio": 0.7381246177165872,
+            "pairedLower": 3,
+            "pairedEqual": 2,
+            "pairedHigher": 1
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/terminatable-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": -1.937984496124031,
+          "lower": -8.914728682170542,
+          "upper": 5.426356589147287,
+          "resamples": 46656,
+          "pairedValues": [
+            -9.302325581395348, -2.3255813953488373, -13.953488372093023,
+            -4.651162790697675, 4.651162790697676, 13.953488372093023
+          ],
+          "descriptive": {
+            "baselineMedian": 8.13953488372093,
+            "candidateMedian": 6.976744186046512,
+            "armMedianDifference": -1.162790697674419,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/session-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 2.5645609797763753,
+          "lower": 0.9103293124833437,
+          "upper": 7.872939100224666,
+          "resamples": 46656,
+          "pairedValues": [
+            11.587405485125313, 0.6139815096742354, 0.7864228647878548,
+            0.9005193810504555, 20.83110159904993, 2.7106612689572884
+          ],
+          "descriptive": {
+            "baselineMedian": 634.2912995000006,
+            "candidateMedian": 2001.3244089999935,
+            "armMedianRatio": 3.1552134020718845,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/session-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0.7575757575757575,
+          "lower": -0.7575757575757577,
+          "upper": 2.6515151515151514,
+          "resamples": 46656,
+          "pairedValues": [
+            2.272727272727273, 0, 0, -2.272727272727273, 4.545454545454545, 0
+          ],
+          "descriptive": {
+            "baselineMedian": 2.272727272727273,
+            "candidateMedian": 1.1363636363636365,
+            "armMedianDifference": -1.1363636363636365,
+            "pairedLower": 1,
+            "pairedEqual": 3,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/daily-cost/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.2739497903854802,
+          "lower": 0.27539804191001244,
+          "upper": 5.093605604342456,
+          "resamples": 46656,
+          "pairedValues": [
+            0.48249201413333453, 13.241056009342827, 0.9360973378613521,
+            0.04946580566059171, 1.9622955039134986, 7.363946285616564
+          ],
+          "descriptive": {
+            "baselineMedian": 4100.424229000004,
+            "candidateMedian": 5286.153937499999,
+            "armMedianRatio": 1.2891724471126653,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/daily-cost/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": -1.9379844961240311,
+          "lower": -6.9767441860465125,
+          "upper": 1.9379844961240311,
+          "resamples": 46656,
+          "pairedValues": [
+            -13.953488372093023, 0, -2.3255813953488373, -2.3255813953488373,
+            4.651162790697674, 2.3255813953488373
+          ],
+          "descriptive": {
+            "baselineMedian": 2.3255813953488373,
+            "candidateMedian": 2.3255813953488373,
+            "armMedianDifference": 0,
+            "pairedLower": 3,
+            "pairedEqual": 1,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/terminal-status/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.6053055094809603,
+          "lower": 0.1926354224797102,
+          "upper": 1.6583623149898357,
+          "resamples": 46656,
+          "pairedValues": [
+            0.04874865552511349, 0.5276441974723788, 1.0520182632306914,
+            0.41928149153994504, 1, 4.335258328672468
+          ],
+          "descriptive": {
+            "baselineMedian": 662.5379935000019,
+            "candidateMedian": 349.9695924999978,
+            "armMedianRatio": 0.5282256956332525,
+            "pairedLower": 3,
+            "pairedEqual": 1,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/terminal-status/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0.7751937984496126,
+          "lower": -1.1627906976744187,
+          "upper": 2.7131782945736442,
+          "resamples": 46656,
+          "pairedValues": [
+            2.3255813953488373, -2.3255813953488373, 0, -2.3255813953488373,
+            2.325581395348838, 4.651162790697675
+          ],
+          "descriptive": {
+            "baselineMedian": 2.3255813953488373,
+            "candidateMedian": 2.3255813953488373,
+            "armMedianDifference": 0,
+            "pairedLower": 2,
+            "pairedEqual": 1,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery/health/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1,
+          "lower": 1,
+          "upper": 1,
+          "resamples": 46656,
+          "pairedValues": [1, 1, 1, 1, 1, 1],
+          "descriptive": {
+            "baselineMedian": 1000,
+            "candidateMedian": 1000,
+            "armMedianRatio": 1,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery/health/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 1.5555555555555547,
+          "lower": -1.1111111111111132,
+          "upper": 4.370370370370371,
+          "resamples": 46656,
+          "pairedValues": [
+            -0.3333333333333357, 3.2222222222222214, 7.111111111111114,
+            3.7777777777777786, -1.8888888888888928, -2.555555555555557
+          ],
+          "descriptive": {
+            "baselineMedian": 54.5,
+            "candidateMedian": 56.888888888888886,
+            "armMedianDifference": 2.3888888888888857,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery-final30/ordinary-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0334023885747792,
+          "lower": 0.9856742297263087,
+          "upper": 1.1011443626647999,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9830315100367141, 1.0196413233536379, 0.9579258568005539,
+            1.0461199483380483, 1.1954576749262367, 1.014271716063293
+          ],
+          "descriptive": {
+            "baselineMedian": 347.26637699999264,
+            "candidateMedian": 354.68237399999634,
+            "armMedianRatio": 1.0213553556899748,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery-final30/ordinary-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/terminatable-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9551171720383289,
+          "lower": 0.8388608791541619,
+          "upper": 1.0952447999634658,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9766012394960981, 0.7966934992547091, 1.0697441300427266,
+            1.275242899936473, 0.7859253197991305, 0.9100751762366227
+          ],
+          "descriptive": {
+            "baselineMedian": 215.2410469999886,
+            "candidateMedian": 202.28015050000977,
+            "armMedianRatio": 0.9397842712594706,
+            "pairedLower": 4,
+            "pairedEqual": 0,
+            "pairedHigher": 2
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery-final30/terminatable-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/session-1000/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 0.9960590925496621,
+          "lower": 0.9680366139404449,
+          "upper": 1.0251866617622456,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9427770155854145, 0.9715806796329329, 0.9727037449588537,
+            1.0403177413404017, 1.043512021544543, 1.0096682975976166
+          ],
+          "descriptive": {
+            "baselineMedian": 237.64700950001134,
+            "candidateMedian": 238.7795159999805,
+            "armMedianRatio": 1.0047654986374617,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/session-1000/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/daily-cost/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0120178024184026,
+          "lower": 0.9821611445082241,
+          "upper": 1.0423669808419522,
+          "resamples": 46656,
+          "pairedValues": [
+            1.0112978952422322, 0.9823671305448749, 0.9519871430413975,
+            1.0500450456373698, 1.0633884444206607, 1.0172906138306685
+          ],
+          "descriptive": {
+            "baselineMedian": 193.5144270000019,
+            "candidateMedian": 198.02418649998435,
+            "armMedianRatio": 1.0233045131047642,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/daily-cost/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/terminal-status/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0139054356967092,
+          "lower": 0.8937636847338307,
+          "upper": 1.1444999853794506,
+          "resamples": 46656,
+          "pairedValues": [
+            0.8024451131765479, 0.8454924739755575, 1.1530291689668015,
+            1.0681008265769136, 1.052308384548628, 1.2355605960977276
+          ],
+          "descriptive": {
+            "baselineMedian": 7.360967000000528,
+            "candidateMedian": 7.952690500009339,
+            "armMedianRatio": 1.080386653004798,
+            "pairedLower": 2,
+            "pairedEqual": 0,
+            "pairedHigher": 4
+          },
+          "decision": "inconclusive"
+        },
+        {
+          "id": "recovery-final30/terminal-status/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/health/penalizedP95Ms",
+          "type": "ratio",
+          "primary": false,
+          "estimate": 1.0026156668101054,
+          "lower": 0.9703385706400894,
+          "upper": 1.038909426510117,
+          "resamples": 46656,
+          "pairedValues": [
+            0.9482244418384421, 0.9700913979632799, 0.9760093819226651,
+            1.0768559261195465, 1.0158736494623417, 1.0342650044883044
+          ],
+          "descriptive": {
+            "baselineMedian": 228.04469900013646,
+            "candidateMedian": 228.18929000006756,
+            "armMedianRatio": 1.0006340467485764,
+            "pairedLower": 3,
+            "pairedEqual": 0,
+            "pairedHigher": 3
+          },
+          "decision": "passes"
+        },
+        {
+          "id": "recovery-final30/health/failureRatePp",
+          "type": "difference",
+          "primary": false,
+          "estimate": 0,
+          "lower": 0,
+          "upper": 0,
+          "resamples": 46656,
+          "pairedValues": [0, 0, 0, 0, 0, 0],
+          "descriptive": {
+            "baselineMedian": 0,
+            "candidateMedian": 0,
+            "armMedianDifference": 0,
+            "pairedLower": 0,
+            "pairedEqual": 6,
+            "pairedHigher": 0
+          },
+          "decision": "passes"
+        }
+      ],
+      "trials": [
+        {
+          "repetition": 1,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "008-mixed-user-load-calibration-1-baseline",
+          "elapsedMs": 181340.324951,
+          "cpuMs": 148526.213,
+          "peakRssMiB": 1000.3359375,
+          "eventLoopMaxMs": 2016.411647,
+          "sql": {
+            "statements": 3432,
+            "readStatements": 3432,
+            "writeStatements": 0,
+            "totalMs": 133113.37964800023,
+            "maxMs": 261.7842019999953,
+            "maxReturnedRows": 812,
+            "returnedRows": 737665,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 579,
+            "timedOut": 162,
+            "deadlineMisses": 162,
+            "httpErrors": 0,
+            "transportErrors": 27,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 895.9539589999986,
+            "p95Ms": 2886.122156000005,
+            "p99Ms": 7425.584030999977,
+            "maxMs": 13906.442972999997,
+            "responseBytes": 406335780,
+            "maxOfferDelayMs": 5.7259236666577635
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 189,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1100,
+            "transportOrTimeout": 1100,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1100,
+            "transportOrTimeout": 1100,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 60,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 37.534444,
+            "offeredAt": 37.577709,
+            "offerDelayMs": 0.04326499999999811,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 555.691159,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 561.665359,
+            "elapsedMs": 518.11345,
+            "scheduledElapsedMs": 518.156715
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 1,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "009-mixed-user-load-calibration-1-candidate",
+          "elapsedMs": 181386.336488,
+          "cpuMs": 148549.909,
+          "peakRssMiB": 1030.5703125,
+          "eventLoopMaxMs": 1954.545663,
+          "sql": {
+            "statements": 3407,
+            "readStatements": 3407,
+            "writeStatements": 0,
+            "totalMs": 132339.5826779997,
+            "maxMs": 241.39775899998494,
+            "maxReturnedRows": 812,
+            "returnedRows": 737704,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 581,
+            "timedOut": 153,
+            "deadlineMisses": 153,
+            "httpErrors": 0,
+            "transportErrors": 34,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 744.4298049999998,
+            "p95Ms": 2528.138863999993,
+            "p99Ms": 7865.313613000006,
+            "maxMs": 13922.322388999994,
+            "responseBytes": 406455323,
+            "maxOfferDelayMs": 7.045452999998815
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 187,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1820,
+            "misses": 1095,
+            "transportOrTimeout": 1095,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1095,
+            "transportOrTimeout": 1095,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 60,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 47.398187,
+            "offeredAt": 47.445558,
+            "offerDelayMs": 0.047370999999998276,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 569.583727,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 575.645278,
+            "elapsedMs": 522.138169,
+            "scheduledElapsedMs": 522.18554
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 2,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "010-mixed-user-load-calibration-2-candidate",
+          "elapsedMs": 181316.504748,
+          "cpuMs": 146748.148,
+          "peakRssMiB": 997.73046875,
+          "eventLoopMaxMs": 2204.106751,
+          "sql": {
+            "statements": 3440,
+            "readStatements": 3440,
+            "writeStatements": 0,
+            "totalMs": 131288.44319500038,
+            "maxMs": 265.05399600000237,
+            "maxReturnedRows": 812,
+            "returnedRows": 740779,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 599,
+            "timedOut": 143,
+            "deadlineMisses": 143,
+            "httpErrors": 0,
+            "transportErrors": 26,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 866.6398189999964,
+            "p95Ms": 3196.240101000003,
+            "p99Ms": 8445.832010000013,
+            "maxMs": 13953.653048999986,
+            "responseBytes": 412608338,
+            "maxOfferDelayMs": 3.249158000005991
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 169,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1070,
+            "transportOrTimeout": 1070,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1070,
+            "transportOrTimeout": 1070,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 63,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.056729,
+            "offeredAt": 38.098282,
+            "offerDelayMs": 0.041553000000000395,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 551.437805,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 557.583143,
+            "elapsedMs": 513.339523,
+            "scheduledElapsedMs": 513.381076
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 2,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "011-mixed-user-load-calibration-2-baseline",
+          "elapsedMs": 181323.657931,
+          "cpuMs": 146477.252,
+          "peakRssMiB": 1003.671875,
+          "eventLoopMaxMs": 2254.438399,
+          "sql": {
+            "statements": 3381,
+            "readStatements": 3381,
+            "writeStatements": 0,
+            "totalMs": 130686.90476199929,
+            "maxMs": 278.64908899999864,
+            "maxReturnedRows": 812,
+            "returnedRows": 729901,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 583,
+            "timedOut": 147,
+            "deadlineMisses": 147,
+            "httpErrors": 0,
+            "transportErrors": 38,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 771.5268460000007,
+            "p95Ms": 2898.367397000009,
+            "p99Ms": 8042.175614,
+            "maxMs": 13057.304053999993,
+            "responseBytes": 409247005,
+            "maxOfferDelayMs": 5.2883940000028815
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 185,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1050,
+            "transportOrTimeout": 1050,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1050,
+            "transportOrTimeout": 1050,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 65,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.048515,
+            "offeredAt": 38.088426,
+            "offerDelayMs": 0.03991099999999648,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 559.332901,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 565.981043,
+            "elapsedMs": 521.244475,
+            "scheduledElapsedMs": 521.284386
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 3,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "012-mixed-user-load-calibration-3-baseline",
+          "elapsedMs": 181348.564175,
+          "cpuMs": 144695.142,
+          "peakRssMiB": 989.57421875,
+          "eventLoopMaxMs": 2164.260863,
+          "sql": {
+            "statements": 3391,
+            "readStatements": 3391,
+            "writeStatements": 0,
+            "totalMs": 129431.67152299991,
+            "maxMs": 236.98565800000506,
+            "maxReturnedRows": 812,
+            "returnedRows": 730721,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 581,
+            "timedOut": 152,
+            "deadlineMisses": 152,
+            "httpErrors": 0,
+            "transportErrors": 35,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 794.388380000004,
+            "p95Ms": 2944.701885000002,
+            "p99Ms": 9481.013374000002,
+            "maxMs": 14984.695900000006,
+            "responseBytes": 414963227,
+            "maxOfferDelayMs": 7.378257999997004
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 187,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1044,
+            "transportOrTimeout": 1044,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1044,
+            "transportOrTimeout": 1044,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 71,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 64,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 37.820838,
+            "offeredAt": 37.860288,
+            "offerDelayMs": 0.0394499999999951,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 540.900513,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 546.874351,
+            "elapsedMs": 503.0402250000001,
+            "scheduledElapsedMs": 503.07967500000007
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 3,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "013-mixed-user-load-calibration-3-candidate",
+          "elapsedMs": 181352.27981100001,
+          "cpuMs": 149400.22,
+          "peakRssMiB": 1016.1796875,
+          "eventLoopMaxMs": 2069.889023,
+          "sql": {
+            "statements": 3406,
+            "readStatements": 3406,
+            "writeStatements": 0,
+            "totalMs": 133146.65605800058,
+            "maxMs": 275.3666089999897,
+            "maxReturnedRows": 812,
+            "returnedRows": 736454,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 595,
+            "timedOut": 139,
+            "deadlineMisses": 139,
+            "httpErrors": 0,
+            "transportErrors": 34,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 677.9140019999977,
+            "p95Ms": 2731.4717630000014,
+            "p99Ms": 5631.333463999996,
+            "maxMs": 13407.639014,
+            "responseBytes": 403904832,
+            "maxOfferDelayMs": 3.6950439999927767
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 173,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1114,
+            "transportOrTimeout": 1114,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1114,
+            "transportOrTimeout": 1114,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 59,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.170003,
+            "offeredAt": 38.210904,
+            "offerDelayMs": 0.04090099999999808,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 555.824853,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 561.887955,
+            "elapsedMs": 517.6139489999999,
+            "scheduledElapsedMs": 517.65485
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 4,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "014-mixed-user-load-calibration-4-candidate",
+          "elapsedMs": 181339.864768,
+          "cpuMs": 148510.172,
+          "peakRssMiB": 992.57421875,
+          "eventLoopMaxMs": 2485.125119,
+          "sql": {
+            "statements": 3374,
+            "readStatements": 3374,
+            "writeStatements": 0,
+            "totalMs": 133022.0755490004,
+            "maxMs": 277.98245999999926,
+            "maxReturnedRows": 812,
+            "returnedRows": 725945,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 596,
+            "timedOut": 132,
+            "deadlineMisses": 132,
+            "httpErrors": 0,
+            "transportErrors": 40,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 706.2569950000034,
+            "p95Ms": 2571.4503530000075,
+            "p99Ms": 3585.832377000006,
+            "maxMs": 12859.975849000002,
+            "responseBytes": 411643537,
+            "maxOfferDelayMs": 3.648765000005369
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 172,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1092,
+            "transportOrTimeout": 1092,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1092,
+            "transportOrTimeout": 1092,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 60,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.326055,
+            "offeredAt": 38.367447,
+            "offerDelayMs": 0.04139200000000187,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 555.981427,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 561.943987,
+            "elapsedMs": 517.6139800000001,
+            "scheduledElapsedMs": 517.655372
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 4,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "015-mixed-user-load-calibration-4-baseline",
+          "elapsedMs": 181336.141837,
+          "cpuMs": 145886.336,
+          "peakRssMiB": 1025.5703125,
+          "eventLoopMaxMs": 2311.061503,
+          "sql": {
+            "statements": 3382,
+            "readStatements": 3382,
+            "writeStatements": 0,
+            "totalMs": 130488.42498100043,
+            "maxMs": 257.43927200000326,
+            "maxReturnedRows": 812,
+            "returnedRows": 735641,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 585,
+            "timedOut": 144,
+            "deadlineMisses": 144,
+            "httpErrors": 0,
+            "transportErrors": 39,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 790.7496030000038,
+            "p95Ms": 2968.8700129999997,
+            "p99Ms": 10162.993875999979,
+            "maxMs": 14961.151482000001,
+            "responseBytes": 409491327,
+            "maxOfferDelayMs": 4.071833000001789
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 183,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1058,
+            "transportOrTimeout": 1058,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1058,
+            "transportOrTimeout": 1058,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 62,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 39.497874,
+            "offeredAt": 39.540358,
+            "offerDelayMs": 0.04248399999999464,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 552.067432,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 558.159528,
+            "elapsedMs": 512.5270740000001,
+            "scheduledElapsedMs": 512.569558
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 5,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "016-mixed-user-load-calibration-5-baseline",
+          "elapsedMs": 181348.06421799998,
+          "cpuMs": 147984.131,
+          "peakRssMiB": 983.984375,
+          "eventLoopMaxMs": 2216.689663,
+          "sql": {
+            "statements": 3388,
+            "readStatements": 3388,
+            "writeStatements": 0,
+            "totalMs": 132038.15765199924,
+            "maxMs": 278.26017299998784,
+            "maxReturnedRows": 812,
+            "returnedRows": 727422,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 575,
+            "timedOut": 161,
+            "deadlineMisses": 161,
+            "httpErrors": 0,
+            "transportErrors": 32,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 753.6138340000034,
+            "p95Ms": 3313.859844000006,
+            "p99Ms": 10871.732882000011,
+            "maxMs": 14427.722257999994,
+            "responseBytes": 404074447,
+            "maxOfferDelayMs": 4.305724999998347
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 193,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1085,
+            "transportOrTimeout": 1085,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1085,
+            "transportOrTimeout": 1085,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 71,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 64,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.55528,
+            "offeredAt": 38.596092,
+            "offerDelayMs": 0.04081199999999541,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 560.671608,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 567.859835,
+            "elapsedMs": 522.075516,
+            "scheduledElapsedMs": 522.116328
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 5,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "017-mixed-user-load-calibration-5-candidate",
+          "elapsedMs": 181319.729667,
+          "cpuMs": 146424.194,
+          "peakRssMiB": 1047.5,
+          "eventLoopMaxMs": 2273.312767,
+          "sql": {
+            "statements": 3383,
+            "readStatements": 3383,
+            "writeStatements": 0,
+            "totalMs": 130212.03594000054,
+            "maxMs": 230.12746299998253,
+            "maxReturnedRows": 812,
+            "returnedRows": 729119,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 575,
+            "timedOut": 153,
+            "deadlineMisses": 153,
+            "httpErrors": 0,
+            "transportErrors": 40,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 886.6689820000029,
+            "p95Ms": 2817.7665789999955,
+            "p99Ms": 9843.735276000007,
+            "maxMs": 14847.26487900001,
+            "responseBytes": 400123451,
+            "maxOfferDelayMs": 5.237797000001592
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 193,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1062,
+            "transportOrTimeout": 1062,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1062,
+            "transportOrTimeout": 1062,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 63,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.662345,
+            "offeredAt": 38.701804,
+            "offerDelayMs": 0.0394590000000008,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 542.211937,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 548.194228,
+            "elapsedMs": 503.51013300000005,
+            "scheduledElapsedMs": 503.549592
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 6,
+          "arm": "candidate",
+          "buildArm": "baseline",
+          "runDir": "018-mixed-user-load-calibration-6-candidate",
+          "elapsedMs": 181326.55347500002,
+          "cpuMs": 146851.281,
+          "peakRssMiB": 1007.52734375,
+          "eventLoopMaxMs": 2053.111807,
+          "sql": {
+            "statements": 3368,
+            "readStatements": 3368,
+            "writeStatements": 0,
+            "totalMs": 130414.40792699995,
+            "maxMs": 273.553585000016,
+            "maxReturnedRows": 812,
+            "returnedRows": 730864,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 571,
+            "timedOut": 155,
+            "deadlineMisses": 155,
+            "httpErrors": 0,
+            "transportErrors": 42,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 754.0247769999987,
+            "p95Ms": 3098.968869000004,
+            "p99Ms": 9659.729356000003,
+            "maxMs": 14322.329930000007,
+            "responseBytes": 410820004,
+            "maxOfferDelayMs": 2.496433333333698
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 197,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1046,
+            "transportOrTimeout": 1046,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1046,
+            "transportOrTimeout": 1046,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 72,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 63,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 37.677373,
+            "offeredAt": 37.75528,
+            "offerDelayMs": 0.07790699999999617,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 550.899025,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 556.99003,
+            "elapsedMs": 513.1437450000001,
+            "scheduledElapsedMs": 513.2216520000001
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        },
+        {
+          "repetition": 6,
+          "arm": "baseline",
+          "buildArm": "baseline",
+          "runDir": "019-mixed-user-load-calibration-6-baseline",
+          "elapsedMs": 181355.260566,
+          "cpuMs": 147876.04,
+          "peakRssMiB": 1015.14453125,
+          "eventLoopMaxMs": 2062.548991,
+          "sql": {
+            "statements": 3435,
+            "readStatements": 3435,
+            "writeStatements": 0,
+            "totalMs": 131331.43572499976,
+            "maxMs": 268.0750280000211,
+            "maxReturnedRows": 812,
+            "returnedRows": 738419,
+            "planCaptureLimit": 1024,
+            "plansTruncated": false
+          },
+          "work": {
+            "offered": 768,
+            "admitted": 768,
+            "completed": 593,
+            "timedOut": 151,
+            "deadlineMisses": 151,
+            "httpErrors": 0,
+            "transportErrors": 24,
+            "bodyLimits": 0,
+            "schedulingSkipped": 0,
+            "admissionSkipped": 0,
+            "unfinished": 0,
+            "p50Ms": 685.625842999998,
+            "p95Ms": 2503.0580250000057,
+            "p99Ms": 3935.4958730000035,
+            "maxMs": 12039.145337000002,
+            "responseBytes": 411203796,
+            "maxOfferDelayMs": 3.208356000002823
+          },
+          "workFailures": {
+            "offered": 768,
+            "failures": 175,
+            "lateSuccesses": 0
+          },
+          "health": {
+            "offered": 1819,
+            "misses": 1080,
+            "transportOrTimeout": 1080,
+            "lateSuccesses": 0
+          },
+          "scheduledHealth": {
+            "offered": 1800,
+            "misses": 1080,
+            "transportOrTimeout": 1080,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Work": {
+            "offered": 71,
+            "failures": 0,
+            "lateSuccesses": 0
+          },
+          "recoveryFinal30Health": {
+            "offered": 300,
+            "misses": 0,
+            "transportOrTimeout": 0,
+            "lateSuccesses": 0
+          },
+          "peakClientInFlight": 59,
+          "firstRequest": {
+            "id": "request-0",
+            "case": "ordinary-1000",
+            "path": "/v1/deployments?limit=1000",
+            "phase": "first-request",
+            "sample": false,
+            "scheduledAt": 38.858519,
+            "offeredAt": 38.898279,
+            "offerDelayMs": 0.03976000000000113,
+            "outcome": "success",
+            "bytes": 1215517,
+            "status": 200,
+            "headers": {
+              "contentType": "application/json",
+              "cacheControl": "no-store"
+            },
+            "bodyCompletedAt": 557.304689,
+            "bodySha256": "3d851d2a0d364cbf987a9cf493a5f58b02084a6ad7f9c3f0ce7209167c798f31",
+            "settledAt": 563.67856,
+            "elapsedMs": 518.40641,
+            "scheduledElapsedMs": 518.44617
+          },
+          "pendingAtDriverFinish": {},
+          "pendingAfterDrain": {},
+          "drained": true
+        }
+      ]
+    }
+  ],
+  "recommendation": "no-promotion",
+  "rawEvidenceDirectory": ".context/list-merged-main-calibration-20260914T210712Z/",
+  "prototypeForLocalCorrectness": "2af8cd6894021fa0759edbd7990ef06518e35b7f",
+  "verification": {
+    "harnessFullSuite": {
+      "sourceSha": "8b7f1cd190564460d0af80e194e71e1bfa2386db",
+      "files": 390,
+      "tests": 9511,
+      "lintWarnings": 8,
+      "lintErrors": 0
+    },
+    "evidenceFullSuite": {
+      "tests": 9457
+    },
+    "longHistory": {
+      "deployments": 3700,
+      "deadlineMs": 6000,
+      "passed": true
+    },
+    "localBResponseComparisons": 150,
+    "automaticSmoke": {
+      "trials": 16,
+      "measuredOffers": 680,
+      "scheduledLoadSeconds": 64,
+      "commandSeconds": 193.01952862500002,
+      "budgetSeconds": 240,
+      "diagnostic": true
+    },
+    "billingSmoke": {
+      "cases": 4,
+      "pairsPerCase": 1,
+      "passed": true
+    },
+    "artifactNegativeChecks": [
+      {
+        "case": "missing-trace",
+        "result": "expected-rejection",
+        "message": "ENOENT: no such file or directory, open '../artifact-negative/missing-trace/003-correctness-user-baseline/requests.jsonl'"
+      },
+      {
+        "case": "corrupt-gzip",
+        "result": "expected-rejection",
+        "message": "incorrect header check"
+      }
+    ]
+  },
+  "archiveAudit": [
+    {
+      "artifactId": 10372430982,
+      "name": "api-responsiveness-list-calibration-ip-heavy-user-matrix",
+      "digest": "sha256:4bb436979200c70ccaf1badff74abae1b01c32eb41233f8cef4421e51b90d683",
+      "archiveBytes": 4047866,
+      "downloadedFilesMatched": 351,
+      "expiresAt": "2026-09-21T22:28:12Z",
+      "status": "valid"
+    },
+    {
+      "artifactId": 10372383682,
+      "name": "api-responsiveness-list-calibration-report",
+      "digest": "sha256:ddf19aa3fb82aa759696ca4e18cca3008250770f11aaa7bb69eb2476ec50edad",
+      "archiveBytes": 53538,
+      "downloadedFilesMatched": 2,
+      "expiresAt": "2026-09-21T22:46:16Z",
+      "status": "valid"
+    },
+    {
+      "artifactId": 10372328673,
+      "name": "api-responsiveness-list-calibration-mixed-user-load",
+      "digest": "sha256:f28d405b7dac4d6e0627073cf7e9565a812a200fdb337afc5c20ad5c72bd4b8b",
+      "archiveBytes": 4578028,
+      "downloadedFilesMatched": 291,
+      "expiresAt": "2026-09-21T22:45:57Z",
+      "status": "valid"
+    }
+  ],
+  "independentReportMatchesCi": [
+    {
+      "file": "results.json",
+      "bytes": 611083,
+      "sha256": "b7a24c2175bbf723e2b47dad1edda09fb2151530a0ccb72b8bdf98c65d544794",
+      "matchesCiReport": true
+    },
+    {
+      "file": "summary.md",
+      "bytes": 467,
+      "sha256": "0cbe7b1ba656f147d8760e83f09ce00d2f1041cae9714cf26ee449922505e958",
+      "matchesCiReport": true
+    }
+  ],
+  "recoveryWindowRounding": {
+    "recordedWindowUsedWithoutAdjustment": true,
+    "recordedWorkOffers": 861,
+    "nominalBoundaryOffersJustBelowCutoff": [
+      {
+        "run": "012-mixed-user-load-calibration-3-baseline",
+        "id": "request-701",
+        "phaseElapsedMs": 59999.999999999985,
+        "offerDelayMs": 0,
+        "outcome": "success",
+        "elapsedMs": 190.47603200000594
+      },
+      {
+        "run": "016-mixed-user-load-calibration-5-baseline",
+        "id": "request-701",
+        "phaseElapsedMs": 59999.999999999985,
+        "offerDelayMs": 0,
+        "outcome": "success",
+        "elapsedMs": 190.22274800000014
+      },
+      {
+        "run": "019-mixed-user-load-calibration-6-baseline",
+        "id": "request-701",
+        "phaseElapsedMs": 59999.999999999985,
+        "offerDelayMs": 0.20540600002277642,
+        "outcome": "success",
+        "elapsedMs": 194.28726700000698
+      }
+    ],
+    "allBoundaryOffersTimely": true
+  },
+  "limitations": [
+    "Two selected user-scope A/A cases; this does not qualify B or an actual proposed merge.",
+    "Fresh VMs do not establish exclusive physical hosts or cold OS caches.",
+    "The cause of the remaining timing variability is not established by these unprofiled measurements.",
+    "Recovery membership follows the frozen floating-point phase offsets; three nominal boundary offers fall just below the cutoff."
+  ]
+}

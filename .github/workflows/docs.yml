@@ -1,0 +1,162 @@
+name: Docs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      [
+        'docs/**',
+        'src/shared/cloud-policies/**',
+        'website/**',
+        'anycloud-skills/skills/**',
+        'package.json',
+        'yarn.lock',
+        '.github/workflows/docs.yml',
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        'docs/**',
+        'src/shared/cloud-policies/**',
+        'website/**',
+        'anycloud-skills/skills/**',
+        'package.json',
+        'yarn.lock',
+        '.github/workflows/docs.yml',
+      ]
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Serialize production publication.
+concurrency:
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  verify:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    outputs:
+      revision: ${{ steps.source.outputs.commit }}
+    steps:
+      - id: source
+        uses: actions/checkout@v5
+        with:
+          # Queued automatic runs build current main; manual dispatch keeps its
+          # selected revision. Every later job uses this same verified commit.
+          ref: ${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'workflow_dispatch' && github.sha || 'main' }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install website deps
+        run: cd website && npm ci
+      - name: Build docs
+        run: cd website && npm run build
+      - name: SEO check
+        run: cd website && npm run seo:check
+
+  # Uploads a Worker version without deploying it, so production traffic is
+  # unchanged, and links its preview URL from the PR. Same-repo PRs only: forks
+  # and Dependabot get no secrets.
+  # https://developers.cloudflare.com/workers/configuration/previews/
+  preview:
+    needs: verify
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloudflare-deploy
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.verify.outputs.revision }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Build docs
+        run: |
+          cd website
+          npm ci
+          npm run build
+
+      - id: upload
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website
+          command: versions upload --preview-alias pr-${{ github.event.pull_request.number }}
+          wranglerVersion: '4'
+
+      - uses: actions/github-script@v8
+        env:
+          WRANGLER_OUTPUT: ${{ steps.upload.outputs.command-output }}
+        with:
+          # GitHub occasionally answers the comment POST with a 500.
+          retries: 3
+          script: |
+            const url = process.env.WRANGLER_OUTPUT.match(/Version Preview Alias URL: (\S+)/)?.[1];
+            if (!url) throw new Error('wrangler printed no preview alias URL; are Preview URLs enabled for the Worker?');
+            const marker = '<!-- docs-preview -->';
+            const head = context.payload.pull_request.head.sha.slice(0, 9);
+            const body = `${marker}\n### Site preview\n\n${url} (built from \`${head}\`; production is unchanged)`;
+            const issue = { ...context.repo, issue_number: context.payload.pull_request.number };
+            const comments = await github.paginate(github.rest.issues.listComments, issue);
+            const sticky = comments.find(
+              (c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(marker),
+            );
+            if (sticky) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: sticky.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...issue, body });
+            }
+
+  deploy:
+    needs: verify
+    # PRs get the preview job instead.
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloudflare-deploy
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.verify.outputs.revision }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Build docs
+        run: |
+          cd website
+          npm ci
+          npm run build
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website
+          command: deploy
+          # The action's default wrangler (3.90.0) predates _redirects support
+          # for Workers static assets.
+          wranglerVersion: '4'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify deployed documentation and generic client access
+        run: node website/scripts/seo-check.mjs --mode=live

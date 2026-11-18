@@ -1,0 +1,343 @@
+name: E2E Job Tests
+
+# The heavy real-cloud Job and data-path suite: each leg provisions real
+# VMs/buckets across the clouds, so this runs on demand instead of per-PR.
+# Provider-specific post-cleanup jobs drain resources afterward.
+on:
+  workflow_dispatch:
+    inputs:
+      azure_identity_readback:
+        description: Optional source-bound JSON for exact read-only Azure Job credential cleanup evidence
+        type: string
+        default: ''
+      tests:
+        description: Comma- or space-separated matrix members to run; empty runs all
+        type: string
+        default: ''
+
+concurrency:
+  # Serialize this suite across refs, but let the independently named VM and
+  # Service suites use the shared real-cloud accounts at the same time.
+  group: e2e-job-real-cloud
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-job-vitest:
+    name: e2e-job-vitest / ${{ matrix.test }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix:
+        test:
+          - aws-bucket-sync
+          - azure-bucket-sync
+          - gcp-bucket-sync
+          - lambda-bucket-sync
+          - aws-concurrent-output
+          - azure-concurrent-output
+          - gcp-concurrent-output
+          - aws-job-host-unreachable
+          - azure-job-host-unreachable
+          - gcp-job-host-unreachable
+          - aws-input-hydration-recovery
+          - aws-spot-request-cleanup
+          - aws-runtime-secrets
+          - aws-bucket-access-denied
+          - azure-bucket-access-denied
+          - gcp-bucket-access-denied
+          - aws-storage-tokens
+          - azure-storage-tokens
+          - gcp-storage-tokens
+          - aws-spot-eviction
+          - azure-spot-eviction
+          - gcp-spot-eviction
+          - azure-gpu-spot-eviction
+          - aws-gpu-probe-rerun
+          - azure-gpu-probe-rerun
+          - gcp-gpu-probe-rerun
+          - lambda-gpu-probe-rerun
+          - aws-restricted-credential
+          - azure-restricted-credential
+          - aws-host-docker
+          - azure-host-docker
+          - gcp-host-docker
+          - azure-runtime-secrets
+          - gcp-runtime-secrets
+          - lambda-runtime-secrets
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      E2E_PRIVATE_REPO_TOKEN: ${{ secrets.E2E_PRIVATE_REPO_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      E2E_TEST_TIMEOUT_SECONDS: '6600'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # An unselected member succeeds without touching a cloud; an unknown
+      # requested name fails every member.
+      - name: Select member
+        id: select
+        env:
+          TESTS: ${{ inputs.tests }}
+          MEMBER: ${{ matrix.test }}
+        run: |
+          members=$(awk '/^        test:$/ { list = 1; next } list && /^          - / { print $2; next } list { exit }' .github/workflows/e2e-job.yml)
+          read -ra names <<< "${TESTS//,/ }"
+          selected=false
+          [ "${#names[@]}" -gt 0 ] || selected=true
+          for name in "${names[@]}"; do
+            grep -qxF -- "$name" <<< "$members" || { echo "Unknown e2e-job member: $name" >&2; exit 1; }
+            [ "$name" != "$MEMBER" ] || selected=true
+          done
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js 22
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install runner tools
+        if: steps.select.outputs.selected == 'true'
+        run: bash ci/install-runner-tools.sh
+      - name: Check cloud toolchain
+        if: steps.select.outputs.selected == 'true'
+        run: bash ci/check-cloud-tools.sh
+
+      - name: Install dependencies
+        if: steps.select.outputs.selected == 'true'
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Log in to GHCR
+        if: steps.select.outputs.selected == 'true'
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mask the AWS account ID
+        if: steps.select.outputs.selected == 'true'
+        run: bash ci/aws-account-redaction.sh mask
+
+      - name: Run Job - ${{ matrix.test }}
+        id: tests
+        if: steps.select.outputs.selected == 'true'
+        run: |
+          git rev-parse HEAD > /tmp/job-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.test }} --vitest
+
+      - name: Scrub the AWS account ID from evidence and logs
+        id: scrub
+        if: always() && steps.select.outputs.selected == 'true'
+        run: |
+          shopt -s globstar nullglob dotglob
+          bash ci/aws-account-redaction.sh scrub /tmp/e2e-results-*/**/* /tmp/api-e2e.log /tmp/e2e-build-*.log
+
+      - name: Retain Job comparison evidence
+        if: always() && steps.scrub.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-cloud-${{ matrix.test }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/job-comparison-source-sha.txt
+            /tmp/e2e-results-*/e2e-run.json
+            /tmp/e2e-results-*/workloads-to-clean
+            /tmp/e2e-results-*/vitest-fixture/*/metadata.json
+            /tmp/e2e-results-*/vitest-fixture/*/fixture-record.json
+            /tmp/e2e-results-*/vitest-fixture/*/job-*.json
+            /tmp/e2e-results-*/vitest-fixture/*/dedicated-job-result.json
+            /tmp/e2e-results-*/vitest-fixture/*/cleanup-observations.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Job logs
+        if: (failure() || cancelled() || contains(steps.*.outcome, 'failure')) && steps.scrub.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-e2e-job-vitest-${{ matrix.test }}-${{ github.run_attempt }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  post-cleanup-aws:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: e2e-job-vitest
+    if: always() && !cancelled()
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Mask the AWS account ID
+        run: bash ci/aws-account-redaction.sh mask
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
+
+      - name: Sweep generated bucket credentials after tests
+        if: always()
+        run: yarn cleanup:aws-onboarding-e2e --suite bucket --sweep
+
+  post-cleanup-azure:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: e2e-job-vitest
+    if: always() && !cancelled()
+
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
+
+      - name: Sweep generated bucket credentials after tests
+        if: always()
+        run: yarn cleanup:azure-onboarding-e2e --suite bucket --sweep
+
+      - name: Read back an original Azure Job identity
+        if: always() && inputs.azure_identity_readback != ''
+        timeout-minutes: 3
+        env:
+          E2E_AZURE_JOB_IDENTITY_READBACK: ${{ inputs.azure_identity_readback }}
+        run: yarn inspect:azure-job-identity
+
+      - name: Retain exact Azure Job identity readback
+        if: always() && inputs.azure_identity_readback != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-comparison-evidence-azure-identity-readback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/azure-job-identity-readback/${{ github.run_id }}-${{ github.run_attempt }}/receipt.json
+          retention-days: 30
+          if-no-files-found: error
+
+  post-cleanup-gcp:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: e2e-job-vitest
+    if: always() && !cancelled()
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
+
+      - name: Sweep generated bucket credentials after tests
+        if: always()
+        run: yarn cleanup:gcp-onboarding-e2e --suite bucket --sweep
+
+  post-cleanup-lambda:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: e2e-job-vitest
+    if: always() && !cancelled()
+
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/lambda.ts

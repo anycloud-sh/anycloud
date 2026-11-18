@@ -1,0 +1,12 @@
+-- Remove the per-deployment submitted-with version (RFC 0031).
+--
+-- The column recorded the submitting CLI's version, read off the
+-- client-version request header at admission. It was never read back
+-- functionally, and in the one investigation where it starred it misled -
+-- bucketing teardown behavior by it produced a materially wrong first pass
+-- of the 2026-08-21 teardown analysis, because it looks like the API's
+-- version and is not. The API's version timeline lives in api_versions and
+-- answers "which version did X" by time-join for any timestamped fact. The
+-- wire field remains for older CLIs and always reads null. Historical
+-- values survive in pre-migration database snapshots.
+ALTER TABLE deployments DROP COLUMN version;

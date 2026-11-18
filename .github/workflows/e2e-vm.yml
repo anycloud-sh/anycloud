@@ -1,0 +1,283 @@
+name: E2E VM Tests
+
+# Persistent-VM real-cloud qualification. Every matrix leg runs the shared VM
+# lifecycle contract, then externally deletes a second host and verifies Failed
+# without replacement. The two members use separate workloads but share the
+# provision-to-Running journey. Local smolvm coverage runs on demand in
+# integration.yml; this workflow is the real-cloud complement.
+on:
+  workflow_dispatch:
+    inputs:
+      aws_normal_only:
+        description: Run only both AWS VM Vitest members in ordinary normal mode; ignored for forced mode
+        type: boolean
+        default: false
+      lambda_only:
+        description: Run only Lambda VM members and Lambda cleanup in normal or forced mode; incompatible with AWS selection
+        type: boolean
+        default: false
+      force_vm_cleanup:
+        description: Fail both Vitest VM contracts after Running to inspect native fallback cleanup
+        type: boolean
+        default: false
+      private_ghcr:
+        description: Run a private GHCR image through the API's registry login and check the host keeps no GHCR credential
+        type: boolean
+        default: false
+
+concurrency:
+  # Serialize this suite across refs, but let the independently named Job and
+  # Service suites use the shared real-cloud accounts at the same time.
+  group: e2e-vm-real-cloud
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-vm-vitest:
+    name: e2e-vm-vitest / ${{ matrix.test }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    environment: cloud-e2e
+    timeout-minutes: 180
+    # Every cell blocks. Forced-cleanup dispatches fail every cell on purpose,
+    # so they stay advisory.
+    continue-on-error: ${{ inputs.force_vm_cleanup }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        test:
+          [
+            aws-vm,
+            azure-vm,
+            gcp-vm,
+            lambda-vm,
+            aws-vm-host-loss,
+            azure-vm-host-loss,
+            gcp-vm-host-loss,
+            lambda-vm-host-loss,
+          ]
+        exclude: >-
+          ${{ fromJSON(inputs.lambda_only && '[{"test":"aws-vm"},{"test":"azure-vm"},{"test":"gcp-vm"},{"test":"aws-vm-host-loss"},{"test":"azure-vm-host-loss"},{"test":"gcp-vm-host-loss"}]' || inputs.aws_normal_only && !inputs.force_vm_cleanup && '[{"test":"azure-vm"},{"test":"gcp-vm"},{"test":"lambda-vm"},{"test":"azure-vm-host-loss"},{"test":"gcp-vm-host-loss"},{"test":"lambda-vm-host-loss"}]' || '[]') }}
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      # private_ghcr submits as a token that can read the org's private
+      # ci-private image, and lets the test API log in to GHCR with it.
+      GITHUB_TOKEN: ${{ inputs.private_ghcr && secrets.E2E_GH_TOKEN_ORG_PACKAGES || github.token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+      E2E_TEST_TIMEOUT_SECONDS: '6600'
+      E2E_VM_FORCE_FAILURE_AFTER_RUNNING: ${{ inputs.force_vm_cleanup && '1' || '' }}
+      VM_SMOKE_IMAGE: ${{ inputs.private_ghcr && 'ghcr.io/anycloud-sh/ci-private:latest' || '' }}
+      ANYCLOUD_E2E_GHCR_AUTH: ${{ inputs.private_ghcr && 'true' || '' }}
+
+    steps:
+      - name: Reject incompatible Lambda selection
+        if: ${{ inputs.lambda_only && inputs.aws_normal_only }}
+        run: |
+          echo 'lambda_only cannot be combined with aws_normal_only.' >&2
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+      - name: Check cloud toolchain
+        run: bash ci/check-cloud-tools.sh
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Log in to GHCR
+        uses: ./.github/actions/ghcr-login
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Vitest VM - ${{ matrix.test }}
+        id: tests
+        run: |
+          git rev-parse HEAD > /tmp/vm-comparison-source-sha.txt
+          ./test/integration/e2e.sh ${{ matrix.test }} --vitest
+
+      - name: Retain VM comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-comparison-evidence-cloud-${{ matrix.test }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/vm-comparison-source-sha.txt
+            /tmp/e2e-results-*/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Vitest VM logs
+        if: failure() || cancelled() || contains(steps.*.outcome, 'failure')
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-e2e-vm-vitest-${{ matrix.test }}
+          path: |
+            /tmp/e2e-results-*/
+            /tmp/api-e2e.log
+            /tmp/e2e-build-*.log
+          retention-days: 3
+
+  post-cleanup-aws:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-vm-vitest]
+    if: always() && !cancelled() && !inputs.lambda_only
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
+
+  post-cleanup-azure:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-vm-vitest]
+    if: always() && !cancelled() && !inputs.lambda_only
+
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
+
+  post-cleanup-gcp:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-vm-vitest]
+    if: always() && !cancelled() && !inputs.lambda_only
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+      GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cloud resource cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
+
+  post-cleanup-lambda:
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    environment: cloud-e2e
+    needs: [e2e-vm-vitest]
+    # Keep invalid selections blocking even when only advisory forced cells ran.
+    if: always() && !cancelled()
+
+    env:
+      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
+
+    steps:
+      - name: Reject incompatible Lambda selection
+        if: ${{ inputs.lambda_only && inputs.aws_normal_only }}
+        run: |
+          echo 'lambda_only cannot be combined with aws_normal_only.' >&2
+          exit 1
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install runner tools
+        run: bash ci/install-runner-tools.sh
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
+
+      - name: Install dependencies
+        run: bash scripts/ci-install-dependencies.sh
+
+      - name: Build
+        run: yarn build
+
+      - name: Run post-test cleanup
+        run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/lambda.ts

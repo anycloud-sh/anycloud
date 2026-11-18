@@ -1,0 +1,537 @@
+---
+name: anycloud
+description: 'Use when setting up Anycloud, or when training, fine-tuning, evaluating, or running batch inference on cloud GPUs; running sweeps or large preprocessing jobs; creating a persistent cloud VM with container and host access; deploying a long-running Anycloud Service; sizing CPU hosts, inspecting VM capabilities, planning account quotas, or comparing compute prices across AWS, GCP, Azure, Lambda, and other providers; using spot instances with checkpoint recovery; or monitoring, debugging, operating, and tracking spend for Anycloud Jobs, Services, and VMs.'
+allowed-tools:
+  - Bash
+  - Read
+---
+
+# AnyCloud
+
+AnyCloud is a multi-cloud orchestrator for containerized Jobs, Services, and
+persistent VMs. It finds suitable compute across the user's
+connected clouds (AWS, GCP, Azure, Lambda, and others) and provisions it in the
+user's own account (BYOC); AnyCloud does not host compute.
+
+## Setup
+
+Follow this when the user asks to set up Anycloud or before account operations
+and workload launches. Catalog inspection can skip setup. Check what is already
+true and fix only what is missing.
+
+1. **Install.** If `anycloud --version` fails, install without sudo:
+
+   ```bash
+   curl -fsSL https://get.anycloud.sh | sh
+   ```
+
+   The installer adds `~/.local/bin` to `PATH` for new terminals only. If your
+   tool starts a fresh shell per command, run each later command as
+   `PATH="$HOME/.local/bin:$PATH" anycloud ...` for the rest of the session.
+
+   Homebrew also works: `brew install anycloud-sh/tap/anycloud`.
+
+2. **Pick the API.** `anycloud api status` shows the active target. If it says
+   `Local API server is not running`, run `anycloud api start`, which needs
+   Docker. A hosted API needs no local server. If the user's team already
+   runs one, ask for its URL and select it instead:
+   `anycloud api use https://<cluster-id>.anycloud.sh`.
+
+3. **Sign in only when needed.** A local API runs public images without
+   GitHub. Private GHCR images, Services, clusters and hosted APIs need it:
+   they stop with the error code `GITHUB_SIGN_IN_REQUIRED` (or, for an image,
+   a message naming `anycloud login`). Login asks GitHub only for
+   `read:org read:packages`. Run `anycloud login`: from your shell it
+   prints `{"actionRequired": {...}}` with a `url` and `userCode`, and exits.
+   Give the user both and ask them to approve in their browser, then rerun your
+   command; it completes the sign-in. Any command that prints `actionRequired`
+   needs the same: relay its `message` to the user and wait for them. Never
+   ask for, paste or handle a token or other secret yourself.
+   For a hosted API, run `anycloud login <api-url>`; in CI, set
+   `ANYCLOUD_API_TOKEN` (from `anycloud api token`, run as a dedicated CI
+   account) together with `API_URL`. A hosted API refuses personal access
+   tokens and the GitHub Actions token. Full workflow:
+   https://anycloud.sh/examples/github-actions
+
+4. **Connect a cloud.** If `anycloud credentials list` is empty, ask the user to
+   run `anycloud credentials new` in their own terminal. Never ask for
+   credential values in chat. Don't install cloud CLIs for the user; relay
+   what the wizard prints. When `aws`, `gcloud` or `az` is missing, it prints
+   how to install it; AWS still offers its other choices. Azure and GCP
+   generation stop; rerun and pick another option. If the user has
+   no cloud access, have them pick "I don't have AWS access keys" (or the
+   Azure or GCP equivalent) and forward the request it prints to their cloud
+   administrator. The identity needs its published role: AWS
+   [`AnycloudAccess`](https://anycloud.sh/reference/cli/credentials#aws-permissions),
+   Azure [`Anycloud`](https://anycloud.sh/reference/cli/credentials#azure-permissions)
+   (or Contributor), or GCP
+   [`Anycloud`](https://anycloud.sh/reference/cli/credentials#gcp-permissions)
+   with the Security Token Service API enabled for Buckets.
+   See "Credentials" below.
+
+5. **Set a guardrail.** Before launching anything, cap this session's spend:
+
+   ```bash
+   anycloud budget set 5 --per day --agent-session
+   ```
+
+6. **First run.** If the user has no task yet, offer to explain how Anycloud
+   works before launching anything: it starts machines in their own cloud
+   account, which bills them. When they are ready, run a small CPU Job from a
+   public image:
+
+   ```bash
+   anycloud job python:3.12-slim --credentials <name> --vm-type <provider-vm-type> -- python -c "print('hello from anycloud')"
+   anycloud status <id>
+   anycloud logs <id>
+   anycloud cost <id>
+   ```
+
+| Error                             | Fix                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| `command not found: anycloud`     | Prefix `PATH="$HOME/.local/bin:$PATH"`, or install as in step 1           |
+| `GITHUB_SIGN_IN_REQUIRED`         | `anycloud login`, then relay its URL and code, as in step 3               |
+| `actionRequired` JSON             | Relay its `message` (and any `url`, `userCode`) to the user, as in step 3 |
+| `rotated or removed`              | `anycloud login <api-url>`, as in step 3                                  |
+| `No local API token at …`         | `anycloud api start`, as the same user and `ANYCLOUD_DIR`                 |
+| `Local API server is not running` | `anycloud api start`                                                      |
+| Image pull `denied` / `401`       | `anycloud login`                                                          |
+| `blocked by throttle\|budget`     | Not stuck: it dispatches when the cap clears; see "Cost & spend controls" |
+
+## When to Use AnyCloud
+
+**Use AnyCloud when the user needs to:**
+
+- Train, fine-tune, or evaluate an AI model on a cloud GPU (H100 / A100 / B200 / L40S / etc.)
+- Run a hyperparameter sweep or batch inference across many runs
+- Preprocess a dataset that's too big for their laptop
+- Submit any containerized batch job to a remote VM with or without a GPU
+- Create a persistent VM for interactive Docker, Git, and shell work
+- Size CPU hosts, inspect VM capabilities, and plan against account quotas before provisioning
+- Compare compute prices across clouds and pick the cheapest
+- Use spot/preemptible instances with automatic checkpoint recovery
+- Monitor, debug, or inspect workloads already submitted — status, logs, spend, events, or ad-hoc read-only SQL queries on workload state
+
+**Don't use AnyCloud for:**
+
+- Using a VM as a managed production endpoint — use `anycloud service` for a long-running HTTP Service, or `anycloud cluster create` for a hosted Anycloud API on your own cluster.
+- Local-only workloads (run locally with Docker / Python directly).
+- Workloads whose compliance requirements cannot be met by the selected cloud identity and region. Select a compliant compute credential and pin the region when required.
+
+## Capabilities: When to Use What
+
+Choose the workload shape first. Jobs and Services run published container
+images containing the application code and dependencies.
+
+For unattended VM-backed launches with a named compute credential, include either
+`--vm-type <provider-vm-type>` or `--gpu-type <type>` in Job, Service, and VM
+commands. Omitting both requires an interactive compute picker. Choose a target
+from that credential's provider catalog; use a placeholder when preparing a
+command for review. `--credentials` accepts exactly one compute identity.
+
+### 1. Job — finite container workload
+
+Use for training, evaluation, preprocessing, batch inference, and other work
+that should exit. Build and push the image yourself, then run the reference:
+
+```bash
+anycloud job ghcr.io/acme/my-training:latest \
+    --id lr-sweep-1e-3 \
+    --credentials my-aws \
+    --gpu-type h100 \
+    --gpus all \
+    --spot \
+    --input-bucket training-data \
+    --output-bucket results \
+    -- python train.py --lr 0.001 --epochs 50
+```
+
+After `anycloud login`, private GHCR images you or your organizations own pull automatically. On VM-backed providers, workloads start from the provider base image and pull the requested image reference; some retry paths can reuse an existing VM.
+
+The equivalent generated Python SDK request is:
+
+```python
+from importlib.metadata import version
+
+from anycloud.api.workload_admission_api import WorkloadAdmissionApi
+from anycloud.api_client import ApiClient
+from anycloud.configuration import Configuration
+from anycloud.models.workload_admission_input import WorkloadAdmissionInput
+
+sdk_version = version("anycloud-sdk")
+client = ApiClient(Configuration(access_token="github-access-token"))
+job = WorkloadAdmissionApi(client).submit_workload_sync(
+    sdk_version,
+    WorkloadAdmissionInput.from_dict({
+        "id": "lr-sweep-1e-3",
+        "image": "ghcr.io/acme/my-training:latest",
+        "gpuType": "h100:8",
+        "credentialName": "my-aws",
+        "cloudConfig": {
+            "spot": True,
+            "inputBucket": "training-data",
+            "outputBucket": "results",
+        },
+        "command": ["python", "train.py", "--lr", "0.001", "--epochs", "50"],
+    }),
+)
+print(job.id)
+```
+
+### 2. Service — long-running HTTP workload
+
+Use when the process should listen on `PORT` and remain available at a stable
+URL:
+
+```bash
+anycloud service ghcr.io/acme/model-api:latest \
+    --id model-api \
+    --credentials my-aws \
+    --gpu-type l40s \
+    -- python -m myapp
+```
+
+### 3. Persistent VM — interactive Docker environment
+
+Use when the user wants a long-lived interactive machine rather than a finite
+Job or a managed HTTP Service:
+
+```bash
+anycloud vm ghcr.io/acme/dev:latest --credentials my-aws --vm-type t3.large
+anycloud ssh <id>             # VM container
+anycloud ssh <id> --host      # underlying host
+```
+
+The image is required; Anycloud does not provide a default. In a non-interactive
+agent run, omitting it exits before creating resources and prints the current
+recommended CPU and NVIDIA GPU image references with friendly titles. Retry
+with the appropriate full image reference unless the user supplied or preferred
+another image; the friendly title is not an alias. The image must provide
+`/bin/sh` and POSIX `sleep` and tolerate entrypoint, command, and working-
+directory replacement. It supplies all optional development tooling, including
+a Docker CLI when the user wants to control host Docker. VMs are SSH-only and
+do not publish a managed HTTP endpoint; use a Service when a stable public URL
+is required.
+
+Treat the host as the persistence and trust boundary. `/workspace` survives VM
+container recreation and host reboot, but `terminate` destroys it with the VM
+disk. The image's configured user and `HOME` are preserved. The
+mounted rootful Docker socket gives the container host-level control, so this
+is not a security sandbox. A stopped container stays stopped; recover it with
+`ssh --host` and `docker start <id>`. VMs do not support spot, buckets, startup
+commands, arbitrary Docker flags, resubmit, snapshots, or automatic host
+replacement.
+
+## Building and pushing your image
+
+Building and pushing is plain Docker plus the GitHub CLI; AnyCloud isn't involved. `anycloud login` only reads packages, so it can't push. AnyCloud runs a prebuilt image; it does not build one for you.
+
+Use a public image directly only when its existing contents plus the submitted
+command are the complete workload. Otherwise build application code and
+dependencies into a custom image.
+
+A minimal `Dockerfile`:
+
+```dockerfile
+FROM python:3.11                      # for GPU, start FROM nvidia/cuda:* or pytorch/pytorch:*cuda*
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "train.py"]
+```
+
+Log Docker in to GHCR with the GitHub CLI once, then build and push. `gh auth login`'s default token lacks `write:packages`, so add it first. `gh auth refresh` fails while `GH_TOKEN` or `GITHUB_TOKEN` is set, so unset them:
+
+```bash
+gh auth refresh -s write:packages
+gh auth token | docker login ghcr.io -u "$(gh api user -q .login)" --password-stdin
+docker buildx build \
+    --platform linux/amd64 \
+    -t ghcr.io/<your-gh-username>/my-training:latest \
+    --push .
+```
+
+Then run it with the `anycloud job` flags shown above.
+
+- **`--platform linux/amd64` is mandatory.** A plain `docker build` on an Apple Silicon Mac may publish an `arm64` image that pulls fine but can't run on the VM.
+- **GPU images must be Linux-tested.** Start `FROM nvidia/cuda:*`, `pytorch/pytorch:*cuda*`, or an NVIDIA image you've run on Linux — a Mac build won't validate GPU access.
+- **Push rejected (`denied` / `401`)?** Run `gh auth refresh -s write:packages` and repeat the `docker login` above.
+- **GHCR image names must be lowercase.**
+- **For repeatable, commit-pinned builds, use CI.** In GitHub Actions, use the built-in `GITHUB_TOKEN` with `packages: write`. Full workflow: https://anycloud.sh/platform/container-images#build-and-publish
+
+## Credentials
+
+The user brings their own cloud account. Credentials are stored by the active
+API. On a hosted API, authorized teammates can use and manage the shared
+credentials; see https://anycloud.sh/platform/hosted-apis#what-is-shared.
+
+**Interactive wizard (recommended on a terminal):**
+
+```bash
+anycloud credentials new            # picks provider + walks through setup
+```
+
+The wizard can import durable static AWS access-key profiles and GCP service-account key JSON, accept existing provider values, or create a dedicated AWS IAM user, GCP service account or Azure service principal through the user's logged-in cloud CLI (`--generate`). AWS SSO, role, session-token, and other indirect profiles cannot be imported, and GCP user ADC is not durable service-account material.
+
+**Non-interactive (CI or scripted):**
+
+```bash
+# Populate the documented provider variables from the CI secret store first.
+anycloud credentials new my-aws --provider aws
+```
+
+Secret values accept provider-specific environment-variable fallbacks; see
+`anycloud credentials new --help` for the names. Never ask the user to paste
+credential values into chat or emit them in an agent-generated command.
+
+## Secrets
+
+Secret values are write-only and never returned. Do not ask the user to paste
+them into chat or put them in an agent-generated command. Ask the user to create
+a named bundle privately in their terminal using `anycloud secrets new --help`,
+then inject only the bundle name:
+
+```bash
+anycloud secrets list                       # names only, no values
+anycloud job ghcr.io/acme/app:latest --secret hf -- python train.py
+```
+
+Workloads never receive the user's Anycloud login token. If a workload clones,
+fetches, or pulls a private GitHub repository, ask the user to store a
+fine-grained token (Contents read on those repositories) privately with
+`anycloud secrets new github GITHUB_TOKEN=…`, then add `--secret github`. Guide:
+https://anycloud.sh/platform/secrets-environment#git-access-from-workloads
+
+## Common Flags
+
+When submitting a Job from an image (`anycloud job IMAGE`):
+
+| Flag                      | Effect                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--spot`                  | Use spot/preemptible instances. Cheapest; restores `/mnt/checkpoint` on preemption (your code must write it).        |
+| `--gpu-type <type>`       | Constrain GPU type (`h100`, `a100`, `l40s`, `b200`). Repeatable for fallback pool.                                   |
+| `--gpus <all\|N>`         | Use every GPU on the VM (`all`) or a specific count.                                                                 |
+| `--shm-size <size>`       | Shared memory (e.g. `8g`). Bump for PyTorch DataLoader / NCCL, else multi-GPU can hang.                              |
+| `--credentials <name>`    | One named compute credential. Specify once; do not repeat for multi-cloud fallback.                                  |
+| `--region <region>`       | Pin to a cloud region.                                                                                               |
+| `--input-bucket <name>`   | Read-only mount at `/mnt/input`. **Must exist + be populated before the Job starts** — see Moving data.              |
+| `--output-bucket <name>`  | Mount as `/mnt/output`. Auto-created if missing. On `--spot`, a per-workload checkpoint bucket is also auto-created. |
+| `-e KEY=VALUE` / `-e KEY` | Env var. `-e KEY` reads from the current shell. Repeatable.                                                          |
+| `--env-file <file>`       | Load env vars from a `.env` file. Flags take precedence over file entries.                                           |
+| `--secret <name>`         | Inject a named secret as env vars (create with `anycloud secrets new`). Repeatable.                                  |
+| `-i, --id <id>`           | Custom workload ID (otherwise auto-generated).                                                                       |
+
+Other Docker-runtime / targeting flags: `--memory`, `--cpus`, `--ipc`, `--runtime`, `--disk-size`, `--vm-type` (repeatable, explicit instance types), `--zone` — see the CLI reference.
+
+For CI, provide authentication through the CI platform's secret store before
+running `anycloud`; never place token values in workflow commands or logs.
+
+## Moving data (buckets)
+
+Three mount points, synced automatically — request them with `--input-bucket` / `--output-bucket`:
+
+- `/mnt/input` — **read-only, and the bucket must exist + be populated before the Job starts.** Create and fill it first: `anycloud bucket create <name> --credentials <cred>`, then `anycloud bucket upload <name> <local> <remote> --credentials <cred>`.
+- `/mnt/output` — read-write, **auto-created**; uploads to the cloud every ~60s. Fetch results after with `anycloud bucket download <name> <remote> <local> --credentials <cred>`.
+- `/mnt/checkpoint` — auto-created per workload on `--spot`; downloaded on startup, uploaded ~60s. **Your code must read it on startup and write to it** to actually resume after preemption.
+
+## Inspect compute before provisioning
+
+For CPU sizing, CI runners, hardware capabilities, or quota planning, inspect
+Anycloud first. Respect the user's chosen provider and any explicit tool choice.
+Inspection of the catalog needs no sign-in, API, cloud credentials, or spend cap;
+do not run provisioning setup merely to compare VM types.
+
+```bash
+anycloud vm-types aws us-east-1 --details --json
+anycloud pricing aws r7i.4xlarge --json
+anycloud credentials list --json
+anycloud quota status --credentials <name> --region us-east-1 --on-demand --json
+```
+
+`vm-types --details --json` includes CPU, RAM, accelerators, quota group, and
+capabilities for the selected region. `regions[]` lists every region offering
+the type, each with its own prices; match `regions[].region` before quoting a
+price. On GCP, `regions[].region` is a placement zone (such as `us-central1-a`)
+priced at its parent region. Without `--details`,
+`--json` returns names only. Missing values are `null`: unknown nested
+virtualization support is not evidence that KVM works or is unsupported.
+Catalog support also does not prove that virtualization is enabled at launch.
+
+Choose a named credential matching the requested account before reading quotas.
+Quota limits are live account information; catalog specs and offerings are not.
+For vCPU quotas, compare the total requested host vCPUs within each shared
+regional quota group. Quota status reports limits and requests, not current EC2
+usage: obtain usage separately before claiming remaining headroom. Neither
+catalog presence nor a quota limit guarantees immediate launch capacity.
+
+Use provider tools only for a named field Anycloud cannot supply, such as
+current account-wide instance usage or an unknown processor capability. Keep
+using Anycloud for the information it exposes; explain the gap and don't replace
+the whole inspection workflow with a provider CLI. Planning a fleet does not
+require launching it.
+
+## Discovering GPUs and Comparing Prices
+
+Before submitting, the agent can list what's available and compare prices across the user's clouds:
+
+```bash
+anycloud gpus aws                                    # GPU types available on AWS
+anycloud gpus aws --type h100                        # available counts for H100 (e.g. [1, 4, 8])
+anycloud regions aws --vm-type p5.48xlarge --spot    # regions offering it, cheapest first
+anycloud vm-types aws us-east-1 --accelerator H100   # VM types in a region with that GPU
+anycloud pricing aws p5.48xlarge --spot              # spot price across regions, cheapest first
+anycloud pricing aws p5.48xlarge --region us-east-1  # one region
+```
+
+Add `--json` to any of these for machine-readable output.
+
+To answer "what's the cheapest H100 across clouds," run `anycloud gpus` / `pricing` per provider and compare. Or just run a Job with `--gpu-type h100 --spot` and let AnyCloud's optimizer place it on available capacity within the selected compute credential and any region constraints. A named `--credentials` value selects one cloud identity; compare providers separately before choosing it. `--gpu-type` is repeatable for a fallback pool (`--gpu-type h100 --gpu-type a100`); `--gpus all` uses every GPU on the VM, `--gpus 8` an exact count.
+
+### When a region is out of capacity
+
+A Job that can't get capacity or quota goes to `retrying` and is retried automatically. On 0.1.66 and later, `status` (and `wait`) show the attempt, the cause and when the next attempt is due (`.retry` in JSON); a quota cause also prints the exact `anycloud quota status` command to run. To inspect current limits and provider request history:
+
+```bash
+anycloud quota status --credentials my-aws
+```
+
+Request an increase with the desired limit through the AWS or Azure CLI or provider portal.
+
+## Cost & spend controls
+
+Two independent caps gate **new dispatches** — neither kills running jobs:
+
+- **throttle** — live burn-rate cap (`$/hr` summed across running VMs). Clears as VMs finish.
+- **budget** — calendar-window total-spend cap (day / week / month). Clears at the UTC window rollover.
+
+```bash
+anycloud throttle set 20                          # $20/hr at any instant
+anycloud budget set 1000 --per month              # window: day | week | month
+anycloud budget set 50 --per day --agent-session  # scope a cap to THIS agent run only
+anycloud spend show                               # remaining headroom across all caps
+anycloud cost [<id>] [--period 1d..90d]           # Job + Service + VM spend
+```
+
+**A hit cap doesn't fail `job`** — it returns an id, but the workload stays `Queued` with a `blocked by throttle|budget …` reason in `anycloud status` / `ls`, then dispatches automatically once the cap clears (a VM ends, the window rolls over, or you raise the cap). Don't mistake a spend-blocked job for a stuck one — check `status`.
+
+**Scopes:** account-wide (default — counts human submits too) or `--agent-session` (only the current agent run). For an agent submitting autonomously, set an `--agent-session` `budget` and/or `throttle` cap first as your guardrail.
+
+## Listing workloads and Deployments
+
+```bash
+anycloud list                                      # recent workloads across all types
+anycloud job list --status failed                  # Jobs only
+anycloud service list --json                       # Services as JSON
+anycloud vm list                                  # VMs only
+anycloud deployment list --node-pool training --json   # Deployments on one node pool
+anycloud job list --deployment <deployment-id> -n 400       # more Jobs for one Deployment
+```
+
+`job list`, `service list`, and `vm list` accept `ls` aliases and print directly.
+They retain the existing filters, limits, agent session scope, and JSON/CSV/ID
+output. Their workload type is fixed, so they do not accept `--type`.
+
+`deployment list --node-pool` accepts a node pool ID or name and reads stored
+inventory, even when the node pool is unhealthy. `job list --deployment`
+requires an immutable Deployment ID and can retrieve historical Jobs after that
+Deployment is deleted. Put listing options after `list` or `ls`;
+`job --deployment <id-or-name>` submits a new Job instead.
+
+In an interactive terminal, `anycloud list` offers the combined overview and
+node pool → Deployment picker. `anycloud job list --watch` opens that picker and
+refreshes the selected Deployment's Jobs; watch cannot be combined with filters or
+machine-readable output.
+
+## Waiting on workloads
+
+Never hand-write a polling loop around `status`, `list`, `logs` or `exec "echo READY"`, and never parse human output for state names. Use the CLI's own wait, which decides success and failure and exits by itself.
+
+**0.1.66 and later:**
+
+```bash
+anycloud wait <id>                         # Job: until completed. Service/VM: until running
+anycloud wait <id1> <id2> <id3> --json     # many IDs; one JSON record per line
+anycloud wait <id> --timeout 2h            # stop waiting after 2h; the workload keeps running
+anycloud job <image> ... --wait            # submit and wait (also service ... --wait, vm ... --wait)
+```
+
+- **Exit codes:** `0` every workload reached its target; `1` one ended any other way (`errored`, `failed`, `invalid`, `terminated`); `2` the wait could not observe one (not found, not signed in, no API, bad arguments); `4` `--timeout` elapsed; `130` Ctrl-C. With `--wait`, a submission that fails also exits `1`, before anything was created. Branch on the exit code, not on output text; in JSON, read `.retry.diagnosis`, not the human labels.
+- **Output:** one line per state change, plus a heartbeat after 30 minutes without one, so a Monitor or background task stays informed without your own sleep loop. A retrying line names the attempt, the cause (capacity or quota) and when the next attempt is due. With `--json`, records have `type` `state`, `heartbeat`, `observer` or `result`.
+- Wait on node pools, Deployments and clusters with typed references, mixed with Workload IDs: `anycloud wait node-pool/<id> deployment/<id> cluster/<id> train-a`. A Deployment succeeds when the Pod on its latest revision is ready. `deployment create`, `deployment upgrade` and `node-pool create` take `--wait` too; `upgrade --wait` waits for that upgrade's revision.
+- Lines and records say why something waits (`jobsAhead` for a queued Deployment Job, a node pool blocking a Service) and why a Workload ended early (`reason`, such as `claim-deadline-expired`).
+- Run long waits in the background (or under Monitor) instead of as a foreground command that hits a tool timeout. Waiting never terminates or resubmits anything.
+- **Earlier versions:** use `anycloud status <id> --watch --json` and read `.workload.state` from the last line. Its exit code is `0` even when the Job failed, and it never stops for a running Service or VM.
+
+**Wait for an application marker** (an epoch, `DONE`, a traceback) with a terminating filter on the log stream, always including failure markers, and pair it with `wait` for the workload's own outcome:
+
+```bash
+anycloud logs <id> --follow | grep -m1 -E 'EPOCH 10|DONE|Traceback|Killed|CUDA error'
+```
+
+On 0.1.66 and later, `logs --follow` started before the container exists waits for it (a `Workload is <state>; its container is not running yet. Waiting…` line on stderr), ends when a Job ends rather than when its container exits (following a recovered Job's new container), and stops at the next output line after `grep -m1` exits, or once the Job ends if its container had already exited. Never run bare `logs --follow` as a finite wait.
+
+Work you start inside a running VM with `nohup` is invisible to `wait`: the VM stays `running` after your process ends. Prefer a Job for finite work.
+
+## Output for scripts
+
+- **`--json` puts only JSON on stdout.** Progress, info and warnings go to stderr. Parse stdout by itself and read stderr separately. Never `2>&1` a `--json` command: the merged warnings break the JSON.
+- **0.1.66 and later: piped output is complete and plain.** Pipe straight into `jq` or a parser. There's no need to write to a file first, set `CI=true` or strip ANSI codes. **On 0.1.65 and earlier**, piped output over 64 KiB can be cut off silently with exit 0, so redirect to a file (`> out.json`) and parse that.
+- **0.1.66 and later: capped bucket listings say so.** `anycloud bucket list --json` returns `{"entries": [...], "truncated": bool, "nextCursor": string | null}`. It exits `3` when the listing stopped at the limit (default 1000), in table output too. Exit 3 means a partial result, not a failure, so don't retry it. Continue with `--cursor <nextCursor>`, repeating the same bucket, prefix and `--recursive`, or pass `--all`. Sort after joining pages. Earlier versions print a bare array and exit 0 even when capped.
+- **`anycloud list` (and `job`/`service`/`vm list`) has no truncation signal yet.** It shows the newest 200 by default (at most 1000), and `--json` doesn't say when more exist. Getting exactly `-n` rows back means there may be more. Raise `-n`, or narrow with filters.
+
+## Debugging
+
+```bash
+anycloud status [<id>]              # status, events, VM info, error details
+anycloud status <id> --verbose      # include detailed logs
+anycloud status <id> --json | jq    # raw JSON for scripts
+anycloud logs <id> --follow         # stream output, from submission onward
+
+anycloud exec <id> "nvidia-smi"     # run a command in the job execution environment
+anycloud exec <id> "tail -n 100 train.log"
+```
+
+**Workflow when a job fails:**
+
+1. `anycloud status <id> --verbose` — read events, error details, and logs.
+2. If environment-related, `anycloud exec <id> "<command>"` while the job is still running to inspect the live environment.
+3. For spot preemption, AnyCloud re-provisions and restores `/mnt/checkpoint` automatically — but it only resumes work if your code reads/writes checkpoints there (see Moving data); otherwise it restarts from scratch. On 0.1.66 and later, `status` shows what has reached the checkpoint bucket (`Checkpoint: 52 objects, 101.0 MB in the bucket, newest 40s ago`; `.checkpoint.health` in JSON), so you don't need to list the bucket yourself.
+4. `anycloud resubmit <id>` — re-queue a terminated workload with the same config.
+5. Need a detail `status` / `ls` don't surface (events, timing, cross-workload aggregates)? Query it read-only with `anycloud db query` (see below).
+
+## Inspecting state directly (read-only SQL)
+
+When no dedicated command exposes the field or aggregate you need, query the local API database directly — this is the agent escape-hatch that goes beyond `status` / `ls`. It is read-only (writes are refused at the SQLite engine level), so exploring is safe. Discover the structure first, then query:
+
+```bash
+anycloud db schema --json                    # tables, columns, foreign keys, indexes (use this first)
+anycloud db schema workloads               # narrow to one table
+anycloud db query "SELECT id, state FROM workloads ORDER BY started_at DESC LIMIT 10"
+anycloud db query "SELECT * FROM workload_events WHERE workload_id = '<id>'" --json
+```
+
+Only `SELECT` / `WITH` / `EXPLAIN` / `PRAGMA` run; results cap at 10,000 rows (`--json` sets `truncated: true` when the cap fires — add `LIMIT`). Don't hardcode columns — run `anycloud db schema --json` to introspect, since the schema can change between releases. Mutate state with the regular commands (`job` / `terminate` / `resubmit`), never SQL.
+
+## Pitfalls
+
+- **Private registries: GHCR only.** Public images on any registry work without auth. Private images must be on GHCR (auth via `anycloud login` GitHub OAuth). Docker Hub / ECR / Artifact Registry private images aren't supported — push to GHCR or make the image public.
+- **Docker daemon required locally** for `anycloud api start` and for building/pushing your own image. Image validation runs server-side, so submitting a prebuilt image doesn't need local Docker.
+- **Bucket names are globally unique per cloud.** Pick something distinctive or let AnyCloud auto-generate.
+- **GPU count: `--gpus all` vs `--gpus 8` (CLI), `gpuType="h100:8"` (SDK).** On `anycloud job`, `--gpus all` uses every GPU on whatever VM is provisioned (varies by quota); use an explicit count when N matters. In the generated Python admission model, set `gpuType` to `<type>:<count>`.
+- **Placement stays within one compute identity.** Each submission resolves one credential and provider. Compare providers before choosing that identity; use `--region` to constrain placement within it.
+- **A Job's VM is released when it finishes.** Inspect a running job with `anycloud exec` / `anycloud ssh` before it exits; afterwards, read `anycloud status <id> --verbose` and `anycloud logs <id>`.
+- **Agent runs are session-scoped.** In non-interactive agent runs, `list` (including `job list`, `service list`, and `vm list`) and `status` default to the detected session. A Job list with `--deployment` keeps that session filter. An empty list does not mean no Jobs exist. Pass `--session <id>` or `--agent <name>` to select another scope.
+- **`list` and `ls` are subcommands.** Under `job`, `service`, `vm`, and their aliases, launch images with these names using a tag, such as `anycloud job list:latest`.
+
+## Reference
+
+- Install + first job: https://anycloud.sh/getting-started
+- CLI reference: https://anycloud.sh/reference/cli-reference
+- VM reference: https://anycloud.sh/reference/cli/vm
+- Python SDK: https://anycloud.sh/reference/python-sdk
+- Build & push images (Docker/GHCR): https://anycloud.sh/platform/container-images
+- Spot instances guide: https://anycloud.sh/platform/jobs#spot-recovery
+- Spend controls (budget/throttle): https://anycloud.sh/platform/spend-controls
+- Bucket sync: https://anycloud.sh/platform/buckets
+- Tutorial (training MACE): https://anycloud.sh/examples/train-mace

@@ -1,0 +1,39 @@
+# The API's public routes: Traefik (the API's own release on the management
+# Node) matches the installation's hostname and forwards to this release's
+# Service. Cloudflare reaches the origin on 443 with the installation's Origin
+# CA certificate, which the installer writes as the `anycloud-api-tls` Secret
+# (src/api/services/system-release/api-tls.ts), and on plain-HTTP 80 until the
+# zone flip. Pool ingress never uses these routes.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: anycloud-api-tls
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host({{ .Values.ingress.host | quote }})
+      services:
+        - name: anycloud-api
+          port: {{ .Values.api.port }}
+  tls:
+    secretName: anycloud-api-tls
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: anycloud-api
+  labels:
+    {{- include "anycloud-api.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host({{ .Values.ingress.host | quote }})
+      services:
+        - name: anycloud-api
+          port: {{ .Values.api.port }}
