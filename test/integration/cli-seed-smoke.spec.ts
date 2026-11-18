@@ -149,7 +149,7 @@ describe('compiled seed cluster create', () => {
       const result = await promisify(execFile)(
         cli,
         [
-          'cluster',
+          'api',
           'create',
           'smoke',
           '--cloud',
