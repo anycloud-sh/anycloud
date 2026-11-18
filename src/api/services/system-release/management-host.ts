@@ -156,10 +156,7 @@ function managementKubernetesConfigBody(
     `  - service-account-issuer=${input.issuerUrl}`,
     `  - service-account-issuer=${K3S_DEFAULT_SERVICE_ACCOUNT_ISSUER}`,
     `  - service-account-jwks-uri=${input.issuerUrl}${SERVICE_ACCOUNT_ISSUER_JWKS_PATH}`,
-    // Pod traffic between the cluster and a pool in another cloud has to use the
-    // public addresses; that needs 8472/udp between cluster and pool public IPs
-    // only when Pods talk across clouds, which Jobs and node-pool Services do
-    // not today.
+    // Unchanged from when node pools joined, so an upgrade doesn't restart K3s.
     'flannel-external-ip: true',
     'tls-san:',
     `  - ${input.publicIp}`,

@@ -3,44 +3,24 @@ import type { SessionScope } from '../session/detect.js';
 import { type WorkloadListRow as StoredWorkload } from '../../shared/api-contract/workload-management-schemas.js';
 import { WorkloadState, WorkloadType } from '../../shared/workload.js';
 import { formatSessionDisplay } from '../../shared/session-display.js';
-import type { NodePoolSummary } from '../../shared/api-contract/node-pools-schemas.js';
-import type { DeploymentSummary } from '../../shared/api-contract/deployments-schemas.js';
-import { sleep } from '../../shared/utils.js';
-import { InterruptedError } from '../utils/interrupt.js';
-
-export const LIST_WATCH_LABEL = 'Workload list watch';
 
 export interface WorkloadListClient {
   workloads: Pick<ApiClient['workloads'], 'list'>;
-  nodePools: Pick<ApiClient['nodePools'], 'list' | 'get'>;
-  deployments: Pick<ApiClient['deployments'], 'list' | 'get'>;
 }
 
 export interface ListOptions {
   filter?: string;
   status?: string;
   type?: string;
-  deployment?: string;
   credentials?: string;
   user?: string;
   session?: string;
   agent?: string;
   period?: string;
   limit?: string;
-  watch?: boolean;
-  interval?: string;
   json?: boolean;
   csv?: boolean;
   onlyIds?: boolean;
-}
-
-export interface NodePoolDeploymentSelection {
-  nodePool: NodePoolSummary;
-  deployment: DeploymentSummary;
-}
-
-export interface NodePoolDeploymentJobs extends NodePoolDeploymentSelection {
-  workloads: StoredWorkload[];
 }
 
 /** A distinct agent session present in a workload set, for the picker. */
@@ -107,12 +87,7 @@ export function distinctCreators(workloads: StoredWorkload[]): CreatorGroup[] {
   return [...groups.values()].sort((a, b) => b.latest - a.latest);
 }
 
-export type ListView =
-  | '__all__'
-  | '__node_pools__'
-  | '__sessions__'
-  | '__users__'
-  | WorkloadState;
+export type ListView = '__all__' | '__sessions__' | '__users__' | WorkloadState;
 /** What the picked view shows: everything, one state, one creator, or one session. */
 export type WorkloadListSelection =
   | '__all__'
@@ -179,55 +154,16 @@ export function workloadsForView<T extends StoredWorkload>(
   return workloads.filter((d) => d.state === view);
 }
 
-function hasWatchConflict(options: ListOptions): boolean {
-  return [
-    options.filter,
-    options.status,
-    options.type,
-    options.deployment,
-    options.credentials,
-    options.user,
-    options.session,
-    options.agent,
-    options.period,
-    options.limit,
-    options.json,
-    options.csv,
-    options.onlyIds,
-  ].some((value) => value !== undefined && value !== false);
-}
-
 /**
  * Validate the list flags and resolve the workload type filter. Throws the
- * message the command reports; `interactive` is whether prompts are allowed
- * and stdout is a TTY.
+ * message the command reports.
  */
 export function validateListOptions(
   options: ListOptions,
-  context: { workloadType?: WorkloadType; interactive: boolean },
+  context: { workloadType?: WorkloadType },
 ): { type: WorkloadTypeFilter | undefined } {
   const type =
     context.workloadType ?? normalizeWorkloadTypeFilter(options.type);
-  if (
-    options.deployment !== undefined &&
-    type !== undefined &&
-    type !== WorkloadType.Job
-  ) {
-    throw new Error('--deployment only supports Jobs');
-  }
-  if (options.interval !== undefined && !options.watch) {
-    throw new Error('--interval requires --watch');
-  }
-  if (options.watch) {
-    if (hasWatchConflict(options)) {
-      throw new Error(
-        '--watch cannot be combined with list filters or machine-readable output',
-      );
-    }
-    if (!context.interactive) {
-      throw new Error('--watch requires an interactive terminal');
-    }
-  }
   return { type };
 }
 
@@ -251,7 +187,6 @@ export function shouldPromptForView(
     options.status === undefined &&
     options.type === undefined &&
     context.workloadType === undefined &&
-    options.deployment === undefined &&
     options.credentials === undefined &&
     options.user === undefined &&
     options.session === undefined &&
@@ -280,57 +215,9 @@ export function fetchWorkloadList(
       agent: scope.agent,
       status: options.status,
       workloadType: type,
-      deploymentId: options.deployment,
       credentialName: options.credentials,
       filter: options.filter,
       user: options.user,
     },
   });
-}
-
-export async function fetchNodePoolDeploymentJobs(
-  client: WorkloadListClient,
-  selection: NodePoolDeploymentSelection,
-  signal?: AbortSignal,
-): Promise<NodePoolDeploymentJobs> {
-  try {
-    const [{ nodePool }, { deployment }, workloads] = await Promise.all([
-      client.nodePools.get(
-        { params: { id: selection.nodePool.id } },
-        { signal },
-      ),
-      client.deployments.get(
-        { params: { id: selection.deployment.id } },
-        { signal },
-      ),
-      client.workloads.list(
-        { query: { deploymentId: selection.deployment.id } },
-        { signal },
-      ),
-    ]);
-    return { nodePool, deployment, workloads };
-  } catch (error) {
-    if (signal?.aborted) throw new InterruptedError(LIST_WATCH_LABEL);
-    throw error;
-  }
-}
-
-/** Refetch the selected Deployment's Jobs every interval until aborted. */
-export async function watchNodePoolDeploymentJobs(
-  client: WorkloadListClient,
-  selection: NodePoolDeploymentSelection,
-  options: {
-    intervalSeconds: number;
-    signal: AbortSignal;
-    onView: (view: NodePoolDeploymentJobs) => void;
-  },
-): Promise<void> {
-  const { intervalSeconds, signal } = options;
-  while (!signal.aborted) {
-    options.onView(
-      await fetchNodePoolDeploymentJobs(client, selection, signal),
-    );
-    await sleep(intervalSeconds * 1000, signal);
-  }
-  throw new InterruptedError(LIST_WATCH_LABEL);
 }

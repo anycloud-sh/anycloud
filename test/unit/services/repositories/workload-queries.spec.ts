@@ -9,13 +9,11 @@ import {
 } from 'vitest';
 import { randomBytes } from 'crypto';
 import {
-  getDeploymentStore,
   resetPersistence,
   getWorkloadLifecycle as lifecycle,
   getProvisioningAttemptStore as ledger,
   getWorkloadEventStore as eventLog,
   getWorkloadQueryStore as queries,
-  getDeploymentExecutionStore as executions,
   getWorkloadOutcomes as outcomes,
 } from '../../../../src/api/services/persistence.js';
 import {
@@ -57,15 +55,7 @@ import {
   MAX_LIST_LIMIT,
 } from '../../../../src/shared/workload-list';
 
-import { seedReadyNodePool } from '../../helpers/node-pool-seed.js';
-import {
-  claimInput,
-  createTarget,
-  createTargetedJob,
-  firstExecution,
-} from '../../helpers/targeted-jobs.js';
 import { upsertCredential } from '../../../../src/api/services/repositories/credential-secrets.js';
-import { getWorkloadAdmissionWriter } from '../../../../src/api/services/workload-admission-writer.js';
 import { createWorkload } from '../../../../src/api/services/repositories/workload-creation.js';
 import { seedWorkloadRows } from '../../helpers/seed-workload-rows.js';
 
@@ -2584,22 +2574,12 @@ describe('workload_events JSON index usage', () => {
       options: {
         credentialId?: string | null;
         requestedComputeProvider?: CloudType;
-        deploymentId?: string;
         ownerUserId?: string;
         userId?: string;
         spot?: boolean;
         region?: string;
       } = {},
     ): Promise<void> {
-      if (options.deploymentId) {
-        await getWorkloadAdmissionWriter().createTargetedWorkload({
-          id,
-          userId: options.userId ?? queueInput.userId,
-          ownerUserId: options.ownerUserId,
-          deploymentId: options.deploymentId,
-        });
-        return;
-      }
       await createWorkload(getDB(), {
         ...queueInput,
         id,
@@ -2613,33 +2593,6 @@ describe('workload_events JSON index usage', () => {
         spot: options.spot ?? true,
         region: options.region ?? 'us-east-1',
       });
-    }
-
-    async function createDeployment(id: string): Promise<void> {
-      await seedReadyNodePool({
-        nodePoolId: 'target-pool',
-        ownerUserId: 'test-owner',
-      });
-      await getDeploymentStore().create(
-        {
-          id,
-          ownerUserId: 'test-owner',
-          name: id,
-          nodePoolId: 'target-pool',
-          config: {
-            image: 'example/deployment:latest',
-            imageDigest: null,
-            command: null,
-            env: null,
-            registryUsername: 'test-owner',
-            registryToken: null,
-            dockerOptions: null,
-          },
-          gpuCount: 0,
-          maxConcurrentJobsPerReplica: 1,
-        },
-        { kind: 'api' },
-      );
     }
 
     async function setStartedAt(id: string, startedAt: number): Promise<void> {
@@ -2810,457 +2763,73 @@ describe('workload_events JSON index usage', () => {
       expect(perUser.get('user-a')).toBe(10);
       expect(perUser.get('user-b')).toBe(30);
     });
-
-    it('excludes Deployment-targeted Jobs from both queue-ranking arms', async () => {
-      await createDeployment('model-a');
-      for (let i = 0; i < 60; i++) {
-        const id = `direct-${i.toString().padStart(2, '0')}`;
-        await createQueued(id);
-        await setStartedAt(id, i + 1);
-      }
-      await createQueued('targeted-oldest', {
-        deploymentId: 'model-a',
-      });
-      await setStartedAt('targeted-oldest', 0);
-
-      const selected = (await queries().listQueued(50)).map((row) => row.id);
-      expect(selected).toHaveLength(50);
-      expect(selected).not.toContain('targeted-oldest');
-      expect(selected.every((id) => id.startsWith('direct-'))).toBe(true);
-    });
   });
-  describe('persistent Deployment Job executions', () => {
+  describe('status snapshot', () => {
     beforeEach(() => {
       resetPersistence();
     });
 
-    describe('workload list Deployment filtering', () => {
-      it('keeps active Jobs ahead of only the newest terminal Jobs inside the normal bound', async () => {
-        await createTarget(4);
-        const store = queries();
-        const seed = async (
-          id: string,
-          state: WorkloadState,
-          startedAt: number,
-        ) => {
-          expect(await createTargetedJob(id)).toBe(true);
-          if (state !== WorkloadState.Queued) {
-            await walkToState(id, state);
-          }
-          await getDB().query(
-            'UPDATE workloads SET started_at = ? WHERE id = ?',
-            [startedAt, id],
-          );
-        };
-
-        await seed('deployment-active-old', WorkloadState.Running, 100);
-        await seed('deployment-active-new', WorkloadState.Queued, 200);
-        await seed('deployment-terminal-old', WorkloadState.Completed, 300);
-        await seed('deployment-terminal-new', WorkloadState.Completed, 400);
-
-        const rows = await store.listWorkloads(
-          scope('target-owner', 'target-owner'),
-          3,
-          { deploymentId: 'target' },
-        );
-
-        expect(rows.map((row) => row.id)).toEqual([
-          'deployment-terminal-new',
-          'deployment-active-new',
-          'deployment-active-old',
-        ]);
-      });
-
-      it('marks request-relative ownership across the API', async () => {
-        await createTarget();
-        expect(await createTargetedJob('deployment-owned')).toBe(true);
-        expect(
-          await createTargetedJob('deployment-teammate', {
-            userId: 'teammate',
-            ownerUserId: 'teammate-id',
-          }),
-        ).toBe(true);
-        const store = queries();
-        const viewer = { id: 'target-owner', username: 'target-owner' };
-
-        const teamRows = await store.listWorkloads(
-          { kind: 'api' },
-          10,
-          { deploymentId: 'target' },
-          viewer,
-        );
-        expect(
-          teamRows
-            .map(({ id, isOwnedByCaller }) => ({ id, isOwnedByCaller }))
-            .sort((a, b) => a.id.localeCompare(b.id)),
-        ).toEqual([
-          { id: 'deployment-owned', isOwnedByCaller: true },
-          { id: 'deployment-teammate', isOwnedByCaller: false },
-        ]);
-      });
-    });
-
-    describe('status queue snapshot', () => {
-      it('matches pickup order for tied and nullable submission timestamps', async () => {
-        await createTarget(10);
-        const store = executions();
-        const submissions: Array<[string, number | null]> = [
-          ['late', 30],
-          ['tie-b', 20],
-          ['tie-a', 20],
-          ['early', 10],
-          ['null-b', null],
-          ['null-a', null],
-        ];
-        for (const [id, submittedAt] of submissions) {
-          await createTargetedJob(id);
-          await getDB().query(
-            `UPDATE workloads SET submitted_at = ?, started_at = ? WHERE id = ?`,
-            [submittedAt, 100 - (submittedAt ?? 0), id],
-          );
-        }
-        const ordered = ['null-a', 'null-b', 'early', 'tie-a', 'tie-b', 'late'];
-        for (const [jobsAhead, id] of ordered.entries()) {
-          await expect(
-            queries().getWorkloadStatusForScope(id, {
-              kind: 'api',
-            }),
-          ).resolves.toMatchObject({ jobsAhead });
-        }
-        for (const [index, id] of ordered.entries()) {
-          await expect(
-            queries().getWorkloadStatusForScope(id, {
-              kind: 'api',
-            }),
-          ).resolves.toMatchObject({ jobsAhead: 0 });
-          await expect(
-            store.discoverTargetedJob(
-              claimInput(id, `fifo-execution-${index}`),
-            ),
-          ).resolves.toMatchObject({
-            kind: 'candidate',
-            candidate: { jobId: id },
-          });
-          await expect(
-            store.claimTargetedJob(claimInput(id, `fifo-execution-${index}`)),
-          ).resolves.toMatchObject({ kind: 'selected', jobId: id });
-        }
-      });
-
-      it('counts the shared queue while authorizing only the requested Job', async () => {
-        await createTarget();
-        const store = queries();
-        await createTargetedJob('earlier-peer', {
-          ownerUserId: 'peer',
-          userId: 'peer',
-        });
-        await createTargetedJob('subject');
-        await createTarget(1, 'other-target');
-        await createTargetedJob('different-deployment', {
-          deploymentId: 'other-target',
-        });
+    it('returns a queued VM-host Workload with its container spec', async () => {
+      const store = queries();
+      for (const workloadType of [
+        WorkloadType.Job,
+        WorkloadType.Service,
+        WorkloadType.Vm,
+      ]) {
+        const id = `vm-host-${workloadType}`;
         await seedTestWorkload({
-          id: 'direct',
+          id,
           userId: 'target-owner',
+          workloadType,
           state: WorkloadState.Queued,
+          image: 'status-image',
+          command: ['echo', 'status'],
+          env: { STATUS_MARKER: 'snapshot' },
+          githubToken: 'status-token',
         });
-        await getDB().query(
-          `UPDATE workloads SET submitted_at = 1, session = 'other-session'`,
-        );
-        await getDB().query(
-          `UPDATE workloads SET submitted_at = 2, session = 'subject-session'
-           WHERE id = 'subject'`,
-        );
-        for (const ownership of [
-          { kind: 'api' } as const,
-          scope('renamed-owner', 'target-owner'),
-        ]) {
-          await expect(
-            store.getWorkloadStatusForScope('subject', ownership),
-          ).resolves.toMatchObject({ jobsAhead: 1 });
-        }
         await expect(
-          store.getWorkloadStatusForScope('missing', {
+          store.getWorkloadStatusForScope(id, {
             kind: 'api',
           }),
-        ).resolves.toBeNull();
-        await createTargetedJob('legacy-subject', {
-          ownerUserId: undefined,
-          userId: 'Legacy-Owner',
-        });
-        await getDB().query(
-          `UPDATE workloads SET submitted_at = 3 WHERE id = 'legacy-subject'`,
-        );
-        await expect(
-          store.getWorkloadStatusForScope(
-            'legacy-subject',
-            scope('legacy-owner'),
-          ),
-        ).resolves.toMatchObject({ jobsAhead: 2 });
-      });
-
-      it('returns null outside queued Deployment-targeted Jobs', async () => {
-        await createTarget();
-        const store = queries();
-        for (const state of Object.values(WorkloadState)) {
-          if (state === WorkloadState.Queued) continue;
-          const id = `subject-${state}`;
-          await createTargetedJob(id);
-          await walkToState(id, state);
-          await expect(
-            store.getWorkloadStatusForScope(id, {
-              kind: 'api',
-            }),
-          ).resolves.toMatchObject({ jobsAhead: null });
-        }
-        for (const workloadType of [
-          WorkloadType.Job,
-          WorkloadType.Service,
-          WorkloadType.Vm,
-        ]) {
-          const id = `vm-host-${workloadType}`;
-          await seedTestWorkload({
-            id,
-            userId: 'target-owner',
-            workloadType,
-            state: WorkloadState.Queued,
+        ).resolves.toMatchObject({
+          workload: {
             image: 'status-image',
             command: ['echo', 'status'],
             env: { STATUS_MARKER: 'snapshot' },
             githubToken: 'status-token',
-          });
-          await expect(
-            store.getWorkloadStatusForScope(id, {
-              kind: 'api',
-            }),
-          ).resolves.toMatchObject({
-            jobsAhead: null,
-            workload: {
-              image: 'status-image',
-              command: ['echo', 'status'],
-              env: { STATUS_MARKER: 'snapshot' },
-              githubToken: 'status-token',
-              registryUsername: 'x-access-token',
-            },
-          });
-        }
-      });
-
-      it('returns the most recent events in chronological order under a limit', async () => {
-        await seedTestWorkload({ id: 'history', userId: 'target-owner' });
-        await getDB().query(
-          `DELETE FROM workload_events WHERE workload_id = 'history'`,
-        );
-        // Events 1 and 2 share created_at so the rowid tiebreak is exercised.
-        for (const seq of [0, 1, 2, 3, 4, 5]) {
-          await getDB().query(
-            `INSERT INTO workload_events (workload_id, state, metadata, created_at)
-             VALUES ('history', 'running', ?, ?)`,
-            [String(seq), Math.max(seq, 2)],
-          );
-        }
-        const read = async (limit?: number) => {
-          const snapshot = await queries().getWorkloadStatusForScope(
-            'history',
-            { kind: 'api' },
-            limit,
-          );
-          return {
-            total: snapshot?.eventsTotal,
-            seqs: snapshot?.events.map((e) => Number(e.metadata)),
-          };
-        };
-        expect(await read(3)).toEqual({ total: 6, seqs: [3, 4, 5] });
-        expect(await read(5)).toEqual({ total: 6, seqs: [1, 2, 3, 4, 5] });
-        expect(await read()).toEqual({ total: 6, seqs: [0, 1, 2, 3, 4, 5] });
-      });
-
-      it('updates queue counts after pickup, cancellation, retry, and resubmission', async () => {
-        await createTarget();
-        const store = executions();
-        for (const [index, id] of ['older', 'cancelled', 'subject'].entries()) {
-          await createTargetedJob(id);
-          await getDB().query(
-            `UPDATE workloads SET submitted_at = ? WHERE id = ?`,
-            [index + 1, id],
-          );
-        }
-        await expect(
-          queries().getWorkloadStatusForScope('subject', {
-            kind: 'api',
-          }),
-        ).resolves.toMatchObject({ jobsAhead: 2 });
-        await store.claimTargetedJob(claimInput('older', firstExecution));
-        await expect(
-          queries().getWorkloadStatusForScope('subject', {
-            kind: 'api',
-          }),
-        ).resolves.toMatchObject({ jobsAhead: 1 });
-        await outcomes().requestTermination('cancelled', { kind: 'api' });
-        await expect(
-          queries().getWorkloadStatusForScope('subject', {
-            kind: 'api',
-          }),
-        ).resolves.toMatchObject({ jobsAhead: 0 });
-        await store.reportTargetedJobExecution('older', firstExecution, {
-          state: WorkloadState.Retrying,
-          reason: 'retry',
+            registryUsername: 'x-access-token',
+          },
         });
-        const revision = (await eventLog().getWorkloadEvents('older')).at(
-          -1,
-        )!.id;
-        expect(await lifecycle().queueRetryCandidate('older', revision)).toBe(
-          'queued',
+      }
+    });
+
+    it('returns the most recent events in chronological order under a limit', async () => {
+      await seedTestWorkload({ id: 'history', userId: 'target-owner' });
+      await getDB().query(
+        `DELETE FROM workload_events WHERE workload_id = 'history'`,
+      );
+      // Events 1 and 2 share created_at so the rowid tiebreak is exercised.
+      for (const seq of [0, 1, 2, 3, 4, 5]) {
+        await getDB().query(
+          `INSERT INTO workload_events (workload_id, state, metadata, created_at)
+             VALUES ('history', 'running', ?, ?)`,
+          [String(seq), Math.max(seq, 2)],
         );
-        await expect(
-          queries().getWorkloadStatusForScope('subject', {
-            kind: 'api',
-          }),
-        ).resolves.toMatchObject({ jobsAhead: 1 });
-        expect(await outcomes().resubmitWorkload('cancelled')).toBe(true);
-        await expect(
-          queries().getWorkloadStatusForScope('subject', {
-            kind: 'api',
-          }),
-        ).resolves.toMatchObject({ jobsAhead: 2 });
-      });
-
-      it.each([
-        { label: 'the requested Job', predecessor: false },
-        { label: 'an earlier Job', predecessor: true },
-      ])(
-        'keeps a coherent snapshot while picking up $label',
-        async ({ predecessor }) => {
-          await createTarget();
-          await createTargetedJob('subject');
-          if (predecessor) {
-            await createTargetedJob('earlier');
-            await getDB().query(
-              `UPDATE workloads SET submitted_at = CASE WHEN id = 'earlier' THEN 1 ELSE 2 END`,
-            );
-          }
-          const store = executions();
-          const database = getDB();
-          const readSnapshot = database.read.bind(database);
-          let pickup: ReturnType<typeof store.claimTargetedJob> | undefined;
-          const readSpy = vi.spyOn(database, 'read');
-          readSpy.mockImplementationOnce((read) =>
-            readSnapshot((tx) =>
-              read({
-                query<T>(sql: string, params?: unknown[]): T[] {
-                  const rows = tx.query<T>(sql, params);
-                  if (sql.includes('FROM workloads d')) {
-                    // The competing claim is requested after reading state and
-                    // before events/count. It must commit after this snapshot.
-                    pickup = store.claimTargetedJob(
-                      claimInput(
-                        predecessor ? 'earlier' : 'subject',
-                        firstExecution,
-                      ),
-                    );
-                  }
-                  return rows;
-                },
-              }),
-            ),
-          );
-          const snapshot = await queries().getWorkloadStatusForScope(
-            'subject',
-            {
-              kind: 'api',
-            },
-          );
-          readSpy.mockRestore();
-          expect(pickup).toBeDefined();
-          await expect(pickup).resolves.toMatchObject({
-            kind: 'selected',
-            jobId: predecessor ? 'earlier' : 'subject',
-          });
-          expect(snapshot).toMatchObject({
-            workload: { state: WorkloadState.Queued },
-            jobsAhead: predecessor ? 1 : 0,
-            events: [],
-          });
-          await expect(
-            queries().getWorkloadStatusForScope('subject', {
-              kind: 'api',
-            }),
-          ).resolves.toMatchObject({
-            workload: {
-              state: predecessor ? WorkloadState.Queued : WorkloadState.Running,
-            },
-            jobsAhead: predecessor ? 0 : null,
-            events: predecessor
-              ? []
-              : [expect.objectContaining({ state: WorkloadState.Running })],
-          });
-        },
-      );
-
-      it.each([
-        {
-          label: 'a timestamped Job',
-          submittedAt: 1 as number | null,
-          expectedConstraints: [
-            'deployment_id=? AND state=? AND submitted_at=?',
-            'deployment_id=? AND state=? AND submitted_at<?',
-            'deployment_id=? AND state=? AND submitted_at=? AND id<?',
-          ],
-        },
-        {
-          label: 'a legacy Job without a timestamp',
-          submittedAt: null as number | null,
-          expectedConstraints: [
-            'deployment_id=? AND state=? AND submitted_at=? AND id<?',
-          ],
-        },
-      ])(
-        'range-constrains the Deployment queue count for $label',
-        async ({ submittedAt, expectedConstraints }) => {
-          await createTarget();
-          await createTargetedJob('subject');
-          const database = getDB();
-          await database.query(
-            `UPDATE workloads SET submitted_at = ? WHERE id = 'subject'`,
-            [submittedAt],
-          );
-          const readSnapshot = database.read.bind(database);
-          let details: string[] = [];
-          const readSpy = vi.spyOn(database, 'read');
-          readSpy.mockImplementationOnce((read) =>
-            readSnapshot((tx) =>
-              read({
-                query<T>(sql: string, params?: unknown[]): T[] {
-                  if (sql.includes('COUNT(*)') && sql.includes('workloads q')) {
-                    details = tx
-                      .query<{
-                        detail: string;
-                      }>(`EXPLAIN QUERY PLAN ${sql}`, params)
-                      .map(({ detail }) => detail);
-                  }
-                  return tx.query<T>(sql, params);
-                },
-              }),
-            ),
-          );
-          try {
-            await queries().getWorkloadStatusForScope('subject', {
-              kind: 'api',
-            });
-          } finally {
-            readSpy.mockRestore();
-          }
-          const queueSearches = details.filter((detail) =>
-            /\bSEARCH q\b/.test(detail),
-          );
-          expect(queueSearches, details.join('\n')).toEqual(
-            expectedConstraints.map(
-              (constraints) =>
-                `SEARCH q USING COVERING INDEX idx_workloads_deployment (${constraints})`,
-            ),
-          );
-        },
-      );
+      }
+      const read = async (limit?: number) => {
+        const snapshot = await queries().getWorkloadStatusForScope(
+          'history',
+          { kind: 'api' },
+          limit,
+        );
+        return {
+          total: snapshot?.eventsTotal,
+          seqs: snapshot?.events.map((e) => Number(e.metadata)),
+        };
+      };
+      expect(await read(3)).toEqual({ total: 6, seqs: [3, 4, 5] });
+      expect(await read(5)).toEqual({ total: 6, seqs: [1, 2, 3, 4, 5] });
+      expect(await read()).toEqual({ total: 6, seqs: [0, 1, 2, 3, 4, 5] });
     });
   });
 
@@ -3298,36 +2867,6 @@ describe('workload_events JSON index usage', () => {
         lastRetryAt: 4_000,
         failedAtState: WorkloadState.Provisioning,
       });
-    });
-
-    it('reports no retry window for Workloads the VM-host reconciler does not retry', async () => {
-      await createTarget(1, 'retry-target');
-      await createTargetedJob('retrying-targeted', {
-        deploymentId: 'retry-target',
-      });
-      await seedTestWorkload({
-        id: 'retrying-pool-service',
-        userId: 'u',
-        workloadType: 'service',
-        nodePoolId: 'target-pool',
-        state: WorkloadState.Retrying,
-      });
-      for (const id of ['retrying-targeted', 'retrying-pool-service']) {
-        await getDB().query(`UPDATE workloads SET state = ? WHERE id = ?`, [
-          WorkloadState.Retrying,
-          id,
-        ]);
-        await getDB().query(
-          `INSERT INTO workload_events (workload_id, state, metadata, created_at)
-           VALUES (?, ?, NULL, ?)`,
-          [id, WorkloadState.Retrying, 5_000],
-        );
-        const snapshot = await queries().getWorkloadStatusForScope(id, {
-          kind: 'api',
-        });
-        expect(snapshot?.workload.state).toBe(WorkloadState.Retrying);
-        expect(snapshot?.retry).toBeNull();
-      }
     });
 
     it('reports no retry progress outside Retrying', async () => {

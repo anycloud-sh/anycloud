@@ -19,7 +19,6 @@ function upgradeWith(dnsRecordId: string | null) {
     id: 'svc',
     workloadType: WorkloadType.Service,
     state: WorkloadState.Running,
-    nodePoolId: null,
     dnsRecordId,
   });
   // The gate runs before any of these; past it, the checkpoint step stops.

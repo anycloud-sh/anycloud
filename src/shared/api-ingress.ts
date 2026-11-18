@@ -22,12 +22,11 @@ export function clusterApiUrl(installationId: string): string {
 }
 
 /**
- * Pinned Traefik chart shared by every ingress release on the cluster (the API's
- * here; the node pool ingress of Services 2a); content-pinned after the first
+ * Pinned Traefik chart for the API's ingress release; content-pinned after the first
  * live run. helm-controller derives its install Job from the release name
  * (`helm-install-<name>`, 63-byte cap), so release names stay short.
  */
-export const TRAEFIK_CHART_REPO = 'https://traefik.github.io/charts';
+const TRAEFIK_CHART_REPO = 'https://traefik.github.io/charts';
 export const TRAEFIK_CHART_VERSION = '37.1.1';
 /** helm-controller's install Job for a HelmChart; the one place the rule lives. */
 export function helmJobName(release: string): string {

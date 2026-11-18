@@ -3,7 +3,6 @@ import {
   HOSTED_LOG_NAMESPACES,
   readHelmState,
   readHostedPodLogs,
-  secretsMatching,
   withinDeadline,
 } from '../integration/e2e/internal/substrates/cloud-cluster/hosted-pod-logs.js';
 
@@ -194,25 +193,6 @@ describe("e2e-cluster-cloud's hosted Pod logs", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(capture).resolves.toEqual({
       unavailable: 'timed out after 60 s',
-    });
-  });
-
-  test('names the Secrets with a decoded value matching the pattern', async () => {
-    const encoded = (value: string) => Buffer.from(value).toString('base64');
-    const core = {
-      listNamespacedSecret: vi.fn(async () => ({
-        items: [
-          { metadata: { name: 'grant' }, data: { url: encoded('a?sig=x') } },
-          { metadata: { name: 'clean' }, data: { token: encoded('jwt') } },
-          { metadata: { name: 'empty' } },
-        ],
-      })),
-    };
-    await expect(
-      secretsMatching(core as never, 'anycloud-np-1', /sig=/u),
-    ).resolves.toEqual(['grant']);
-    expect(core.listNamespacedSecret).toHaveBeenCalledWith({
-      namespace: 'anycloud-np-1',
     });
   });
 });

@@ -80,8 +80,6 @@ const sidebars: SidebarsConfig = {
             'reference/cli/service',
             'reference/cli/vm',
             'reference/cli/cluster',
-            'reference/cli/node-pools',
-            'reference/cli/deployments',
             'reference/cli/workloads',
             'reference/cli/catalog-pricing',
             'reference/cli/quota',

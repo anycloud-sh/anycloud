@@ -37,7 +37,6 @@ vi.mock(
 const vm = (owner: string): VmNeedingCost => ({
   cloud_id: `vm-${owner}`,
   workload_id: owner,
-  node_pool_id: null,
   cluster_id: null,
   resource_id: owner,
   resource_tag: 'anycloud_deployment',

@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "src/cli/index.ts",
-    "src/runner/index.ts",
     "src/api/server.ts",
     "src/api/services/gateways/ssh-process-helper.ts",
     "src/api/system-release-hook.ts",

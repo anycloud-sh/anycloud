@@ -595,8 +595,6 @@ const SCENARIO_GATED_RFCS = [
     path: 'rfcs/0040-targeted-harness-mutation-testing.md',
     label: 'RFC 0040',
   },
-  { path: 'rfcs/0029-reusable-execution-primitives.md', label: 'RFC 0029' },
-  { path: 'rfcs/0032-kubernetes-ingress-deployments.md', label: 'RFC 0032' },
   {
     path: 'rfcs/0036-job-deployment-configuration-authority.md',
     label: 'RFC 0036',
@@ -609,8 +607,6 @@ const SCENARIO_GATED_RFCS = [
     path: 'rfcs/0047-credential-scope-and-least-privilege-provisioning.md',
     label: 'RFC 0047',
   },
-  { path: 'rfcs/0043-pool-job-storage.md', label: 'RFC 0043' },
-  { path: 'rfcs/0048-node-pool-scaling.md', label: 'RFC 0048' },
   {
     path: 'rfcs/0051-credential-quota-wait-coordination.md',
     label: 'RFC 0051',
@@ -675,20 +671,6 @@ const ANNOTATED_RFCS = [
   {
     path: 'rfcs/0047-credential-scope-and-least-privilege-provisioning.md',
     label: 'RFC 0047',
-    heading: 'Required invariants',
-    entryLabel: 'required invariant',
-    pathRoots: [''],
-  },
-  {
-    path: 'rfcs/0043-pool-job-storage.md',
-    label: 'RFC 0043',
-    heading: 'Required invariants',
-    entryLabel: 'required invariant',
-    pathRoots: [''],
-  },
-  {
-    path: 'rfcs/0048-node-pool-scaling.md',
-    label: 'RFC 0048',
     heading: 'Required invariants',
     entryLabel: 'required invariant',
     pathRoots: [''],
@@ -812,6 +794,8 @@ export function validateRfcLedgers(projectRoot) {
   ];
   for (const rfc of scenarioRfcs) {
     const rfcMarkdown = readFileSync(join(projectRoot, rfc.path), 'utf8');
+    // A superseded RFC is a historical record; its scenarios bind no tests.
+    if (/^> Status: Superseded\b/mu.test(rfcMarkdown)) continue;
     const scenarioErrors = validateScenarioCoverage(
       rfc.label,
       basename(rfc.path).slice(0, 4),

@@ -30,70 +30,6 @@ interface ServiceWorkloadOptions
     DockerRuntimeOptions {
   id?: string;
   secret?: string[];
-  nodePool?: string;
-}
-
-/**
- * A node pool owns provider, credential, region and VM type, so the request
- * carries none of them and never touches credential or target resolution.
- * Flags that would select them are refused with the API's wording rather
- * than dropped, so a request never silently means less than it says.
- */
-export const NODE_POOL_REJECTED_FLAGS: ReadonlyArray<[string, string]> = [
-  ['credentials', '--credentials (the node pool owns its credential)'],
-  ['region', '--region'],
-  ['vmType', '--vm-type'],
-  ['gpuType', '--gpu-type'],
-  ['spot', '--spot'],
-  ['zone', '--zone'],
-  ['diskSize', '--disk-size'],
-  ['diskTier', '--disk-tier'],
-  ['checkpointBucket', '--checkpoint-bucket'],
-  ['checkpointStorageCredentials', '--checkpoint-storage-credentials'],
-  ['checkpointStorageRegion', '--checkpoint-storage-region'],
-];
-
-export function assertNodePoolFlags(
-  options: object,
-  subject: string,
-  flags = NODE_POOL_REJECTED_FLAGS,
-): void {
-  for (const [key, flag] of flags) {
-    const value = (options as Record<string, unknown>)[key];
-    const present = Array.isArray(value)
-      ? value.length > 0
-      : value !== undefined && value !== false;
-    if (present) {
-      throw new Error(`${subject} does not accept ${flag}.`);
-    }
-  }
-}
-
-function buildNodePoolServiceRequest(params: {
-  image: string;
-  command?: string[];
-  options: ServiceWorkloadOptions;
-  env?: Record<string, string>;
-  nodePool: string;
-}): WorkloadRequest {
-  const { image, command, options, env, nodePool } = params;
-  assertNodePoolFlags(options, 'A Service on a node pool');
-  const detected = detectSession();
-  return {
-    image,
-    cloudConfig: {},
-    nodePool,
-    workloadType: 'service',
-    id: options.id,
-    env,
-    secrets:
-      options.secret && options.secret.length > 0 ? options.secret : undefined,
-    dockerOptions: buildDockerOptions(options),
-    command: command && command.length > 0 ? command : undefined,
-    session: detected?.session,
-    agent: detected?.agent ?? undefined,
-    sessionLabel: detected?.label,
-  };
 }
 
 async function buildServiceWorkloadRequest(params: {
@@ -103,12 +39,6 @@ async function buildServiceWorkloadRequest(params: {
   env?: Record<string, string>;
 }): Promise<WorkloadRequest> {
   const { image, command, options, env } = params;
-  if (options.nodePool) {
-    return buildNodePoolServiceRequest({
-      ...params,
-      nodePool: options.nodePool,
-    });
-  }
   const resolved = await resolveCloudConfig(options, {
     allowSpotPrompt: false,
   });
@@ -180,10 +110,6 @@ export function createServeCommand(): Command {
       [] as string[],
     )
     .option(
-      '--node-pool <id-or-name>',
-      'Run on this node pool in the shared cluster instead of a VM host',
-    )
-    .option(
       '--credentials <name>',
       'Compute credentials name (from anycloud credentials); required when selection is ambiguous.',
       (val: string, prev?: string) => {
@@ -252,13 +178,9 @@ Examples:
   $ anycloud service ghcr.io/user/api:latest --credentials my-aws --vm-type t3.medium --checkpoint-bucket api-state
   $ anycloud service nginx:latest --credentials my-aws --vm-type t3.small
   $ anycloud service nginx:latest --env PORT=9000 --credentials my-aws --vm-type t3.small
-  $ anycloud service ghcr.io/user/api:latest --node-pool aws-east
 
 The service container must listen on $PORT. Defaults to 8088; override with --env PORT=<port>.
 Access the service at https://<id>.anycloud.sh after workload.
-With --node-pool the Service runs in the shared cluster on that node pool and is
-reachable at https://<id>.anycloud.sh; compute flags (--credentials, --region,
---vm-type, --gpu-type, --zone, --disk-*) do not apply.
 
 The names 'list' and 'ls' are subcommands. To run an image with either name,
 include its tag, e.g. 'anycloud service list:latest'. Put listing options after 'list'.
@@ -273,7 +195,6 @@ include its tag, e.g. 'anycloud service list:latest'. Put listing options after 
           env?: string[];
           envFile?: string;
           secret?: string[];
-          nodePool?: string;
           credentials?: string;
           region?: string;
           vmType?: string[];

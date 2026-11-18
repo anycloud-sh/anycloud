@@ -10,15 +10,14 @@ const STEP_TIMEOUT_MS = 20 * 60_000;
 const REFUSALS = ['SYSTEM_RELEASE_REFUSED', 'SYSTEM_RELEASE_UNAVAILABLE'];
 
 /**
- * RFC 0049 C26 (b): once the drain returns, the hosted API labels the
- * management Node and brings K3s's server configuration to the release
- * `image` names. Each poll also renews the drain's claim hold, so no pool Job
- * starts while K3s restarts. Errors other than a refusal are retried until
- * the deadline: the API answers through K3s, which may be restarting. Null
- * when the API already carries the image or predates the step.
+ * RFC 0049 C26 (b): the hosted API labels the management Node and brings
+ * K3s's server configuration to the release `image` names. Errors other than
+ * a refusal are retried until the deadline: the API answers through K3s,
+ * which may be restarting. Null when the API already carries the image or
+ * predates the step.
  */
 export async function runKubernetesStep(
-  release: Pick<ApiClient['systemRelease'], 'drain' | 'kubernetes'>,
+  release: Pick<ApiClient['systemRelease'], 'kubernetes'>,
   image: string,
   report: (message: string) => void,
   options: { pollMs?: number; timeoutMs?: number } = {},
@@ -62,8 +61,6 @@ export async function runKubernetesStep(
         `The K3s step did not report within ${Math.round(timeoutMs / 60_000)} minutes (last: ${lastError}). The hosted API upgrade was not requested; run anycloud api upgrade again.`,
       );
     }
-    // Renews the hold; a miss while K3s restarts is retried on the next poll.
-    await release.drain({ force: false }).catch(() => undefined);
     await sleep(pollMs);
   }
 }

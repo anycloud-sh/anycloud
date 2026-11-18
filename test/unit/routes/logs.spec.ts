@@ -11,10 +11,6 @@ import { getDB } from '../../../src/api/services/repositories/db';
 import { CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState, WorkloadType } from '../../../src/shared/workload.js';
 import { resetTestStore } from '../utils';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
-import { makeContainerSpec } from '../helpers/fixtures.js';
-import { TEST_USER_ID } from '../../../src/api/services/test-identity.js';
-import { getDeploymentStore } from '../../../src/api/services/persistence.js';
 import { STATUS_INSPECT_TIMEOUT_MS } from '../../../src/api/services/docker.js';
 
 const MISSING_CONTAINER_SENTINEL = '__anycloud_missing_container__';
@@ -74,12 +70,10 @@ describe('GET /v1/workloads/{id}/logs', () => {
       vms = [],
       cloudProvider = CloudType.Local,
       workloadType = WorkloadType.Job,
-      nodePoolId,
     }: {
       vms?: Parameters<typeof provisionTestVm>[1][];
       cloudProvider?: CloudType;
       workloadType?: WorkloadType;
-      nodePoolId?: string;
     } = {},
   ): Promise<void> {
     const isLocal = cloudProvider === CloudType.Local;
@@ -97,7 +91,6 @@ describe('GET /v1/workloads/{id}/logs', () => {
       vmType: isLocal ? 'local' : 't3.medium',
       sshPrivateKey: 'test-ssh-key',
       credentialId: 'test-credential-id',
-      nodePoolId,
     });
     for (const vm of vms) await provisionTestVm(id, vm);
     await walkToState(id, WorkloadState.Running);
@@ -485,60 +478,12 @@ describe('GET /v1/workloads/{id}/logs', () => {
     expect(execStreamMock.mock.calls[0]?.[0]).toContain(id);
   });
 
-  it('reads a node-pool Service from its cluster, not from a VM host', async () => {
-    const id = 'logs-node-pool-service';
-    const { nodePoolId } = await seedReadyNodePool();
-    await seedWorkload(id, {
-      cloudProvider: CloudType.AWS,
-      workloadType: WorkloadType.Service,
-      nodePoolId,
-    });
-
-    const response = await logsRequest(id);
-
-    // The seeded cluster has no reachable connection.
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      message: expect.stringMatching(
-        /^Could not reach the cluster of Service logs-node-pool-service: /,
-      ),
-    });
-    expect(execStreamMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 404 for an ID that is neither a Workload nor a Deployment', async () => {
+  it('returns 404 for an unknown Workload ID', async () => {
     const response = await logsRequest('missing');
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      message: 'Workload or Deployment not found',
-    });
-  });
-
-  it('reads a Deployment record by name from its node pool cluster', async () => {
-    const { nodePoolId } = await seedReadyNodePool({
-      ownerUserId: TEST_USER_ID,
-    });
-    await getDeploymentStore().create(
-      {
-        id: 'handler-0001',
-        name: 'handler',
-        nodePoolId,
-        ownerUserId: TEST_USER_ID,
-        config: makeContainerSpec(),
-        gpuCount: 0,
-        maxConcurrentJobsPerReplica: 1,
-      },
-      { kind: 'api' },
-    );
-
-    const response = await logsRequest('handler');
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      message: expect.stringMatching(
-        /^Could not reach the cluster of Deployment handler-0001: /,
-      ),
+      message: 'Workload not found',
     });
   });
 

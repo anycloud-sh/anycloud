@@ -10,7 +10,6 @@
 import type { DB } from './repositories/db.js';
 import {
   SESSION_BURN_SQL,
-  slotTimeSql,
   windowedVmSpendSql,
 } from './repositories/workload-spend.js';
 
@@ -187,11 +186,10 @@ export class SpendControlsStore implements SpendControlsRepository {
         ? `SELECT COALESCE(SUM(v.price_per_hour), 0) AS rate
            FROM vms v INDEXED BY idx_vms_active
            WHERE v.ended_at IS NULL
-             AND (v.ip IS NOT NULL
-               OR (v.node_pool_id IS NOT NULL AND v.removal_requested_at IS NULL))
+             AND v.ip IS NOT NULL
              AND v.price_per_hour IS NOT NULL`
         : SESSION_BURN_SQL,
-      session === null ? [] : [session, session],
+      session === null ? [] : [session],
     );
     return Math.max(0, rows[0]?.rate ?? 0);
   }
@@ -210,10 +208,6 @@ export class SpendControlsStore implements SpendControlsRepository {
       endMs: opts.windowEndMs,
       nowMs: opts.nowMs ?? Date.now(),
     });
-    // A session also spends its managed Deployments' slot time (SLOT).
-    const slots = hasSession
-      ? `UNION ALL ${spend.overlappingVms(`(${slotTimeSql('session_workloads', true)}) AS v`)}`
-      : '';
     // Exact session checks stay workload-first because a session normally
     // has far fewer rows than the account-wide VM window. Each branch then
     // probes the workload_id VM index instead of materializing every account
@@ -225,7 +219,7 @@ export class SpendControlsStore implements SpendControlsRepository {
       `WITH ${
         hasSession
           ? `session_workloads AS (
-         SELECT id, deployment_id
+         SELECT id
          FROM workloads
          WHERE session IS NOT NULL AND session = ?
        ),`
@@ -238,7 +232,6 @@ export class SpendControlsStore implements SpendControlsRepository {
          JOIN vms AS v ON v.workload_id = scoped.id`
              : undefined,
          )}
-         ${slots}
        )
        SELECT
          SUM(${spend.actualCost}) AS actual_usd,

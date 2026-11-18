@@ -13,7 +13,7 @@ import {
 import {
   isKubernetesConflictError,
   isKubernetesNotFoundError,
-} from '../kubernetes/managed-resources.js';
+} from '../kubernetes/errors.js';
 import { CONTROL_PLANE_TAINT_KEY } from '../../../shared/system-release.js';
 
 /**

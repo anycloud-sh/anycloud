@@ -218,12 +218,6 @@ describe('long-history read-model evidence', () => {
     for (const invalid of [
       { ...cliRow, userId: 123 },
       { ...cliRow, state: 'unknown' },
-      { ...cliRow, image: null },
-      {
-        ...cliRow,
-        deploymentId: 'deployment-with-container-config',
-        dockerOptions: { cpus: '2' },
-      },
       { ...cliRow, unexpected: true },
     ])
       expect(() => assertHistorySessionSelection([invalid], 1)).toThrow();

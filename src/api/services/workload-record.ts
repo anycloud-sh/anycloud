@@ -8,31 +8,9 @@ import type { ImageRuntime } from '../../shared/image.js';
 import type { DockerOptions } from '../../shared/runtime.js';
 
 /** Durable workload record hydrated from SQLite. */
-export interface WorkloadPublicEndpoint {
-  /** The pool ingress entry IP the record was last published at. */
-  ip: string | null;
-  /** `published` = record current; `repointing` = publish/re-point pending; `stale` = the Worker refused. */
-  state: 'published' | 'repointing' | 'stale';
-  error: string | null;
-}
-
 export interface StoredWorkload {
   id: string;
   userId: string;
-  /** Persistent Kubernetes workload target; null for dedicated VM-host work. */
-  deploymentId: string | null;
-  /** Explicit node pool a Service runs on in the shared cluster; null for VM-host work. */
-  nodePoolId: string | null;
-  /** Active name of that node pool when hydrated; null otherwise. */
-  nodePoolName: string | null;
-  /** Latest/current targeted execution fence; null before first selection. */
-  currentExecutionId: string | null;
-  /** Explicit resubmission advances this revision; automatic retries retain it. */
-  submissionRevision: number;
-  /** Admission-to-first-claim deadline, in epoch milliseconds. */
-  claimDeadlineAt: number | null;
-  /** Durable across completion and automatic retry within this submission. */
-  firstClaimedAt: number | null;
   workloadType: WorkloadTypeValue;
   image: string | null;
   // Computed from explicit credentialless provider selection, credential
@@ -76,7 +54,7 @@ export interface StoredWorkload {
   availabilityZone: string | null;
   env: Record<string, string> | null;
   githubToken: string | null;
-  /** Captured container registry/runtime username; null for Deployment Jobs. */
+  /** Captured container registry/runtime username. */
   registryUsername: string | null;
   vmCount: number; // Active VMs for this workload
   sshPrivateKey: string;
@@ -101,8 +79,6 @@ export interface StoredWorkload {
   totalCost: number | null; // SUM of per-VM (vms.cost when reconciled from billing, else priceAtProvision × duration), clipped to the requested window in aggregate cost responses. 0 with vmDurationMs>0 means none of the VMs were priced.
   costSource: 'actual' | 'estimated' | null; // 'actual' iff no priced VM (live or ended) still awaits its billing-derived cost; 'estimated' otherwise; null for new rows
   dnsRecordId: string | null; // Cloudflare DNS record ID, if present
-  /** Node pool Service only: where the record points and whether that is current. */
-  publicEndpoint: WorkloadPublicEndpoint | null;
   secretNames: string[] | null; // Named secrets referenced at submit time; resolved server-side at provision
   session: string | null; // Caller-supplied attribution (auto-detected agent run). Insert-only.
   agent: string | null; // Short agent name (claude/codex/cursor/aider/…) when known. Insert-only.
@@ -112,17 +88,12 @@ export interface StoredWorkload {
 
 /** VM execution requires its owned container configuration. */
 export function assertVmHostContainerConfiguration(
-  workload: Pick<
-    StoredWorkload,
-    'id' | 'deploymentId' | 'registryUsername' | 'image'
-  >,
+  workload: Pick<StoredWorkload, 'id' | 'registryUsername' | 'image'>,
 ): asserts workload is Pick<StoredWorkload, 'id'> & {
-  deploymentId: null;
   registryUsername: string;
   image: string;
 } {
   if (
-    workload.deploymentId !== null ||
     typeof workload.registryUsername !== 'string' ||
     typeof workload.image !== 'string'
   ) {

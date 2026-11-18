@@ -58,7 +58,7 @@ export interface HostedClusterConfig {
   name: string;
   /** `kube-system` namespace UID bootstrap observed. */
   kubernetesIdentity: string;
-  /** `https://<public-ip>:6443`; what node pool VMs join through. */
+  /** `https://<public-ip>:6443`, the public control-plane endpoint. */
   joinEndpoint: string;
   certificateAuthorityData: string;
   /** The creation facts bootstrap wrote (RFC 0049 C26 (a)); null before 0.1.74. */

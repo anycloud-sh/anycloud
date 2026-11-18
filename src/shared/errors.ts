@@ -173,7 +173,7 @@ export class CredentialInUseError extends DeployError {
   ) {
     const ids = workloadIds.join(', ');
     super(
-      `Credential "${credentialName}" is in use by ${workloadIds.length} non-terminal workload(s) or active node pool(s): ${ids}. Rerun with --force to delete anyway.`,
+      `Credential "${credentialName}" is in use by ${workloadIds.length} non-terminal workload(s) or active cluster(s): ${ids}. Rerun with --force to delete anyway.`,
       409,
       true,
     );

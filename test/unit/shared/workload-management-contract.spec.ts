@@ -11,24 +11,12 @@ import {
   makeStatusWorkloadMetadata,
 } from '../helpers/fixtures.js';
 
-const deploymentContainerFields = {
-  deploymentId: 'deployment-a',
-  image: null,
-  imageDigest: null,
-  command: null,
-  dockerOptions: null,
-};
-
 describe('Workload management container ownership contract', () => {
-  it('0036/S19 accepts identity-only Deployment Jobs alongside VM-backed list and status responses', () => {
-    const vmJob = makeWorkloadListRow();
-    const deploymentJob = makeWorkloadListRow(deploymentContainerFields);
-    expect(workloadListResponseSchema.parse([vmJob, deploymentJob])).toEqual([
-      vmJob,
-      deploymentJob,
-    ]);
+  it('accepts VM-backed list and status responses', () => {
+    const row = makeWorkloadListRow();
+    expect(workloadListResponseSchema.parse([row])).toEqual([row]);
     const status = {
-      workload: makeStatusWorkloadMetadata(deploymentContainerFields),
+      workload: makeStatusWorkloadMetadata(),
       events: [],
       status: WorkloadHealthStatus.Down,
     };
@@ -53,43 +41,6 @@ describe('Workload management container ownership contract', () => {
     },
   );
 
-  it("accepts a pool Job's own image and command on its managed Deployment", () => {
-    const value = {
-      ...deploymentContainerFields,
-      image: 'ghcr.io/acme/train:1',
-      command: ['python', 'train.py'],
-    };
-    expect(
-      workloadListResponseSchema.safeParse([makeWorkloadListRow(value)])
-        .success,
-    ).toBe(true);
-  });
-
-  it.each([
-    { image: 'copied:latest', dockerOptions: { cpus: '2' } },
-    { imageDigest: 'sha256:copied' },
-    { command: ['copied'] },
-    { dockerOptions: { cpus: '2' } },
-    { workloadType: 'service' as const },
-    { workloadType: 'vm' as const },
-  ])(
-    'rejects configuration or a non-Job type on a Deployment target: %j',
-    (fields) => {
-      const value = { ...deploymentContainerFields, ...fields };
-      expect(
-        workloadListResponseSchema.safeParse([makeWorkloadListRow(value)])
-          .success,
-      ).toBe(false);
-      expect(
-        workloadStatusResponseSchema.safeParse({
-          workload: makeStatusWorkloadMetadata(value),
-          events: [],
-          status: WorkloadHealthStatus.Down,
-        }).success,
-      ).toBe(false);
-    },
-  );
-
   it('reads eventsLimit as a positive count or "all" on a status request', () => {
     const parse = (query: object) =>
       workloadStatusRequestSchema.safeParse({ params: { id: 'w' }, query });
@@ -104,11 +55,11 @@ describe('Workload management container ownership contract', () => {
       expect(parse({ eventsLimit: bad }).success).toBe(false);
   });
 
-  it('allows absent images only for Job cost rows', () => {
+  it('requires a container image on every cost row', () => {
     const row = {
-      id: 'deployment-job',
+      id: 'vm-job',
       workloadType: 'job',
-      image: null,
+      image: 'ghcr.io/acme/train:1',
       cloudProvider: null,
       region: null,
       vmType: null,
@@ -120,9 +71,11 @@ describe('Workload management container ownership contract', () => {
       agent: null,
     };
     expect(workloadCostRowsSchema.parse([row])).toEqual([row]);
-    for (const workloadType of ['service', 'vm']) {
+    for (const workloadType of ['job', 'service', 'vm']) {
       expect(
-        workloadCostRowsSchema.safeParse([{ ...row, workloadType }]).success,
+        workloadCostRowsSchema.safeParse([
+          { ...row, workloadType, image: null },
+        ]).success,
       ).toBe(false);
     }
   });

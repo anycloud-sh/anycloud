@@ -2,27 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   distinctCreators,
   distinctSessions,
-  fetchNodePoolDeploymentJobs,
   fetchWorkloadList,
   shouldPromptForView,
   validateListOptions,
-  watchNodePoolDeploymentJobs,
   workloadListViews,
   workloadsForView,
-  type ListOptions,
   type WorkloadListClient,
 } from '../../../../src/cli/use-cases/workload-list.js';
 import {
   WorkloadState,
   WorkloadType,
 } from '../../../../src/shared/workload.js';
-import { isInterrupted } from '../../../../src/cli/utils/interrupt.js';
-import type { DeploymentSummary } from '../../../../src/shared/api-contract/deployments-schemas.js';
-import {
-  makeDeploymentSummary,
-  makeNodePoolSummary,
-  makeWorkloadListRow,
-} from '../../helpers/fixtures';
+import { makeWorkloadListRow } from '../../helpers/fixtures';
 
 describe('distinctSessions', () => {
   const now = Date.now();
@@ -162,52 +153,25 @@ describe('workloadsForView', () => {
 });
 
 describe('validateListOptions', () => {
-  it.each([
-    [{ type: 'pod' }, {}, '--type must be job, service, or vm'],
-    [
-      { deployment: 'd' },
-      { workloadType: WorkloadType.Vm },
-      '--deployment only supports Jobs',
-    ],
-    [{ interval: '5' }, {}, '--interval requires --watch'],
-    ...[{ csv: true }, { json: true }, { deployment: 'd' }].map(
-      (flags): [ListOptions, object, string] => [
-        { watch: true, ...flags },
-        {},
-        '--watch cannot be combined with list filters or machine-readable output',
-      ],
-    ),
-    [
-      { watch: true },
-      { interactive: false },
-      '--watch requires an interactive terminal',
-    ],
-  ] satisfies Array<
-    [
-      ListOptions,
-      { workloadType?: WorkloadType; interactive?: boolean },
-      string,
-    ]
-  >)('rejects %o', (options, context, message) => {
-    expect(() =>
-      validateListOptions(options, { interactive: true, ...context }),
-    ).toThrow(message);
+  it('rejects an unknown type', () => {
+    expect(() => validateListOptions({ type: 'pod' }, {})).toThrow(
+      '--type must be job, service, or vm',
+    );
   });
 
   it('resolves the type filter, preferring the typed command', () => {
-    const interactive = true;
-    expect(validateListOptions({ type: 'VM' }, { interactive })).toEqual({
+    expect(validateListOptions({ type: 'VM' }, {})).toEqual({
       type: 'vm',
     });
     expect(
       validateListOptions(
-        { type: 'bogus', deployment: 'd' },
-        { interactive, workloadType: WorkloadType.Job },
+        { type: 'bogus' },
+        { workloadType: WorkloadType.Job },
       ),
     ).toEqual({ type: WorkloadType.Job });
-    expect(
-      validateListOptions({ watch: true, interval: '5' }, { interactive }),
-    ).toEqual({ type: undefined });
+    expect(validateListOptions({}, {})).toEqual({
+      type: undefined,
+    });
   });
 });
 
@@ -234,7 +198,6 @@ describe('shouldPromptForView', () => {
       'filter',
       'status',
       'type',
-      'deployment',
       'credentials',
       'user',
       'session',
@@ -245,25 +208,12 @@ describe('shouldPromptForView', () => {
   });
 });
 
-const nodePool = makeNodePoolSummary();
-const deployment = makeDeploymentSummary();
-
-function fakeClient(deploymentOverride: Partial<DeploymentSummary> = {}) {
+function fakeClient() {
   const list = vi.fn<WorkloadListClient['workloads']['list']>(async () => [
     makeWorkloadListRow({ id: 'job-1' }),
   ]);
   const client: WorkloadListClient = {
     workloads: { list },
-    nodePools: {
-      list: async () => ({ nodePools: [nodePool] }),
-      get: async () => ({ nodePool }),
-    },
-    deployments: {
-      list: async () => ({ deployments: [deployment] }),
-      get: async () => ({
-        deployment: { ...deployment, ...deploymentOverride },
-      }),
-    },
   };
   return { client, list };
 }
@@ -272,7 +222,7 @@ describe('fetchWorkloadList', () => {
   it('maps flags, window and an auto-derived session into an exact query', async () => {
     const { client, list } = fakeClient();
     await fetchWorkloadList(client, {
-      options: { status: 'running', deployment: 'dep-1', credentials: 'prod' },
+      options: { status: 'running', credentials: 'prod' },
       type: 'job',
       limit: 50,
       sinceMs: 1000,
@@ -287,63 +237,10 @@ describe('fetchWorkloadList', () => {
         agent: 'claude',
         status: 'running',
         workloadType: 'job',
-        deploymentId: 'dep-1',
         credentialName: 'prod',
         filter: undefined,
         user: undefined,
       },
     });
-  });
-});
-
-describe('fetchNodePoolDeploymentJobs', () => {
-  it('reads the node pool, the Deployment, and its Jobs together', async () => {
-    const view = await fetchNodePoolDeploymentJobs(fakeClient().client, {
-      nodePool,
-      deployment,
-    });
-    expect(view.deployment.id).toBe(deployment.id);
-    expect(view.workloads.map((workload) => workload.id)).toEqual(['job-1']);
-  });
-
-  it('reports an aborted read as an interruption', async () => {
-    const { client, list } = fakeClient();
-    const controller = new AbortController();
-    list.mockImplementation(async () => {
-      controller.abort();
-      throw new Error('aborted');
-    });
-    const error = await fetchNodePoolDeploymentJobs(
-      client,
-      { nodePool, deployment },
-      controller.signal,
-    ).catch((caught: unknown) => caught);
-    expect(isInterrupted(error)).toBe(true);
-  });
-});
-
-describe('watchNodePoolDeploymentJobs', () => {
-  it('hands each read over until a read is aborted', async () => {
-    const controller = new AbortController();
-    const { client, list } = fakeClient();
-    list
-      .mockResolvedValueOnce([makeWorkloadListRow({ id: 'job-1' })])
-      .mockResolvedValueOnce([makeWorkloadListRow({ id: 'job-2' })])
-      .mockImplementationOnce(async () => {
-        controller.abort();
-        throw new Error('aborted');
-      });
-    const seen: string[] = [];
-    const error = await watchNodePoolDeploymentJobs(
-      client,
-      { nodePool, deployment },
-      {
-        intervalSeconds: 0,
-        signal: controller.signal,
-        onView: (view) => seen.push(view.workloads[0]!.id),
-      },
-    ).catch((caught: unknown) => caught);
-    expect(seen).toEqual(['job-1', 'job-2']);
-    expect(isInterrupted(error)).toBe(true);
   });
 });

@@ -60,7 +60,6 @@ export const clusterSummarySchema = z
     connected: z.boolean(),
     kubernetesIdentity: z.string().min(1).nullable(),
     connectionRevision: z.number().int().positive(),
-    activeNodePoolCount: z.number().int().nonnegative(),
     /** Public address of the management VM once it exists. */
     address: z.string().min(1).nullable(),
     /**

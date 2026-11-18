@@ -49,7 +49,7 @@ describe('workload fixture shell bridge', () => {
           .prepare(
             `
           SELECT d.id, d.user_id, d.owner_user_id, d.state,
-                 s.workload_id, s.deployment_id, s.image
+                 s.workload_id, s.image
           FROM workloads d
           LEFT JOIN container_specs s ON s.workload_id = d.id
         `,
@@ -62,7 +62,6 @@ describe('workload fixture shell bridge', () => {
           owner_user_id: 'durable-owner',
           state: WorkloadState.Terminated,
           workload_id: 'shell-fixture',
-          deployment_id: null,
           image: 'example/shell:latest',
         },
       ]);

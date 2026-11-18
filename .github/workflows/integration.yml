@@ -100,7 +100,6 @@ jobs:
             fail-assert,
             image-manifest,
             ghcr-private-auth,
-            runner-rclone-sync,
           ]
 
     steps:
@@ -429,19 +428,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        member: [e2e-cluster-local, e2e-pool-scaling-local]
-    # On demand: these run 46–54 min on the release path, where a spot
-    # reclaim costs a full rerun.
+        member: [e2e-cluster-local]
+    # On demand: a spot reclaim on the release path costs a full rerun.
     runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-od-8' }}
-    # Measured (run 9, 2026-09-26): checkout to K3s cluster up ~2 min; both node
-    # pools joined +2 min; the Deployment / targeted-Job composition ~7 min;
-    # the Service stage ~1.5 min; deletion and teardown ~3 min — about 16 min
-    # end to end, plus the 10-minute Service cleanup budget if that stage has
-    # to fall back. The hosted-chart stage adds an API image build and a Helm
-    # install plus upgrade (estimated ~12 min). 60 keeps headroom over a loaded
-    # runner without hiding a hang for long. e2e-pool-scaling-local waits out
-    # two 10-minute idle windows and 8 minutes before a restart: about 65 min.
-    timeout-minutes: ${{ matrix.member == 'e2e-pool-scaling-local' && 90 || 60 }}
+    # Checkout to K3s cluster up ~2 min; the hosted-chart stage adds an API
+    # image build and a Helm install plus upgrade (estimated ~12 min). 60 keeps
+    # headroom over a loaded runner without hiding a hang for long.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -459,35 +452,20 @@ jobs:
           node-version: '22'
           cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
-
-      - name: Generate deterministic Python SDK
-        env:
-          PYTHON_BIN: python3
-        run: yarn generate:python-sdk
 
       - name: Build
         run: yarn build
 
       - name: Run local cluster E2E
         id: tests
-        env:
-          E2E_PRIVATE_REPO_TOKEN: ${{ secrets.E2E_PRIVATE_REPO_TOKEN }}
-          # Fork and Dependabot pull requests get no repository secrets.
-          E2E_PRIVATE_REPO_SKIP: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && '1' || '' }}
         run: |
           docker info
           yarn test:${{ matrix.member }}:vitest
 
       # A cancelled job kills the spec before its own dump runs; the K3s cluster
-      # and agent logs are the only record of how far it got.
+      # logs are the only record of how far it got.
       - name: Retain local cluster container logs
         id: retain-e2e-cluster-local-logs
         if: failure() || cancelled()
@@ -545,9 +523,6 @@ jobs:
             aws-sad,
             aws-multivpc,
             azure-sad,
-            pool-job-storage-azure,
-            pool-job-storage-aws,
-            pool-job-storage-gcp,
             gcp-sad,
             lambda-sad,
             quota,

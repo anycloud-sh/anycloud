@@ -39,30 +39,6 @@ describe('Workload API names', () => {
     expect(invalid.status).toBe(400);
   });
 
-  it('lists persistent Deployments separately from shared Workload records', async () => {
-    await createTestWorkload(
-      'distinct-job',
-      'test-user',
-      WorkloadState.Completed,
-    );
-    const response = await callApi('https://example.com/v1/deployments', {
-      headers,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ deployments: [] });
-
-    const invalid = await callApi('https://example.com/v1/deployments', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        image: 'alpine:latest',
-        workloadType: 'job',
-        cloudConfig: {},
-      }),
-    });
-    expect(invalid.status).toBe(400);
-  });
-
   it('rejects the removed Worker target field on Job submission', async () => {
     const response = await callApi('https://example.com/v1/workloads', {
       method: 'POST',

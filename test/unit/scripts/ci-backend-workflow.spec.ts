@@ -90,7 +90,6 @@ const HOSTED_FALLBACKS: Record<string, Record<string, string>> = {
     'local-smolvm-nuke': 'reusable:nuke.yml',
   },
   'e2e-cluster-cloud.yml': { 'e2e-cluster-cloud': "'ubuntu-latest'" },
-  'e2e-claim-burst.yml': { 'e2e-claim-burst-local': "'ubuntu-24.04'" },
   'lambda-boot-failover.yml': {
     'forced-timeout': "'ubuntu-latest'",
     'cleanup-audit': "'ubuntu-latest'",
@@ -137,8 +136,6 @@ const HOSTED_FALLBACKS: Record<string, Record<string, string>> = {
       ]),
     ),
   },
-  // ARM64 builds on a native hosted runner; backmesh runners are x86.
-  'runner-image.yml': { 'runner-check': 'matrix.runner || matrix.native' },
   'skills.yml': {
     validate: "'ubuntu-latest'",
     preflight: "'ubuntu-latest'",
@@ -162,7 +159,7 @@ const HOSTED_FALLBACKS: Record<string, Record<string, string>> = {
 
 // Each job's backmesh label, used unless CI_BACKEND is `hosted`; unlisted
 // jobs run on backmesh-4. backmesh-2 takes the short notify and cleanup
-// jobs; backmesh-8 the claim burst and the deps base build.
+// jobs; backmesh-8 the deps base build.
 // On-demand labels take the K3s local clusters and the multi-hour dispatch
 // jobs, where a spot reclaim would cost more than on demand. The KVM
 // labels give Local SmolVM `/dev/kvm`.
@@ -176,7 +173,6 @@ const BACKMESH_LABELS: Record<string, Record<string, string>> = {
   'actions-storage.yml': { cleanup: 'backmesh-2' },
   'api-performance.yml': { compare: 'backmesh-od-4' },
   'build-deps-base.yml': { build: 'backmesh-8' },
-  'e2e-claim-burst.yml': { 'e2e-claim-burst-local': 'backmesh-8' },
   'e2e-cluster-cloud.yml': { 'e2e-cluster-cloud': 'backmesh-od-4' },
   'e2e-gpu.yml': { ...POST_CLEANUP, 'service-native-audit': 'backmesh-2' },
   'e2e-job.yml': POST_CLEANUP,
@@ -518,12 +514,7 @@ describe('CI backend workflow policy', () => {
     );
     expect(clusterLocal).toBeDefined();
     expect(clusterLocal).toContain('name: ${{ matrix.member }}');
-    expect(clusterLocal).toContain(
-      'member: [e2e-cluster-local, e2e-pool-scaling-local]',
-    );
-    expect(clusterLocal).toContain('uses: actions/setup-java@v5');
-    expect(clusterLocal).toContain("java-version: '17'");
-    const generation = clusterLocal?.indexOf('yarn generate:python-sdk') ?? -1;
+    expect(clusterLocal).toContain('member: [e2e-cluster-local]');
     const run =
       clusterLocal?.indexOf('yarn test:${{ matrix.member }}:vitest') ?? -1;
     const retain =
@@ -531,8 +522,7 @@ describe('CI backend workflow policy', () => {
     const cleanup =
       clusterLocal?.indexOf('name: Delete retained local cluster resources') ??
       -1;
-    expect(generation).toBeGreaterThanOrEqual(0);
-    expect(run).toBeGreaterThan(generation);
+    expect(run).toBeGreaterThanOrEqual(0);
     expect(retain).toBeGreaterThan(run);
     expect(cleanup).toBeGreaterThan(retain);
     // No Bash twin exists, so the candidate step itself must report failures.
@@ -544,11 +534,7 @@ describe('CI backend workflow policy', () => {
     );
     expect(clusterLocal?.slice(cleanup)).toContain('if: always()');
     expect(clusterLocal?.slice(cleanup)).toContain('failure() || cancelled()');
-    // Measured ~16 min end to end plus the Service cleanup fallback budget;
-    // pool scaling waits out two idle windows.
-    expect(clusterLocal).toContain(
-      "timeout-minutes: ${{ matrix.member == 'e2e-pool-scaling-local' && 90 || 60 }}",
-    );
+    expect(clusterLocal).toContain('timeout-minutes: 60');
   });
 
   it('e2e-serve.yml queues every dispatch instead of replacing a pending run', () => {
@@ -559,15 +545,11 @@ describe('CI backend workflow policy', () => {
     expect(concurrency).toContain('cancel-in-progress: false');
   });
 
-  it('generates the Python SDK before the live AWS cluster run stamps its version', () => {
+  it('stamps the CI cluster version before the live AWS cluster run', () => {
     const workflow = workflowSource('e2e-cluster-cloud.yml');
-    expect(workflow).toContain('uses: actions/setup-java@v5');
-    expect(workflow).toContain("java-version: '17'");
-    const generation = workflow.indexOf('yarn generate:python-sdk');
     const stamp = workflow.indexOf('name: Stamp CI cluster version');
     const run = workflow.indexOf('e2e.sh e2e-cluster-cloud');
-    expect(generation).toBeGreaterThanOrEqual(0);
-    expect(stamp).toBeGreaterThan(generation);
+    expect(stamp).toBeGreaterThanOrEqual(0);
     expect(run).toBeGreaterThan(stamp);
   });
 

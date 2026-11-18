@@ -22,7 +22,6 @@ import {
 import { resolveComputeConfig } from '../../../src/api/services/cloud-config.js';
 import {
   createCloudCompute,
-  METADATA_NODE_POOL_BOOT,
   VM_PRESENT,
   VM_RELEASE_CANDIDATE,
 } from '../../../src/api/services/gateways/cloud.js';
@@ -449,8 +448,6 @@ describe('kubernetes clusters domain', () => {
       clusterRecords: {
         getConnection: (clusterId) =>
           persistence.clusterRecords.getConnection(clusterId),
-        countActiveNodePools: (clusterId) =>
-          persistence.clusterRecords.countActiveNodePools(clusterId),
         listForScope: (scope) => persistence.clusterRecords.listForScope(scope),
         getForScope: (id, scope) =>
           persistence.clusterRecords.getForScope(id, scope),
@@ -968,7 +965,7 @@ describe('kubernetes clusters domain', () => {
     );
   });
 
-  it('forgets a destroyed cluster naming only the node pool resources that can remain', async () => {
+  it('forgets a destroyed cluster naming only the Workload resources that can remain', async () => {
     const { cluster } = await domain().create(actor, request);
     await drain();
     await domain().destroy(actor, cluster.id, DELETE_BUCKETS);
@@ -976,7 +973,7 @@ describe('kubernetes clusters domain', () => {
     fakes.hostedPools = { kind: 'unreachable', reason: 'no such host' };
     await expect(domain().forget(actor, cluster.id)).resolves.toMatchObject({
       leftovers: [
-        expect.stringMatching(/^node pool VMs, networks and disks tagged /),
+        expect.stringMatching(/^Workload VMs, networks and disks tagged /),
       ],
     });
   });
@@ -1048,7 +1045,7 @@ describe('kubernetes clusters domain', () => {
     );
     fakes.hostedPools = { kind: 'unreachable', reason: 'connect timeout' };
     const hand = new RegExp(
-      `Terminate management VM anycloud-cluster-${cluster.id} and node pool VMs tagged anycloud_owner_api=[0-9a-f]{32}, then run anycloud cluster forget production; it names what else is left\\.$`,
+      `Terminate management VM anycloud-cluster-${cluster.id} and Workload VMs tagged anycloud_owner_api=[0-9a-f]{32}, then run anycloud cluster forget production; it names what else is left\\.$`,
     );
     await expect(domain().destroy(actor, cluster.id, KEEP)).rejects.toThrow(
       new RegExp(
@@ -1077,7 +1074,7 @@ describe('kubernetes clusters domain', () => {
       leftovers: [
         `the management VM's network resources named anycloud-cluster-${cluster.id} (its security group, firewall or network)`,
         expect.stringMatching(
-          /^node pool VMs, networks and disks tagged anycloud_owner_api=[0-9a-f]{32}$/,
+          /^Workload VMs, networks and disks tagged anycloud_owner_api=[0-9a-f]{32}$/,
         ),
         `checkpoint bucket ${cluster.id}, kept on purpose with its backups; delete it only if you no longer need them`,
       ],
@@ -2225,7 +2222,6 @@ describe('kubernetes clusters domain', () => {
       rawUpsertFirewall: vi.fn(),
       observeVMReleaseOnce: vi.fn(),
       resourceScoped: {
-        nodePoolBoot: METADATA_NODE_POOL_BOOT,
         prepareResourceNetwork,
         newResourceVM: vi.fn(),
         terminateResourceNetwork: vi.fn(),
@@ -2284,7 +2280,6 @@ describe('kubernetes clusters domain', () => {
       ),
       releaseConfirmWaitMs: 0,
       resourceScoped: {
-        nodePoolBoot: METADATA_NODE_POOL_BOOT,
         prepareResourceNetwork: vi.fn(),
         newResourceVM: vi.fn(),
         terminateResourceNetwork: vi.fn(),

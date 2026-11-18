@@ -100,15 +100,7 @@ const jobSpecFields = {
   resumable: z.boolean().optional(),
 };
 
-/** Seconds a targeted Job may wait for its first claim. */
-const timeoutSchema = z
-  .number()
-  .finite()
-  .nonnegative()
-  .max(Number.MAX_SAFE_INTEGER / 1000)
-  .optional();
-
-/** Automatic retries after a disruption or runner exit; a Job only. */
+/** Automatic retries after a disruption; a Job only. */
 const maxRetriesSchema = z
   .number()
   .int()
@@ -116,17 +108,13 @@ const maxRetriesSchema = z
   .max(Number.MAX_SAFE_INTEGER)
   .optional();
 
-const dedicatedWorkloadAdmissionInputSchema = z
+export const workloadAdmissionInputSchema = z
   .object({
     image: requiredStringSchema,
     cloudConfig: workloadCloudConfigSchema,
     gpuType: stringOrStringsSchema.optional(),
     id: z.string().trim().min(1).optional(),
     workloadType: z.enum(['job', 'service', 'vm']).optional(),
-    /** Node pool ID or active name; a Service then runs in the cluster. */
-    nodePool: z.string().trim().min(1).optional(),
-    /** A Job on a node pool only. */
-    timeout: timeoutSchema,
     maxRetries: maxRetriesSchema,
     /** A Job: no checkpoint storage, even on spot. */
     noCheckpoint: z.boolean().optional(),
@@ -134,8 +122,6 @@ const dedicatedWorkloadAdmissionInputSchema = z
     requireNestedVirtualization: z.boolean().optional(),
     /** A VM Job: the host's Docker socket and, with KVM, `/dev/kvm`, instead of `--privileged`. */
     hostDocker: z.boolean().optional(),
-    /** A Job on a node pool only: `name:/path` Node cache volumes. */
-    caches: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),
     dockerOptions: dockerOptionsSchema.optional(),
     command: z.array(z.string()).optional(),
@@ -151,67 +137,22 @@ const dedicatedWorkloadAdmissionInputSchema = z
   })
   .strict();
 
-const deploymentWorkloadAdmissionInputSchema = z
-  .object({
-    deployment: z.string().trim().min(1),
-    timeout: timeoutSchema,
-    maxRetries: maxRetriesSchema,
-    id: z.string().trim().min(1).optional(),
-    workloadType: z.literal('job').optional(),
-    session: attributionSchema.optional(),
-    agent: attributionSchema.optional(),
-    sessionLabel: attributionSchema.optional(),
-    ...jobSpecFields,
-  })
-  .strict();
-
-export const workloadAdmissionVariantsSchema = z.union([
-  deploymentWorkloadAdmissionInputSchema,
-  dedicatedWorkloadAdmissionInputSchema,
-]);
-
-export const workloadAdmissionInputSchema = z
-  .unknown()
-  .transform((input, context) => {
-    const schema =
-      typeof input === 'object' && input !== null && 'deployment' in input
-        ? deploymentWorkloadAdmissionInputSchema
-        : dedicatedWorkloadAdmissionInputSchema;
-    const result = schema.safeParse(input);
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        context.addIssue({ ...issue });
-      }
-      return z.NEVER;
-    }
-    return result.data;
-  })
-  .nonoptional();
-
 export const workloadAdmissionResponseSchema = z
   .object({
     id: z.string().min(1),
     url: z.string().optional(),
-    submissionRevision: z.number().int().safe().nonnegative().optional(),
-    claimDeadlineAt: z.number().nullable().optional(),
   })
   .strict();
 
 export type WorkloadAdmissionInput = z.output<
   typeof workloadAdmissionInputSchema
 >;
-export type DedicatedWorkloadAdmissionInput = z.output<
-  typeof dedicatedWorkloadAdmissionInputSchema
->;
-export type DeploymentWorkloadAdmissionInput = z.output<
-  typeof deploymentWorkloadAdmissionInputSchema
->;
 export type JobSpecInput = Pick<
-  DedicatedWorkloadAdmissionInput,
+  WorkloadAdmissionInput,
   keyof typeof jobSpecFields
 >;
 export type WorkloadAdmissionCloudConfig =
-  DedicatedWorkloadAdmissionInput['cloudConfig'];
+  WorkloadAdmissionInput['cloudConfig'];
 export type WorkloadAdmissionResponse = z.output<
   typeof workloadAdmissionResponseSchema
 >;

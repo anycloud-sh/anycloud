@@ -20,7 +20,7 @@ export interface SelfDeleteDependencies {
   installation: SelfDeleteStatus['installation'];
   /** Only the hosted API's owner may delete it; throws for anyone else. */
   requireOwner(actorId: string): Promise<void>;
-  /** Node pools and VM Services or Jobs not yet ended; any refuses. */
+  /** VM Services or Jobs not yet ended; any refuses. */
   liveDependents(): Promise<ClusterDependents>;
   /** Null when no backup is configured: the final backup is `failed`. */
   backup: { run(reason: string): Promise<unknown> } | null;

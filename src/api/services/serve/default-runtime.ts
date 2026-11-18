@@ -2,9 +2,7 @@ import * as termination from '../host-runtime/termination.js';
 import * as startup from '../workload-workflows/vm-host-startup.js';
 import { vmHostStartupDeps } from '../job/default-runtime.js';
 import { getWorkloadLifecycle } from '../persistence.js';
-import { getDefaultNodePoolServiceRuntime } from '../node-pool-service-runtime-default.js';
 import {
-  createNodePoolServeRuntime,
   createVmHostServeRuntime,
   createServeRuntimeRouter,
   type ServeRuntime,
@@ -36,11 +34,6 @@ export function getDefaultServeRuntime(): ServeRuntime {
     cleanup: (cloudConfig, workload) =>
       termination.terminateServiceStep(cloudConfig, workload.id, workload),
   });
-  defaultRuntime = createServeRuntimeRouter({
-    vmHost,
-    nodePool: createNodePoolServeRuntime(
-      getDefaultNodePoolServiceRuntime().controller,
-    ),
-  });
+  defaultRuntime = createServeRuntimeRouter({ vmHost });
   return defaultRuntime;
 }

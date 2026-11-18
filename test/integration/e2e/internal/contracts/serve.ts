@@ -104,10 +104,8 @@ export interface ReadyServe extends SubmittedServe {
   readonly readiness: ServeReadinessTimeline;
 }
 
-/** The product's `running`: the container up, then this dwell (VM hosts from container start, node pools as `minReadySeconds`). */
+/** The product's `running`: the container up, then this dwell from container start. */
 export const SERVICE_STARTUP_DWELL_MS = 30_000;
-/** Node pools: Pod Ready is read from the cluster clock and the product polls the Deployment; a skipped dwell reads near zero. */
-export const SERVICE_DWELL_TOLERANCE_MS = 15_000;
 /**
  * VM hosts: the `starting` event precedes the container start the product
  * dwells from, so `running − starting` exceeds the dwell by construction; the

@@ -9,8 +9,6 @@ import type {
   WorkloadListResponse,
   WorkloadResubmitInput,
   WorkloadResubmitResponse,
-  JobSubmissionObservationInput,
-  JobSubmissionObservation,
   WorkloadSshAccessInput,
   WorkloadSshAccessResponse,
   WorkloadStatusInput,
@@ -52,10 +50,7 @@ import type {
   OwnershipIdentity,
   OwnershipScope,
 } from './repositories/ownership-filter.js';
-import {
-  latestEventMessage,
-  type WorkloadEventMetadataInput,
-} from './workload-event-metadata.js';
+import type { WorkloadEventMetadataInput } from './workload-event-metadata.js';
 import type { ListedWorkload } from './repositories/workload-queries.js';
 import type { WorkloadEventRow } from './repositories/workload-events.js';
 import {
@@ -64,19 +59,9 @@ import {
 } from './workload-operation-helpers.js';
 import type { DbVM, User } from './entities.js';
 import type { JobOperations, JobVmHealth } from './job/operations.js';
-import {
-  refuseNodePoolService,
-  resolveSingleLiveVm,
-} from './job/vm-host-operations.js';
+import { resolveSingleLiveVm } from './job/vm-host-operations.js';
 import { toStatusVm } from './status-vm.js';
 import { errorMessage } from '../../shared/log-diagnostics.js';
-import {
-  assertRequestActive,
-  awaitWithSignal,
-  type RequestBudget,
-} from './request-budget.js';
-import type { JobChanges } from './job-changes.js';
-import { unclaimableWorkloadApiUrl } from './workload-api-url.js';
 
 type ManagementErrorStatus = 400 | 404 | 409 | 503;
 
@@ -144,11 +129,6 @@ export interface WorkloadManagementDomain {
     clientVersion: string,
     signal?: AbortSignal,
   ): Promise<WorkloadResubmitResponse>;
-  observeSubmission(
-    actor: User,
-    input: JobSubmissionObservationInput,
-    operation?: RequestBudget,
-  ): Promise<JobSubmissionObservation>;
 }
 
 /** The termination and resubmission writes this domain commits. */
@@ -162,10 +142,7 @@ interface WorkloadManagementOutcomes {
     workloadId: string,
     scope: OwnershipScope,
     callerSession?: string | null,
-    options?: { claimDeadlineAt?: number | null },
-  ): Promise<
-    { submissionRevision: number; claimDeadlineAt: number | null } | false
-  >;
+  ): Promise<boolean>;
 }
 
 /** Attribution filters shared by the cost and list reads. */
@@ -202,7 +179,6 @@ interface WorkloadManagementQueries {
       stateClass?: ListStateClass;
       status?: WorkloadState;
       workloadType?: WorkloadTypeValue;
-      deploymentId?: string;
       credentialId?: string;
       search?: string;
       limitExplicit?: boolean;
@@ -221,7 +197,6 @@ interface WorkloadManagementQueries {
     workload: StoredWorkload;
     events: WorkloadEventRow[];
     eventsTotal: number;
-    jobsAhead: number | null;
     retry: {
       retryCount: number;
       lastRetryAt: number;
@@ -229,8 +204,6 @@ interface WorkloadManagementQueries {
       regionDenied: 0 | 1;
       deniedRetryCount: number;
     } | null;
-    /** The latest targeted-Job attempt number, from `workload_attempts`. */
-    attempt: number | null;
   } | null>;
   listVms(
     workloadId: string,
@@ -239,25 +212,13 @@ interface WorkloadManagementQueries {
 }
 
 export interface WorkloadManagementDomainDependencies {
-  jobChanges: JobChanges;
   store: WorkloadManagementQueries;
   spend: WorkloadManagementSpend;
-  submissions: {
-    observeTargetedJobSubmission(
-      jobId: string,
-      submissionRevision: number,
-      signal?: AbortSignal,
-    ): Promise<JobSubmissionObservation | null>;
-  };
   outcomes: WorkloadManagementOutcomes;
   credentials: {
     getNamedCredential(name: string): Promise<{ id: string } | null>;
   };
   resolveScope(actor: User): Promise<OwnershipScope>;
-  validateTargetDeployment(
-    deploymentId: string,
-    scope: OwnershipScope,
-  ): Promise<void>;
   prepareCheckpoint(
     workload: StoredWorkload,
     operation: 'terminate',
@@ -267,18 +228,6 @@ export interface WorkloadManagementDomainDependencies {
   ): Promise<void>;
   requestCleanup(workloadId: string): Promise<void>;
   getWorkloadOperations(workload: StoredWorkload): JobOperations;
-  /**
-   * Why a queued pool Job waits, given its latest event's message (the
-   * claim's session-cap block); null for any other Job.
-   */
-  poolJobWait(
-    workload: StoredWorkload,
-    latestMessage: string | null,
-  ): Promise<string | null>;
-  /** Whether a pool Job's node pool gives it a managed checkpoint bucket. */
-  poolJobSpot(workload: StoredWorkload): Promise<boolean>;
-  /** The URL replicas claim Jobs through (`ANYCLOUD_API_URL`). */
-  workloadApiUrl(): string;
   inspectContainerState(
     workload: StoredWorkload,
     vm: DbVM,
@@ -296,16 +245,6 @@ export interface WorkloadManagementDomainDependencies {
   /** List a live Workload's checkpoint bucket; the domain caches the result. */
   readCheckpointHealth(workload: StoredWorkload): Promise<CheckpointHealth>;
   now(): number;
-}
-
-/** The newest event's message, as the claim records a cap block. */
-function latestMessage(events: readonly WorkloadEventRow[]): string | null {
-  const newest = events.reduce<WorkloadEventRow | undefined>(
-    (latest, event) =>
-      !latest || event.created_at >= latest.created_at ? event : latest,
-    undefined,
-  );
-  return newest ? latestEventMessage(newest.metadata) : null;
 }
 
 const CHECKPOINT_HEALTH_TTL_MS = 60_000;
@@ -432,75 +371,6 @@ export function createWorkloadManagementDomain(
     costForWorkload: cost,
     costWindow: cost,
 
-    async observeSubmission(actor, input, operation) {
-      const signal = operation?.signal;
-      const cutoff = Math.min(
-        (operation?.startedAt ?? performance.now()) + (input.waitMs ?? 0),
-        operation?.deadlineAt ?? Infinity,
-      );
-      assertRequestActive(signal);
-      const scope = await awaitWithSignal(
-        dependencies.resolveScope(actor),
-        signal,
-      );
-      const workload = await awaitWithSignal(
-        dependencies.store.getWorkloadForScope(input.id, scope),
-        signal,
-      );
-      if (!workload) {
-        throw new WorkloadManagementError('Workload not found', 404);
-      }
-      if (!workload.deploymentId) {
-        throw new WorkloadManagementError(
-          'First-claim observation is only supported for Deployment Jobs',
-          400,
-        );
-      }
-      let claimDeadlineAt = workload.claimDeadlineAt;
-      for (;;) {
-        // This revision-fenced database write does not consume a provider
-        // reconciliation slot. Expiry remains observable under provider load.
-        assertRequestActive(signal);
-        const deadlineAt = Math.min(
-          cutoff,
-          claimDeadlineAt == null
-            ? Infinity
-            : performance.now() +
-                Math.max(0, claimDeadlineAt - dependencies.now()),
-        );
-        const subscription = dependencies.jobChanges.subscribe(
-          input.id,
-          signal,
-          deadlineAt,
-        );
-        try {
-          const observation = await awaitWithSignal(
-            dependencies.submissions.observeTargetedJobSubmission(
-              input.id,
-              input.submissionRevision,
-              signal,
-            ),
-            signal,
-          );
-          assertRequestActive(signal);
-          if (!observation) {
-            throw new WorkloadManagementError('Workload not found', 404);
-          }
-          if (observation.outcome !== 'pending' || performance.now() >= cutoff)
-            return observation;
-          if (observation.claimDeadlineAt !== claimDeadlineAt) {
-            // Resubmission may have committed after the ownership lookup.
-            // Re-arm before reading again so its deadline cannot be missed.
-            claimDeadlineAt = observation.claimDeadlineAt;
-            continue;
-          }
-          await subscription.promise;
-        } finally {
-          subscription.dispose();
-        }
-      }
-    },
-
     async list(actor, input, clientVersion, signal) {
       const startedAt = dependencies.now();
       let failureMessage: string | undefined;
@@ -559,7 +429,6 @@ export function createWorkloadManagementDomain(
             stateClass: input.stateClass,
             status,
             workloadType: input.workloadType,
-            deploymentId: input.deploymentId,
             credentialId,
             search:
               input.filter && input.filter.length > 0
@@ -574,17 +443,14 @@ export function createWorkloadManagementDomain(
         signal?.throwIfAborted();
         return workloads.map((workload) => {
           const {
-            currentExecutionId: _currentExecutionId,
             maxRetries: _maxRetries,
             noCheckpoint: _noCheckpoint,
             requireNestedVirtualization: _requireNestedVirtualization,
             hostDocker: _hostDocker,
-            firstClaimedAt,
             ...publicWorkload
           } = workload;
           return {
             ...publicWorkload,
-            claimed: firstClaimedAt !== null,
             // Retired: the submitted-with version is no longer stored
             // (RFC 0031); the wire field stays for older CLIs, always null.
             version: null,
@@ -706,14 +572,7 @@ export function createWorkloadManagementDomain(
           workloadState = 'not_found';
           throw new WorkloadManagementError('Workload not found', 404);
         }
-        const {
-          workload: found,
-          events,
-          eventsTotal,
-          jobsAhead,
-          retry,
-          attempt,
-        } = snapshot;
+        const { workload: found, events, eventsTotal, retry } = snapshot;
         workload = found;
         workloadState = found.state;
 
@@ -724,7 +583,7 @@ export function createWorkloadManagementDomain(
         let healthChecks: JobVmHealth[] | undefined;
         const job = found.workloadType === WorkloadType.Job;
         const healthOperations =
-          !found.deploymentId && (job || liveVms.length > 0)
+          job || liveVms.length > 0
             ? dependencies.getWorkloadOperations(found)
             : undefined;
 
@@ -776,38 +635,19 @@ export function createWorkloadManagementDomain(
               retry.regionDenied === 1,
             )
           : undefined;
-        const checkpointTarget = resolveCheckpointTarget(
-          found.id,
-          found.deploymentId
-            ? {
-                checkpointBucket: found.checkpointBucket,
-                spot: await dependencies.poolJobSpot(found),
-              }
-            : found,
-        );
+        const checkpointTarget = resolveCheckpointTarget(found.id, found);
         const health =
           checkpointTarget && !isTerminalState(found.state)
             ? await checkpointHealth(found)
             : undefined;
-        const waiting =
-          found.deploymentId && found.state === WorkloadState.Queued
-            ? await withTimeout(
-                dependencies.poolJobWait(found, latestMessage(events)),
-                dependencies.statusHealthCheckTimeoutMs,
-                'Pool Job wait reason',
-              ).catch(() => null)
-            : null;
         resultStatus = status;
         signal?.throwIfAborted();
         return {
           workload: toStatusWorkloadMetadata(found),
           events: events.map(dependencies.toWorkloadEvent),
           eventsTotal,
-          jobsAhead,
           status,
           vms,
-          ...(attempt !== null && { attempt }),
-          ...(waiting && { waiting }),
           ...(retry &&
             window && {
               retry: {
@@ -861,13 +701,6 @@ export function createWorkloadManagementDomain(
         }
         workload = found;
         workloadState = found.state;
-        if (found.deploymentId) {
-          throw new WorkloadManagementError(
-            `SSH is unavailable for Deployment-targeted Job ${found.id}`,
-            400,
-            'Deployment-targeted Job SSH unsupported',
-          );
-        }
         const allVms = await store.listVms(input.id);
 
         if (
@@ -881,9 +714,7 @@ export function createWorkloadManagementDomain(
           );
         }
 
-        const vmTarget =
-          refuseNodePoolService(found, 'ssh') ??
-          resolveSingleLiveVm(allVms, 'ssh');
+        const vmTarget = resolveSingleLiveVm(allVms, 'ssh');
         if (!vmTarget.ok) {
           throw new WorkloadManagementError(
             vmTarget.clientError,
@@ -987,18 +818,6 @@ export function createWorkloadManagementDomain(
             'VM workload is not resubmittable',
           );
         }
-        if (found.deploymentId) {
-          await dependencies.validateTargetDeployment(
-            found.deploymentId,
-            scope,
-          );
-        }
-        if (input.timeout !== undefined && !found.deploymentId) {
-          throw new WorkloadManagementError(
-            'Submission timeout is only supported for Deployment Jobs',
-            400,
-          );
-        }
         if (!isResubmittable(found.state)) {
           throw new WorkloadManagementError(
             `Workload is in state "${found.state}" — only failed, errored, invalid, or terminated workloads can be resubmitted`,
@@ -1007,75 +826,30 @@ export function createWorkloadManagementDomain(
           );
         }
 
-        // A Job on a Deployment or node pool waits for a replica's claim.
-        const unclaimable =
-          found.deploymentId &&
-          unclaimableWorkloadApiUrl(dependencies.workloadApiUrl());
-        if (unclaimable) {
-          throw new WorkloadManagementError(unclaimable, 400);
-        }
-        if (!found.deploymentId) {
-          await dependencies.preflightSecrets(found.secretNames);
-        }
-        const claimDeadlineAt =
-          input.timeout === undefined
-            ? null
-            : startedAt + Math.floor(input.timeout * 1000);
-        if (
-          claimDeadlineAt !== null &&
-          !Number.isSafeInteger(claimDeadlineAt)
-        ) {
-          throw new WorkloadManagementError(
-            'Submission timeout is too large',
-            400,
-          );
-        }
+        await dependencies.preflightSecrets(found.secretNames);
         signal?.throwIfAborted();
         const resubmitted =
           await dependencies.outcomes.resubmitWorkloadForScope(
             input.id,
             scope,
             normalizeAttribution(input.session),
-            { claimDeadlineAt },
           );
         if (!resubmitted) {
-          if (found.deploymentId) {
-            // Target deletion may have won after the optimistic validation.
-            await dependencies.validateTargetDeployment(
-              found.deploymentId,
-              scope,
-            );
-          }
           const current = await store.getWorkloadForScope(input.id, scope);
           const stillReleasing =
             current !== null &&
             isResubmittable(current.state) &&
             (current.cleanedAt === null || current.vmCount > 0);
-          const nodePoolBlocked =
-            !stillReleasing &&
-            current !== null &&
-            isResubmittable(current.state) &&
-            current.nodePoolId !== null;
           throw new WorkloadManagementError(
             stillReleasing
               ? `Workload ${input.id}'s resources are still being released — resubmit once cleanup finishes`
-              : nodePoolBlocked
-                ? `Node pool ${current.nodePoolName ?? current.nodePoolId} is not running and cannot accept Services; create a new Service on a running node pool`
-                : `Workload is now in state "${current?.state ?? found.state}" and cannot be resubmitted`,
+              : `Workload is now in state "${current?.state ?? found.state}" and cannot be resubmitted`,
             400,
             'Not resubmittable',
           );
         }
 
-        return {
-          message: `Workload ${input.id} resubmitted`,
-          ...(found.deploymentId
-            ? {
-                submissionRevision: resubmitted.submissionRevision,
-                claimDeadlineAt: resubmitted.claimDeadlineAt,
-              }
-            : {}),
-        };
+        return { message: `Workload ${input.id} resubmitted` };
       } catch (error) {
         failureMessage =
           error instanceof WorkloadManagementError

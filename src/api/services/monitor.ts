@@ -12,7 +12,6 @@ import { deliverLiveSecretFiles } from './live-secret-files.js';
 import {
   getWorkloadQueryStore,
   getWorkloadSpendStore,
-  getDeploymentExecutionStore,
   getWorkloadLifecycle,
   getWorkloadOutcomes,
   getProvisioningAttemptStore,
@@ -42,24 +41,13 @@ import {
 } from './workload-workflows/persistent-vm-repair.js';
 import { wakeWorkloadPipeline } from './workload-workflows/workload-pipeline.js';
 import {
-  reconcileTargetedJob,
-  type TargetedJobDeps,
-} from './workload-workflows/targeted-job.js';
-import {
   runProvisioningScheduler,
   type ProvisioningSchedulerDeps,
 } from './workload-workflows/provisioning-scheduler.js';
 import { resetVMReleaseObserverForTests } from './host-runtime/vm-release-observer.js';
 import { vmHostStartupDeps } from './job/default-runtime.js';
 import { resumeOnExistingVM } from './workload-workflows/vm-host-startup.js';
-import { getDefaultDeploymentControl } from './deployment-controller.js';
-import { loadPoolJobConfigs } from './pool-job-storage.js';
-import { cleanupManagedWorkloadStorage } from './workload-storage.js';
 import { PROVISIONING_SCHEDULER_INTERVAL_MS } from '../config.js';
-import { getDefaultNodePoolRuntime } from './node-pool-runtime-default.js';
-import { getDefaultNodePoolServiceRuntime } from './node-pool-service-runtime-default.js';
-import type { NodePoolServiceReconciler } from './node-pool-service-reconciler.js';
-import type { NodePoolReconciler } from './node-pool-reconciler.js';
 import {
   WorkloadReconciler,
   type WorkloadReconcileDrainStatus,
@@ -189,8 +177,7 @@ function workflowDeps(): RetryRecoveryPersistence &
   CleanupPersistence &
   CompletionReconcilePersistence &
   PersistentVmRepairPersistence &
-  ProvisioningSchedulerDeps &
-  TargetedJobDeps {
+  ProvisioningSchedulerDeps {
   return {
     store: getWorkloadQueryStore(),
     spend: getWorkloadSpendStore(),
@@ -201,16 +188,6 @@ function workflowDeps(): RetryRecoveryPersistence &
     credentials: getCredentialSecretStore(),
     spendControls: getSpendControlsStore(),
     notifications: getNotificationsStore(),
-    executions: getDeploymentExecutionStore(),
-    deployments: {
-      schedule: (deploymentId) =>
-        getDefaultDeploymentControl().schedule(deploymentId),
-    },
-    // The Job's persisted storage selection, so a deleted pool still cleans up.
-    deleteManagedCheckpoint: async (workload) => {
-      const storage = await loadPoolJobConfigs(workload);
-      if (storage) await cleanupManagedWorkloadStorage(storage, workload.id);
-    },
     resume: {
       resumeOnExistingVM: (config, job) =>
         resumeOnExistingVM(vmHostStartupDeps(), config, job),
@@ -278,10 +255,6 @@ async function reconcileWorkloadWork(
   const store = getWorkloadQueryStore();
   const workload = await store.getWorkload(work.workloadId);
   if (!workload) return { disposition: 'stale' };
-
-  if (workload.deploymentId !== null) {
-    return reconcileTargetedJob(workflowDeps(), work, workload);
-  }
 
   const state = workload.state as WorkloadState;
   if (state !== WorkloadState.Running) storageRenewer.forget(workload.id);
@@ -440,8 +413,6 @@ export function runProvisioningSchedulerOnce(): Promise<void> {
 // ============================================================================
 
 let monitors: Monitor[] = [];
-let nodePoolReconciler: NodePoolReconciler | null = null;
-let nodePoolServiceReconciler: NodePoolServiceReconciler | null = null;
 
 /** Liveness of every running monitor, for the degradation watchdog. */
 function monitorTickStatuses(): MonitorTickStatus[] {
@@ -478,11 +449,6 @@ export async function startBackgroundServices(): Promise<void> {
   backgroundStartPromise = (async () => {
     try {
       await workloadReconciler.start();
-      await getDefaultDeploymentControl().start();
-      nodePoolReconciler = getDefaultNodePoolRuntime().reconciler;
-      nodePoolReconciler.start();
-      nodePoolServiceReconciler = getDefaultNodePoolServiceRuntime().reconciler;
-      nodePoolServiceReconciler.start();
       monitors = [
         createMonitor(
           'provisioning-scheduler',
@@ -533,11 +499,6 @@ export async function startBackgroundServices(): Promise<void> {
       monitors = [];
       stopApiHealthWatchdog();
       await workloadReconciler.stop();
-      await getDefaultDeploymentControl().stop();
-      await nodePoolReconciler?.stop();
-      nodePoolReconciler = null;
-      await nodePoolServiceReconciler?.stop();
-      nodePoolServiceReconciler = null;
       backgroundServiceState = 'stopped';
       throw error;
     } finally {
@@ -569,11 +530,6 @@ export async function stopBackgroundServices(): Promise<void> {
       monitors = [];
       stopApiHealthWatchdog();
       await workloadReconciler.stop();
-      await getDefaultDeploymentControl().stop();
-      await nodePoolReconciler?.stop();
-      nodePoolReconciler = null;
-      await nodePoolServiceReconciler?.stop();
-      nodePoolServiceReconciler = null;
       const activeWorkCount = activeWorkloadWorkCount();
       if (activeWorkCount > 0) {
         log.info('Active workload work left for restart recovery', {

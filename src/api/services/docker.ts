@@ -402,7 +402,6 @@ export class DockerManager {
       | 'workloadType'
       | 'env'
       | 'registryUsername'
-      | 'deploymentId'
       | 'userId'
       | 'dockerOptions'
       | 'command'

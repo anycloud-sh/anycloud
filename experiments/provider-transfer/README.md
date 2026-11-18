@@ -41,8 +41,8 @@ The data is fixed:
   files), written by each guest.
 
 Each guest takes the selected storages in turn. It times three TCP connects,
-then runs the pool runner's transfers (`src/runner/transfer.ts`) with rclone
-1.68.2, the runner's flags, and the product's rclone config and env:
+then runs the transfers the removed pool runner made, with rclone 1.68.2, its
+flags, and the product's rclone config and env:
 
 1. stage: `rclone sync` of the input;
 2. checkpoint upload: `rclone copy` to `checkpoint/<compute>/`;

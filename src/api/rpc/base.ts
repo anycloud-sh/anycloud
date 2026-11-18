@@ -24,8 +24,6 @@ import {
   assertRequestActive,
   awaitWithSignal,
 } from '../services/request-budget.js';
-import { withRequestBudget } from './request-budget.js';
-import { apiContractProcedureMeta } from '../../shared/api-contract/inspection.js';
 
 const implementation = implement(apiContract).$context<ApiRpcContext>();
 
@@ -57,16 +55,6 @@ const reportProcedureFailure = implementation.middleware(
   },
 );
 
-const elapsedRequestBudget = implementation.middleware(
-  ({ context, procedure, signal, next }) =>
-    withRequestBudget(
-      context,
-      signal,
-      apiContractProcedureMeta(procedure),
-      (operation) => next({ context: { operation } }),
-    ),
-);
-
 // Track the actual procedure inside the elapsed-budget race. Disconnecting its
 // response must not let shutdown snapshot while an accepted mutation continues.
 const trackAcceptedProcedure = implementation.middleware(
@@ -75,17 +63,6 @@ const trackAcceptedProcedure = implementation.middleware(
       ? context.requests.track(path.join('.'), async () => next())
       : next(),
 );
-
-/** Workload procedures authenticate their projected Pod token in-domain. */
-export const workloadImplementation = implementation
-  .use(reportProcedureFailure)
-  .use(trackAcceptedProcedure);
-
-/** Acquisition shares the elapsed budget with its domain cancellation fence. */
-export const boundedWorkloadImplementation = implementation
-  .use(reportProcedureFailure)
-  .use(elapsedRequestBudget)
-  .use(trackAcceptedProcedure);
 
 function clientVersionMiddleware(
   check: (version: string | undefined) => asserts version is string,
@@ -215,8 +192,8 @@ export const authenticatedImplementation = reportedImplementation
   .use(trackAcceptedProcedure);
 
 /**
- * Workload, Deployment, node-pool and credential read, quota status, cost and
- * token procedures: the client window.
+ * Workload and credential read, quota status, cost and token procedures: the
+ * client window.
  */
 export const clientWindowAuthenticatedImplementation = implementation
   .use(reportProcedureFailure)
@@ -235,12 +212,4 @@ export const releaseWindowExchangeImplementation = implementation
   .use(reportProcedureFailure)
   .use(requireReleaseWindowClientVersion)
   .use(requireGithubSignIn)
-  .use(trackAcceptedProcedure);
-
-/** Bounded observation endpoints share one budget with operator authentication. */
-export const boundedClientWindowImplementation = implementation
-  .use(reportProcedureFailure)
-  .use(requireClientWindowVersion)
-  .use(elapsedRequestBudget)
-  .use(requireAuthentication)
   .use(trackAcceptedProcedure);

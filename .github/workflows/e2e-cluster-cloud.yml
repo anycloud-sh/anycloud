@@ -2,49 +2,21 @@ name: E2E Cluster Tests
 
 # The one combined live run of the cluster path: this tree's CLI on the
 # runner bootstraps a cluster on a management VM in its own process (RFC 0049
-# C26 (e)), with the cluster credential as its cloud session, one node pool
-# joins it through the production join path, a Service runs on the pool, the
-# product tears it all down, and a native sweep proves nothing tagged for the
-# run remains.
-# Every journey drives the pool through the hosted API on the cluster: no
-# local API holds the cluster.
+# C26 (e)), with the cluster credential as its cloud session, the operator
+# walks the hosted API on the cluster, the product tears it all down, and a
+# native sweep proves nothing tagged for the run remains.
 # `cluster_provider` picks the management VM's cloud (AWS by default; GCP and
-# Azure run the default journey only), and the pool follows it unless
-# `pool_provider` names another cloud. `pool_provider: gcp` against an AWS
-# cluster is the cross-cloud join, tunnel and image pull
-# (test/integration/e2e/README.md); `pool_provider: azure` against an AWS
-# cluster is the same with hosted_stage on a Standard_D2s_v5 in westus2, or
-# with gpu_pool on e2e-gpu's NC-series T4 there.
-# `pool_provider: lambda` against an AWS cluster is an unpinned pool launched
-# wherever Lambda has capacity: by default the GPU type list gpu_1x_a10,
-# gpu_1x_a100_sxm4, under hosted_stage too.
+# Azure run the default journey only).
 #
-# Resource budget: by default one management VM and one pool VM. hosted_stage
-# adds the scale stage's burst and a recursive parent and child VM Job, both
-# using pool_vm_type, on an AWS pool only. With pool_provider gcp or lambda it runs without that pair;
-# on lambda its pool is two 1-GPU VMs from the Lambda GPU list (the Service
-# and a Deployment each take a Node's GPU).
-# On every pool its receiver probes K5's egress policy from the replica. Its
-# Jobs on the pool run in a Deployment on the pool VM, from a receiver image
-# pushed as the run's throwaway api:<version>-receiver tag. gpu_pool runs one
-# g4dn.xlarge pool VM (one T4, about $0.53/h) and its replacement after the
-# host-loss step instead, holding the AWS GPU quota lock; on Azure a
-# Standard_NC4as_T4_v3 (one T4, about $0.53/h) under the Azure GPU lock; on
-# GCP a g2-standard-4 (one L4, about $0.71/h) in us-east4 under the GCP GPU
-# lock, with no scale stage and no from_release: the project's GPU quota is
-# one (GPUS_ALL_REGIONS=1). live_checks=pool-gpu-probe on an AWS hosted_stage
-# adds a g4dn.12xlarge (four T4s, about $3.91/h) under the AWS GPU lock.
-# live_checks=user-namespace adds one 4-vCPU, 16 GiB nested-virtualization
-# VM (about $0.20/h) and three check images pushed beside the API image.
+# Resource budget: by default one management VM. hosted_stage adds one VM
+# Service and a recursive parent and child VM Job through the hosted API, each
+# a vm_type VM in the cluster's region (t3.small by default).
 # Checkpoint storage, API-release backups and network charges are additional.
-# The job is bounded to 75 minutes (95 with hosted_stage, 120 on an Azure pool,
-# whose VM create, delete and sweep are slower; 140 with from_release, 150 on
-# an Azure pool; 170 for gpu_pool, 180 on Azure; 185 for gpu_pool with
-# from_release, 195 on Azure; 250 with live_checks). The test run's cap
-# (E2E_TEST_TIMEOUT_SECONDS) leaves 10 to 30 minutes for the sweeps below,
-# 20 on an Azure pool, whose sweep is its only cleanup under an AWS cluster. Cleanup and native
-# readback must establish termination before the run's cost is considered
-# settled.
+# The job is bounded to 75 minutes (95 with hosted_stage, 140 with
+# from_release or restore_stage, 250 with live_checks). The test run's cap
+# (E2E_TEST_TIMEOUT_SECONDS) leaves 10 to 30 minutes for the sweeps below.
+# Cleanup and native readback must establish termination before the run's
+# cost is considered settled.
 # Dispatch-only; no schedule yet.
 # The release gate (RELEASE.md) finds hosted_stage runs by this title; only
 # a run on the release-built CLI (compiled_cli) carries it.
@@ -53,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       sweep_only:
-        description: Skip the run; terminate and report every AWS resource tagged as an Anycloud cluster, every fixture checkpoint bucket on S3, GCS or the shared Azure storage account, every GCP node pool or management VM instance or firewall rule, and the Azure resources of every installation it finds in pool_region and the cluster region (leftovers of failed runs)
+        description: Skip the run; terminate and report every AWS resource tagged as an Anycloud cluster, every fixture checkpoint bucket on S3, GCS or the shared Azure storage account, every GCP management VM instance or firewall rule, and the Azure resources of every installation it finds (leftovers of failed runs)
         type: boolean
         default: false
       cluster_provider:
@@ -69,21 +41,8 @@ on:
         description: VM type for the management VM (empty = t3.medium on AWS, e2-standard-2 on GCP, Standard_D2s_v5 on Azure)
         type: string
         default: ''
-      pool_provider:
-        description: Cloud for the node pool VM (cluster = the cluster's cloud); a different cloud makes the run cross-cloud, and azure against an AWS cluster needs hosted_stage or gpu_pool
-        type: choice
-        options: [cluster, aws, gcp, azure, lambda]
-        default: cluster
-      pool_spot:
-        description: Create the node pool with --spot (AWS, GCP or Azure) and check, once it is ready and again after an upgrade replaces its VMs, that each is a spot VM the cloud deletes on eviction
-        type: boolean
-        default: false
-      pool_region:
-        description: Region for the node pool VM (empty = the cluster's region on the cluster's own cloud; otherwise us-east-2 on AWS, us-central1 on GCP, westus2 on Azure, unpinned on Lambda)
-        type: string
-        default: ''
-      pool_vm_type:
-        description: VM type for the node pool VM (empty = t3.small on AWS, e2-standard-2 on GCP, Standard_D2s_v5 on Azure; see gpu_pool)
+      vm_type:
+        description: VM type for hosted_stage's VM Service and recursive VM Jobs, in the cluster's region (empty = t3.small on AWS)
         type: string
         default: ''
       keep_on_failure:
@@ -107,54 +66,27 @@ on:
         type: boolean
         default: true
       hosted_stage:
-        description: After bootstrap, drive the hosted API itself (api use, credentials new, api access, node pool + Service + Jobs on the pool + a Deployment with a named Secret (create, rotation, key removal, delete refusal) + recursive Job through it on an AWS pool, the replica's egress self-probe under K5's policy, api upgrade both ways with the Service still running and the credential decrypted after each, a pool scale-out and idle scale-in without from_release, destroy refusal) instead of the default pool journey, on an AWS, Azure, GCP or Lambda pool
+        description: After bootstrap, drive the hosted API itself (api use, credentials new, api access, a VM Service, api upgrade both ways with the Service still running and the credential decrypted after each, the unchanged and refused upgrades, and a recursive VM Job pair through it) instead of the default operator walk; AWS cluster only
         type: boolean
         default: false
       from_release:
-        description: With hosted_stage or gpu_pool, a published release (for example 0.1.66) whose CLI bootstraps the cluster, saves a credential on its hosted API and creates the journey's node pool; this tree's `api upgrade` then moves the installer and the hosted API to this tree, the credential must still decrypt, and each pool VM from before the upgrade must be replaced, before the stage continues (empty = bootstrap this tree)
+        description: With hosted_stage, a published release (for example 0.1.66) whose CLI bootstraps the cluster, saves a credential on its hosted API and starts the journey's VM Service; this tree's `api upgrade` then moves the installer and the hosted API to this tree, and the Service must still run and the credential decrypt before the stage continues (empty = bootstrap this tree)
         type: string
         default: ''
-      gpu_pool:
-        description: After bootstrap, qualify a GPU node pool through the hosted API on an AWS, Azure or GCP pool (pool_vm_type default g4dn.xlarge, Standard_NC4as_T4_v3 on Azure, g2-standard-4 in us-east4 on GCP, which skips the scale stage and refuses from_release under its one-GPU quota) — device registration, a GPU Service that runs nvidia-smi, GPU Jobs that each run a checked MACE CUDA calculation, host loss, and a pool scale-out and idle scale-in without from_release; not combinable with hosted_stage
-        type: boolean
-        default: false
-      gpu_replicas:
-        description: With voice gpu_pool, run two replicas on two GPU VMs and prove one survives host loss
-        type: choice
-        options: ['1', '2']
-        default: '1'
       live_checks:
         description: >-
-          With hosted_stage or gpu_pool, the 0.1.71 pool checks to run, comma-separated:
-          agent-restart, entry-handoff (needs from_release),
-          pool-job-upgrade (RFC 0049 C27, needs a from_release after 0.1.71 and a one-Node pool),
-          cpu-defaults (AWS, GCP or Azure pool), pool-gpu-probe (on gpu_pool's or
-          a Lambda pool, else its own: four T4s on AWS, one L4 on GCP),
-          cpu-cold-start (the CPU cold-start record on a pool of its own, with C11, C12 and C22 checks after 0.1.72;
-          AWS, GCP or Azure pool; with from_release it runs on the release before the upgrade),
-          user-namespace (RFC 0049 C32 on a pool of its own: one m7i.xlarge, n2-standard-4 or
-          Standard_D4s_v5 with nested virtualization; AWS, GCP or Azure pool),
+          With hosted_stage, the checks to run, comma-separated:
+          role-apply (an AWS, GCP and Azure role connection each created, converged
+          and deleted through that cloud's CLI against the hosted API),
           role-connections (RFC 0047 S14 and S15: an AWS, a GCP and an Azure role connection
-          through each setup template, a pool Job's output through each, the refused saves),
+          through each setup template, a VM Job's output through each, the refused saves),
           role-trust-pinning (S17: unpinned trusts refused at save),
           role-key-rotation (S16: the signing key added, overlapped and retired, last in the journey),
-          role-storage-tokens (a registered Deployment mints storage tokens from each role
-          connection with its own Pod-bound token);
-          each role check runs on hosted_stage with an AWS, GCP or Azure pool and deletes every
-          trust it deploys,
-          role-apply (an AWS, GCP and Azure role connection each created, converged
-          and deleted through that cloud's CLI against the hosted API; needs hosted_stage).
+          role-storage-tokens (storage tokens minted from each role connection with the
+          run's own API token); each role check deletes every trust it deploys.
           Empty runs none.
         type: string
         default: ''
-      gpu_workload:
-        description: With gpu_pool, what each pool Job runs — mace (a checked MACE CUDA energy) or voice (Kyutai TTS sessions from one warm model, two at a time with a third queued, each checked against a CPU reference Whisper heard as its text)
-        type: choice
-        options:
-          - mace
-          - voice
-        default: mace
-
 # Runs are concurrent: each pushes its own version's tags, and the sweeps
 # below touch only what the run recorded, or ids older than any live run
 # (ci/cleanup/e2e-cluster-stale-ids.ts).
@@ -165,15 +97,13 @@ jobs:
   e2e-cluster-cloud:
     runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
     environment: cloud-e2e
-    # The live checks add pools of their own, a reboot and Job rounds.
-    timeout-minutes: ${{ inputs.live_checks != '' && 250 || inputs.restore_stage && 140 || inputs.gpu_pool && (inputs.from_release && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' && 195 || 185) || ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' && 180 || 170)) || (inputs.from_release && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' && 150 || 140) || inputs.hosted_stage && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' && 120 || 95) || 75) }}
-    # A GPU pool shares its cloud's GPU quota with e2e-gpu's legs there: queue
-    # on their lock, as pool-gpu-probe's own AWS or GCP GPU pool does. Every
-    # other run gets a group of its own.
+    # The role checks wait out trust propagation and key overlap windows.
+    timeout-minutes: ${{ inputs.live_checks != '' && 250 || (inputs.restore_stage || inputs.from_release) && 140 || inputs.hosted_stage && 95 || 75 }}
+    # Every run gets a group of its own but role-apply's.
     concurrency:
       # role-apply's Azure names are fixed per subscription, and its sweep
       # takes every e2e leftover: one such run at a time.
-      group: ${{ (contains(inputs.live_checks, 'role-apply') || inputs.sweep_only) && 'e2e-role-apply' || ((inputs.gpu_pool || contains(inputs.live_checks, 'pool-gpu-probe') && contains('aws gcp', (inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider))) && format('e2e-gpu-qualification-{0}', (inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider)) || format('e2e-cluster-cloud-{0}-{1}', github.run_id, github.run_attempt)) }}
+      group: ${{ (contains(inputs.live_checks, 'role-apply') || inputs.sweep_only) && 'e2e-role-apply' || format('e2e-cluster-cloud-{0}-{1}', github.run_id, github.run_attempt) }}
       queue: max
       cancel-in-progress: false
 
@@ -183,30 +113,19 @@ jobs:
 
     env:
       RESULTS_DIR: /tmp/e2e-results-e2e-cluster-cloud-${{ github.run_id }}-${{ github.run_attempt }}
-      # Bootstrap (about 2 min on AWS in the 10-06 runs) + pool join + Service
-      # + destroy stay inside the job.
-      # gpu_pool adds the Deep Learning AMI boot twice (pool and host loss);
-      # from_release adds an installer restart, an upgrade and its rollout,
-      # the replacement of each pool VM from before it, one at a time, and up
-      # to 35 min after the Release step for the runner's cached NXDOMAIN of
-      # the hosted API to expire. Without from_release, the scale
-      # stage adds about 40 min (50 on a GPU pool): the burst's VMs, its long
-      # Job past the idle window, and the window again before scale-in.
-      E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.live_checks != '' && '13200' || inputs.restore_stage && '7800' || inputs.gpu_pool && (inputs.from_release && '10500' || '9600') || (inputs.from_release && '7800' || inputs.hosted_stage && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' && '6000' || '5100') || '3900') }}
+      # Bootstrap (about 2 min on AWS in the 10-06 runs) + walk + destroy stay
+      # inside the job. from_release adds an installer restart, an upgrade and
+      # its rollout, and up to 35 min after the Release step for the runner's
+      # cached NXDOMAIN of the hosted API to expire.
+      E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.live_checks != '' && '13200' || (inputs.restore_stage || inputs.from_release) && '7800' || inputs.hosted_stage && '5100' || '3900' }}
       E2E_CLUSTER_PROVIDER: ${{ inputs.cluster_provider || 'aws' }}
       E2E_CLUSTER_REGION: ${{ inputs.region }}
       E2E_CLUSTER_MANAGEMENT_VM_TYPE: ${{ inputs.management_vm_type }}
-      E2E_CLUSTER_POOL_PROVIDER: ${{ inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider || 'aws' }}
-      E2E_CLUSTER_POOL_REGION: ${{ inputs.pool_region }}
-      E2E_CLUSTER_POOL_SPOT: ${{ inputs.pool_spot && 'true' || 'false' }}
       E2E_CLUSTER_DEAD_API_DELETE: ${{ inputs.dead_api_delete && 'true' || 'false' }}
       E2E_CLUSTER_RESTORE_STAGE: ${{ inputs.restore_stage && 'true' || 'false' }}
-      E2E_CLUSTER_POOL_VM_TYPE: ${{ inputs.pool_vm_type }}
+      E2E_CLUSTER_VM_TYPE: ${{ inputs.vm_type }}
       E2E_CLUSTER_KEEP_ON_FAILURE: ${{ inputs.keep_on_failure && 'true' || 'false' }}
       E2E_CLUSTER_HOSTED_STAGE: ${{ inputs.hosted_stage && 'true' || 'false' }}
-      E2E_CLUSTER_GPU_POOL: ${{ inputs.gpu_pool && 'true' || 'false' }}
-      E2E_CLUSTER_GPU_REPLICAS: ${{ inputs.gpu_replicas || '1' }}
-      E2E_CLUSTER_GPU_WORKLOAD: ${{ inputs.gpu_workload || 'mace' }}
       E2E_CLUSTER_FROM_RELEASE: ${{ inputs.from_release }}
       E2E_CLUSTER_LIVE_CHECKS: ${{ inputs.live_checks }}
       # role-apply's GCP IDs, the run's own: GCP keeps a deleted pool's and
@@ -223,21 +142,17 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.E2E_ANYCLOUD_LOGIN_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      # The AWS CLI's region: the cluster's on AWS, else the AWS pool default.
+      # The AWS CLI's region: the cluster's on AWS, else us-east-2.
       AWS_DEFAULT_REGION: ${{ inputs.cluster_provider == 'aws' && inputs.region || 'us-east-2' }}
-      # Read when the pool runs on GCP, and by the bucketed Job on a Lambda
-      # pool (RFC 0043 S20); the fixture composes that profile on demand.
+      # Read when the cluster runs on GCP, by the role checks and by the sweep.
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
       GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
-      # Read when the pool runs on Azure, by the bucketed Job on a Lambda pool
-      # or an AWS spot pool (RFC 0043 S20, S16), and by the sweep.
+      # Read when the cluster runs on Azure, by the role checks and by the sweep.
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
-      # Read only when the pool runs on Lambda, and by its sweep.
-      LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
 
     steps:
       - uses: actions/checkout@v5
@@ -246,14 +161,6 @@ jobs:
         run: bash ci/install-runner-tools.sh
       - name: Check cloud toolchain
         run: bash ci/check-cloud-tools.sh
-
-      # pool-gpu-probe's own g4dn.12xlarge needs 48 G and VT on-demand vCPUs:
-      # fail before any VM rather than wait out the product's retries.
-      - name: Check the AWS GPU quota for pool-gpu-probe
-        if: ${{ inputs.hosted_stage && contains(inputs.live_checks, 'pool-gpu-probe') && env.E2E_CLUSTER_POOL_PROVIDER == 'aws' && !inputs.sweep_only }}
-        run: |
-          quota="$(aws service-quotas get-service-quota --service-code ec2 --quota-code L-DB2E81BA --query 'Quota.Value' --output text --no-cli-pager)"
-          awk -v q="$quota" 'BEGIN { exit !(q >= 48) }' || { echo "::error::pool-gpu-probe's g4dn.12xlarge needs 48 G and VT on-demand vCPUs (L-DB2E81BA); the quota is $quota"; exit 1; }
 
       - uses: ./.github/actions/ci-backend
         with:
@@ -267,22 +174,6 @@ jobs:
 
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
-
-      # The run builds the Python SDK wheel from python/, whose generated
-      # package is gitignored. It must precede the version stamp below: the
-      # wheel's pyproject version is this tree's package.json version.
-      - name: Setup Java 17
-        if: ${{ !inputs.sweep_only }}
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Generate deterministic Python SDK
-        if: ${{ !inputs.sweep_only }}
-        env:
-          PYTHON_BIN: python3
-        run: yarn generate:python-sdk
 
       - name: Log in to GHCR
         uses: ./.github/actions/ghcr-login
@@ -502,12 +393,9 @@ jobs:
           if [ -n "$record" ]; then
             installation="$(jq -r '.installationId // empty' "$record")"
             [ -n "$installation" ] && filters+=("Name=tag:anycloud_cluster,Values=$installation")
-            # Every VM the hosted API creates (pool and Job VMs) carries its identity.
+            # Every VM the hosted API creates (Service and Job VMs) carries its identity.
             hosted_api="$(jq -r '.hostedApiIdentity // empty' "$record")"
             [ -n "$hosted_api" ] && filters+=("Name=tag:anycloud_owner_api,Values=$hosted_api")
-            while IFS= read -r pool; do
-              [ -n "$pool" ] && filters+=("Name=tag:anycloud_resource,Values=$pool")
-            done < <(jq -r '.nodePoolIds[]' "$record")
           else
             # No record (the run failed before `cluster create` printed an
             # installation id, or this is a sweep-only dispatch). Runs are
@@ -656,9 +544,9 @@ jobs:
               cat /tmp/role.err >&2; exit 1
             fi
           done
-          # A spot pool Job's managed checkpoint bucket is named for the Job,
-          # whose fixture id ends in the run's id (names.ts); the Job's
-          # cleanup deletes it through the hosted API.
+          # A Job's managed checkpoint bucket is named for the Job, whose
+          # fixture id ends in the run's id (names.ts); the Job's cleanup
+          # deletes it through the hosted API.
           run_id="$( [ -n "$record" ] && jq -r '.runId // empty' "$record" || true)"
           if [ -n "$run_id" ]; then
             jobs="$(aws s3api list-buckets --query 'Buckets[].Name' --output text --no-cli-pager | tr '\t' '\n' | { grep -E -- "-${run_id}\$" || true; })"
@@ -670,11 +558,11 @@ jobs:
               done
             fi
           fi
-          # The bucketed Job (hosted-stage.ts poolJobStorage) on an AWS or
-          # Lambda pool deletes its own S3 buckets through the hosted API; a
-          # cleanup that lost the API leaves them for any later run once stale.
+          # A role-connection check's output bucket (role-connections.ts) is
+          # deleted through the hosted API; a cleanup that lost the API leaves
+          # it for any later run once stale.
           for b in $(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'e2e-clust-')].Name" --output text --no-cli-pager | tr '\t' '\n' | { grep -E '^e2e-clust-(in|out|ck)-' || true; } | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts); do
-            echo "::warning::Deleting a stale pool Job storage bucket: $b"
+            echo "::warning::Deleting a stale Job storage bucket: $b"
             aws s3 rb "s3://$b" --force --no-cli-pager >/dev/null || true
           done
           if [ "$leftovers" -ne 0 ] && [ "$E2E_CLUSTER_KEEP_ON_FAILURE" != true ] && { [ "$purge" != true ] || [ "$seed_remains" -ne 0 ]; }; then
@@ -712,14 +600,14 @@ jobs:
           # shellcheck disable=SC2086
           npx tsx ci/cleanup/e2e-cluster-dns-records.ts $ids
 
-      # A GCP node pool leaves instances labelled `anycloud_resource=<pool id>`
-      # and firewall rules whose target tag is the pool id (gateways/gcp.ts); a
-      # GCP management VM carries its resource scope `anycloud-cluster-<id>` the
-      # same way (clusters-domain.ts clusterScope), and its checkpoint bucket is
-      # named after the installation. Same purge semantics as the AWS sweep above.
-      - name: Sweep GCP cluster and node pool resources
-        # The bucketed Job of hosted_stage on a Lambda pool keeps its input on GCS (RFC 0043 S20).
-        if: always() && (inputs.cluster_provider == 'gcp' || (inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'gcp' || (inputs.pool_provider == 'lambda' && inputs.hosted_stage) || inputs.sweep_only)
+      # A GCP management VM's instances are labelled with its resource scope
+      # `anycloud-cluster-<id>` and its firewall rules carry it as a target tag
+      # (clusters-domain.ts clusterScope, gateways/gcp.ts); its checkpoint
+      # bucket is named after the installation. Same purge semantics as the
+      # AWS sweep above.
+      - name: Sweep GCP cluster resources
+        # A role-connections run's GCS output bucket is swept once stale.
+        if: always() && (inputs.cluster_provider == 'gcp' || contains(inputs.live_checks, 'role-connections') || inputs.sweep_only)
         shell: bash
         env:
           # Installation ids named at dispatch: swept whatever their age.
@@ -738,21 +626,22 @@ jobs:
           # The firewall API rejects server-side filters on targetTags (a list
           # field), so rules are listed with their tags and matched here.
           rules="$(gcloud compute firewall-rules list --project "$GCP_PROJECT_ID" --format='value(name,targetTags.list())' --quiet)"
+          scopes=""
           if [ -n "$record" ]; then
-            scopes="$(jq -r '.nodePoolIds[]' "$record")"
             installation="$(jq -r '.installationId // empty' "$record")"
-            [ "$cluster_here" = true ] && [ -n "$installation" ] && scopes="$scopes anycloud-cluster-$installation"
+            [ "$cluster_here" = true ] && [ -n "$installation" ] && scopes="anycloud-cluster-$installation"
             # A cluster that never reached running: as without a record.
             [ -z "$(jq -r '.hostedApiIdentity // empty' "$record")" ] && purge=true
           else
-            # Runs are concurrent: without a record only stale node pools
-            # (`p-…`) and, when the cluster is here, management VMs are ours.
+            # Runs are concurrent: without a record only stale management VMs
+            # are ours, and only when the cluster is here.
             purge=true
-            pattern="$([ "$cluster_here" = true ] && echo '^(p-|anycloud-cluster-e2e-clust-)' || echo '^p-')"
-            scopes="$({
-              gcloud compute instances list --project "$GCP_PROJECT_ID" --filter='labels.anycloud_resource:*' --format='value(labels.anycloud_resource)' --quiet
-              printf '%s\n' "$rules" | awk '{ print $2 }' | tr ',' '\n'
-            } | { grep -E "$pattern" || true; } | sort -u | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts)"
+            if [ "$cluster_here" = true ]; then
+              scopes="$({
+                gcloud compute instances list --project "$GCP_PROJECT_ID" --filter='labels.anycloud_resource:*' --format='value(labels.anycloud_resource)' --quiet
+                printf '%s\n' "$rules" | awk '{ print $2 }' | tr ',' '\n'
+              } | { grep -E '^anycloud-cluster-e2e-clust-' || true; } | sort -u | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts)"
+            fi
           fi
           # Nothing must outlive a failed, timed-out or cancelled run whose own
           # cleanup may not have run: the seed has no installer to finish it
@@ -893,7 +782,7 @@ jobs:
             fi
             [ -n "$buckets" ] && echo "::error::GCS checkpoint buckets remain: $buckets"
           fi
-          # A spot pool Job's managed checkpoint bucket, as on S3 above.
+          # A Job's managed checkpoint bucket, as on S3 above.
           run_id="$( [ -n "$record" ] && jq -r '.runId // empty' "$record" || true)"
           if [ -n "$run_id" ]; then
             jobs="$(gcloud storage buckets list --project "$GCP_PROJECT_ID" --format='value(name)' --quiet | { grep -E -- "-${run_id}\$" || true; })"
@@ -904,92 +793,26 @@ jobs:
               done
             fi
           fi
-          # The bucketed Job (hosted-stage.ts poolJobStorage) on a GCP or
-          # Lambda pool deletes its own GCS buckets through the hosted API; a
-          # cleanup that lost the API leaves them for any later run once stale.
+          # A role-connection check's output bucket, as on S3 above.
           for b in $(gcloud storage buckets list --project "$GCP_PROJECT_ID" --format='value(name)' --quiet | { grep -E '^e2e-clust-(in|out|ck)-' || true; } | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts); do
-            echo "::warning::Deleting a stale pool Job storage bucket: $b"
+            echo "::warning::Deleting a stale Job storage bucket: $b"
             gcloud storage rm --recursive --all-versions "gs://$b" --quiet || true
           done
           if [ "$leftovers" -ne 0 ] && [ "$E2E_CLUSTER_KEEP_ON_FAILURE" != true ] && { [ "$purge" != true ] || [ "$seed_remains" -ne 0 ]; }; then
             exit 1
           fi
 
-      # A Lambda node pool's instances carry `anycloud:resource=<pool id>` and
-      # its firewall ruleset is named `anycloud-<pool id>` (gateways/lambda.ts).
-      # Lambda hosts no cluster. Same purge semantics as the AWS sweep above.
-      - name: Sweep Lambda node pool resources
-        if: always() && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'lambda' || inputs.sweep_only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          api() { curl -fsS --max-time 30 -u "$LAMBDA_API_KEY:" -H 'Content-Type: application/json' "$@"; }
-          purge="${{ inputs.sweep_only && 'true' || 'false' }}"
-          record="$(find "$RESULTS_DIR" -name '*e2e-cluster-cloud-resources.json' | sort | tail -n 1 || true)"
-          live="[]"
-          token=""
-          while :; do
-            page="$(api "https://cloud.lambda.ai/api/v1/instances${token:+?page_token=$token}")"
-            live="$(jq -c --argjson live "$live" '$live + [.data[] | select(.status != "terminated")]' <<< "$page")"
-            token="$(jq -r '.page_token // empty | @uri' <<< "$page")"
-            [ -z "$token" ] && break
-          done
-          all_rulesets="$(api https://cloud.lambda.ai/api/v1/firewall-rulesets)"
-          if [ -n "$record" ]; then
-            pools="$(jq -c '[.nodePoolIds[]]' "$record")"
-          else
-            # Runs are concurrent: without a record only stale node pool ids
-            # (`p-…`) in the account are ours.
-            purge=true
-            pools="$({
-              jq -r '.[].tags[]? | select(.key == "anycloud:resource") | .value' <<< "$live"
-              jq -r '.data[].name | select(startswith("anycloud-")) | ltrimstr("anycloud-")' <<< "$all_rulesets"
-            } | { grep '^p-' || true; } | sort -u | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts | jq -Rsc 'split("\n") | map(select(. != ""))')"
-          fi
-          # Nothing must outlive a failed, timed-out or cancelled run whose own
-          # cleanup may not have run: the seed has no installer to finish it
-          # later, so terminate what the run left.
-          if [ "${{ steps.tests.outcome != 'success' }}" = true ] && [ "$E2E_CLUSTER_KEEP_ON_FAILURE" != true ]; then purge=true; fi
-          ours='def ours($id): any($pools[]; . == $id);'
-          instances="$(jq -r --argjson pools "$pools" "$ours"' .[] | select(any(.tags[]?; .key == "anycloud:resource" and ours(.value))) | .id' <<< "$live" | tr '\n' ' ')"
-          instances="$(echo $instances)"
-          rulesets="$(jq -r --argjson pools "$pools" "$ours"' .data[] | select((.name | startswith("anycloud-")) and ours(.name | ltrimstr("anycloud-"))) | .id' <<< "$all_rulesets" | tr '\n' ' ')"
-          rulesets="$(echo $rulesets)"
-          leftovers=0
-          if [ -n "$instances" ]; then
-            echo "::error::Lambda instances remain: $instances"; leftovers=1
-            [ "$purge" = true ] && api -X POST https://cloud.lambda.ai/api/v1/instance-operations/terminate \
-              -d "$(jq -cn --arg ids "$instances" '{instance_ids: ($ids | split(" "))}')" >/dev/null && echo "terminated: $instances" || true
-          fi
-          if [ -n "$rulesets" ]; then
-            echo "::error::Lambda firewall rulesets remain: $rulesets"; leftovers=1
-            # A ruleset stays in use until its instances finish terminating.
-            [ "$purge" = true ] && for r in $rulesets; do
-              api -X DELETE "https://cloud.lambda.ai/api/v1/firewall-rulesets/$r" >/dev/null && echo "deleted ruleset: $r" || true
-            done
-          fi
-          if [ "$leftovers" -ne 0 ] && [ "$E2E_CLUSTER_KEEP_ON_FAILURE" != true ] && [ "$purge" != true ]; then
-            exit 1
-          fi
-
-      # An Azure node pool leaves VMs, disks and networking in the product's
-      # shared `anycloud-<region>` group, each tagged with its installation
-      # (`anycloud_cluster`, node-pool-controller.ts) and the API that created it
-      # (`anycloud_owner_api`). Only those are listed or deleted, by owner,
-      # never the group; same purge semantics as the AWS sweep above.
-      # An Azure management VM lives there too, in the cluster's region, and its
+      # An Azure management VM lives in its seed's resource group, and its
       # checkpoint bucket is a container of the shared storage account.
-      - name: Sweep Azure cluster and node pool resources
-        # The bucketed Job of hosted_stage on a Lambda pool, or of gpu_pool on a spot pool off Azure, keeps a container in Azure (RFC 0043 S20, S16).
-        if: always() && (inputs.cluster_provider == 'azure' || (inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'azure' || (inputs.pool_provider == 'lambda' && inputs.hosted_stage) || (inputs.pool_spot && inputs.gpu_pool) || inputs.sweep_only)
+      # Same purge semantics as the AWS sweep above.
+      - name: Sweep Azure cluster resources
+        # A role-connections run's Azure output container is swept once stale.
+        if: always() && (inputs.cluster_provider == 'azure' || contains(inputs.live_checks, 'role-connections') || inputs.sweep_only)
         shell: bash
         env:
           INSTALLATION_IDS: ${{ steps.installations.outputs.ids }}
-          # An Azure cluster's pool shares its region unless pool_region says otherwise.
-          POOL_REGION: ${{ inputs.pool_region || (inputs.cluster_provider == 'azure' && inputs.region) || 'westus2' }}
-          CLUSTER_REGION: ${{ inputs.cluster_provider == 'azure' && (inputs.region || 'westus2') || '' }}
           # The management VM and checkpoint containers only when the cluster is on Azure;
-          # stale pool Job storage containers on every run that reaches this step.
+          # stale Job storage containers on every run that reaches this step.
           CLUSTER_HERE: ${{ inputs.cluster_provider == 'azure' || inputs.sweep_only }}
           SWEEP_ONLY: ${{ inputs.sweep_only }}
           RUN_FAILED: ${{ steps.tests.outcome != 'success' }}
@@ -1038,9 +861,9 @@ jobs:
                 done
               fi
             fi
-            # A spot pool Job's managed checkpoint container is named for the
-            # Job, whose fixture id ends in the run's id (names.ts); the Job's
-            # cleanup deletes it through the hosted API.
+            # A Job's managed checkpoint container is named for the Job, whose
+            # fixture id ends in the run's id (names.ts); the Job's cleanup
+            # deletes it through the hosted API.
             run_id="$( [ -n "$record" ] && jq -r '.runId // empty' "$record" || true)"
             if [ -n "$run_id" ]; then
               containers="$(printf '%s\n' "$listing" | { grep -E -- "-${run_id}\$" || true; })"
@@ -1052,12 +875,9 @@ jobs:
                 done
               fi
             fi
-            # The bucketed Job (hosted-stage.ts poolJobStorage), on an Azure
-            # GPU pool or hosted_stage's Lambda pool, deletes its own containers through the
-            # hosted API; a cleanup that lost the API leaves them for any later
-            # run once they are stale.
+            # A role-connection check's output container, as on S3 above.
             for c in $(printf '%s\n' "$listing" | { grep -E '^e2e-clust-(in|out|ck)-' || true; } | npx tsx ci/cleanup/e2e-cluster-stale-ids.ts); do
-              echo "::warning::Deleting a stale pool Job storage container: $c"
+              echo "::warning::Deleting a stale Job storage container: $c"
               az storage container delete --name "$c" --account-name "$account" --auth-mode login --output none || true
             done
           fi
@@ -1078,24 +898,13 @@ jobs:
               fi
             done
           fi
-          owners=()
+          # Anything still tagged for an installation after its group went.
           for id in $INSTALLATION_IDS; do
             found="$(az resource list --tag "anycloud_cluster=$id" --query '[].id' --output tsv)"
             if [ -n "$found" ]; then
-              # Purged below by owner, not re-listed afterwards.
-              if [ "$purge" = true ]; then echo "Azure resources found for $id, deleting by owner: $found"; else echo "::error::Azure resources remain for $id: $found"; fi
-              leftovers=1
-              while IFS= read -r owner; do
-                # An untagged owner stays listed above for inspection.
-                [[ "$owner" =~ ^[a-f0-9]{32}$ ]] && owners+=("$owner")
-              done < <(az resource list --tag "anycloud_cluster=$id" --query '[].tags.anycloud_owner_api' --output tsv | sort -u)
+              echo "::error::Azure resources remain for $id: $found"; leftovers=1; seed_remains=1
             fi
           done
-          if [ "$purge" = true ] && [ "${#owners[@]}" -gt 0 ]; then
-            for region in $(printf '%s\n' "$POOL_REGION" $CLUSTER_REGION | sort -u); do
-              npx tsx ci/cleanup/e2e-cluster-azure-pool.ts "$region" "${owners[@]}"
-            done
-          fi
           if [ "$leftovers" -ne 0 ] && [ "$E2E_CLUSTER_KEEP_ON_FAILURE" != true ] && { [ "$purge" != true ] || [ "$seed_remains" -ne 0 ]; }; then
             exit 1
           fi

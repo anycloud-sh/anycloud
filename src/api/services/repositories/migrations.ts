@@ -8,6 +8,10 @@ import { prepareMigrationSql } from './migration-sql.js';
 import type { MigrationDatabase } from './migration-database.js';
 import { auditContainerSpecOwnership } from './container-spec-ownership.js';
 import { auditWorkloadRenameContainerSpecOwnership } from './workload-rename-ownership.js';
+import {
+  REMOVAL_MIGRATIONS,
+  refuseRemovedWorkloads,
+} from './removed-workloads-guard.js';
 
 export interface MigrationSource {
   version: number;
@@ -35,6 +39,8 @@ const FOREIGN_KEY_REBUILD_MIGRATIONS: ReadonlySet<string> = new Set([
   '0127_cluster_steps.sql',
   '0139_node_pool_region_optional.sql',
   '0165_cluster_record.sql',
+  '0171_remove_deployments.sql',
+  '0172_remove_node_pools.sql',
 ]);
 const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', '..', 'migrations');
 
@@ -225,6 +231,9 @@ export async function runMigrations(
       (upTo === undefined || version <= upTo)
     );
   });
+  if (pending.some((filename) => REMOVAL_MIGRATIONS.has(filename))) {
+    refuseRemovedWorkloads(db);
+  }
   let appliedCount = 0;
   for (const filename of pending) {
     const version = parseInt(basename(filename).split('_')[0], 10);

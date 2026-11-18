@@ -10,8 +10,6 @@ export interface ContainerSpec {
   env: Record<string, string> | null;
   registryUsername: string;
   registryToken: string | null;
-  /** A managed Deployment's image Entrypoint, which its runner starts. */
-  entrypoint?: string[];
 }
 
 /** SQL values only; identity and owner references stay with their repositories. */
@@ -23,7 +21,6 @@ export interface EncodedContainerSpec {
   env: string | null;
   registry_username: string;
   registry_token: string | null;
-  entrypoint?: string | null;
 }
 
 export type PublicContainerSpec = Pick<
@@ -106,16 +103,9 @@ function validatePublicFields(
       'network',
     ]);
     for (const [key, value] of Object.entries(spec.dockerOptions)) {
-      if (
-        (key === 'privileged' || key === 'userNamespace') &&
-        typeof value === 'boolean'
-      )
-        continue;
+      if (key === 'privileged' && typeof value === 'boolean') continue;
       if (stringFields.has(key) && typeof value === 'string') continue;
-      if (
-        (key === 'ulimits' || key === 'binds' || key === 'caches') &&
-        isStringArray(value)
-      )
+      if ((key === 'ulimits' || key === 'binds') && isStringArray(value))
         continue;
       invalid(context, 'dockerOptions');
     }
@@ -199,28 +189,23 @@ export async function encodeContainerSpec(
     docker_options:
       spec.dockerOptions === null ? null : JSON.stringify(spec.dockerOptions),
     registry_username: registryUsername,
-    ...(spec.entrypoint && { entrypoint: JSON.stringify(spec.entrypoint) }),
   };
 }
 
-/** Store `spec` for its one owner, a Workload or a Deployment, in `tx`. */
+/** Store `spec` for its Workload in `tx`. */
 export function insertContainerSpec(
   // A `DBTransaction`, which this module can't import without a cycle.
   tx: { query<T>(sql: string, params?: unknown[]): T[] },
-  owner: { workloadId: string } | { deploymentId: string },
+  workloadId: string,
   spec: EncodedContainerSpec,
 ): void {
-  const [column, id, noun] =
-    'workloadId' in owner
-      ? ['workload_id', owner.workloadId, 'Workload']
-      : ['deployment_id', owner.deploymentId, 'Deployment'];
   const inserted = tx.query<{ rowsAffected: number }>(
     `INSERT INTO container_specs (
-       ${column}, image, image_digest, command, docker_options, env,
-       registry_username, registry_token, entrypoint
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       workload_id, image, image_digest, command, docker_options, env,
+       registry_username, registry_token
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      id,
+      workloadId,
       spec.image,
       spec.image_digest,
       spec.command,
@@ -228,12 +213,11 @@ export function insertContainerSpec(
       spec.env,
       spec.registry_username,
       spec.registry_token,
-      spec.entrypoint ?? null,
     ],
   );
   if (inserted[0]?.rowsAffected !== 1) {
     throw new Error(
-      `${noun} ${id}: expected exactly one container spec insert`,
+      `Workload ${workloadId}: expected exactly one container spec insert`,
     );
   }
 }
@@ -308,24 +292,17 @@ export async function decodeContainerSpec(
         : (parseJson(env, context, 'env') as Record<string, string>),
     registryUsername,
     registryToken,
-    ...(row.entrypoint && {
-      entrypoint: parseJson(row.entrypoint, context, 'entrypoint') as string[],
-    }),
   };
   validateSecretFields(spec, context);
   return spec;
 }
 
-/**
- * Every Workload owns a container spec except a Job on a user Deployment; a
- * pool Job on a managed Deployment owns its own (the schema enforces which).
- */
+/** Every Workload owns a container spec. */
 export function assertSpecOwnership(row: {
   id: string;
-  deployment_id: string | null;
   container_spec_owner_id: string | null;
 }): void {
-  if (row.deployment_id === null && row.container_spec_owner_id === null) {
+  if (row.container_spec_owner_id === null) {
     throw new Error(
       `Workload ${row.id}: container spec ownership is incomplete`,
     );

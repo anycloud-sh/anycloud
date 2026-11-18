@@ -1,6 +1,8 @@
 # RFC 0043: Storage for pool Jobs
 
-> Status: Accepted
+> Status: Superseded — node pools, Kubernetes Deployments and node pool
+> Services were removed (migrations 0171 and 0172); VM Jobs and VM Services
+> replace them.
 > Date: 2026-10-13
 > Updated: 2026-11-03
 > Author: Claude draft, for Luis Fernando De Pombo

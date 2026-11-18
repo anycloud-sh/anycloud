@@ -21,16 +21,6 @@ export interface ApiBackupInventory {
     /** GCP project, Azure subscription or AWS account; Lambda keys name none. */
     account: string | null;
   }>;
-  readonly pools: ReadonlyArray<{
-    id: string;
-    name: string;
-    cloud: string;
-    /** Null when the credential was deleted after the pool was created. */
-    credential: string | null;
-    account: string | null;
-    region: string | null;
-    zone: string | null;
-  }>;
 }
 
 /**
@@ -74,7 +64,6 @@ export function parseApiBackupManifest(raw: string): ApiBackupManifest {
     typeof value.databaseSha256 !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.databaseSha256) ||
     (value.credentials !== undefined && !Array.isArray(value.credentials)) ||
-    (value.pools !== undefined && !Array.isArray(value.pools)) ||
     (['cloud', 'account', 'name', 'region', 'vmType'] as const).some(
       (field) => value[field] !== undefined && typeof value[field] !== 'string',
     )

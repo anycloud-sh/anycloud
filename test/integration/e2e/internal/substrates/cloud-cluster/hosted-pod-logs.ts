@@ -164,22 +164,6 @@ export async function hostedKubeConfig(
   );
 }
 
-/** The Secrets in a namespace with any decoded value matching `pattern`. */
-export async function secretsMatching(
-  core: Pick<CoreV1Api, 'listNamespacedSecret'>,
-  namespace: string,
-  pattern: RegExp,
-): Promise<string[]> {
-  const { items } = await core.listNamespacedSecret({ namespace });
-  return items
-    .filter((secret) =>
-      Object.values(secret.data ?? {}).some((value) =>
-        pattern.test(Buffer.from(value, 'base64').toString()),
-      ),
-    )
-    .map((secret) => secret.metadata?.name ?? '');
-}
-
 /**
  * Each container's log, current and previous, for the Pods in
  * `HOSTED_LOG_NAMESPACES`. Every read is independent and reports its own

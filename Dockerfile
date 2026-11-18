@@ -54,70 +54,7 @@ FROM ${DEPS_PROD_IMAGE} AS deps-prod
 FROM deps-full AS builder
 WORKDIR /app
 COPY . .
-# The runner is compiled the way the CLI is (release/build-binaries.sh). It
-# embeds the Bun runtime and no npm package; rclone sits beside it. The image's
-# Node packages keep their own licence files under node_modules/.
-RUN yarn build && npx bun build --compile ./dist/runner/index.js --outfile /app/anycloud-runner \
-  && bun_version="$(node -p "require('./node_modules/bun/package.json').version")" \
-  && { cat NOTICE; printf '\nThe runner in /opt/anycloud-runner embeds Bun %s; that directory also holds\nrclone, tini, the GNU C Library and a CA bundle. Their licences follow.\n\n' "$bun_version"; \
-    cat "release/licenses/bun-$bun_version-LICENSE.md" release/licenses/rclone-*-COPYING; } >/app/NOTICE.image
-
-# What `runner-install` copies into each managed replica (RFC 0044): the
-# runner, tini as its PID 1, rclone and a CA bundle for it, pinned as the VM
-# host's rclone is (src/api/runtime-artifacts.ts). Job images may lack glibc
-# or CA certificates, so the runner carries its loader and libraries: its
-# interpreter and DT_RPATH point beside it (DT_RPATH, unlike DT_RUNPATH,
-# outranks an image's LD_LIBRARY_PATH). patchelf 0.18 corrupted the Bun
-# bundle when it set both in one pass, so it sets them in two. 0.19.3 is
-# the first release that updates DT_VERDEF when it moves .gnu.version_d;
-# 0.18 left it stale, which glibc faulted on under ARM64's 64 KiB pages.
-FROM base AS runner
-ARG TARGETARCH
-ARG RCLONE_VERSION=1.68.2
-ARG PATCHELF_VERSION=0.19.3
-COPY --from=builder /app/anycloud-runner /opt/anycloud-runner/anycloud-runner
-COPY --from=builder /app/NOTICE.image /NOTICE
-WORKDIR /opt/anycloud-runner
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip tini && rm -rf /var/lib/apt/lists/* \
-  && case "$TARGETARCH" in \
-    amd64) arch=x86_64; rclone_sha=0e6fa18051e67fc600d803a2dcb10ddedb092247fc6eee61be97f64ec080a13c; patchelf_sha=38861b171079e440b25ac86483284f690d0ee7921dba98b0c8fe04a9b0a11667 ;; \
-    arm64) arch=aarch64; rclone_sha=c6e9d4cf9c88b279f6ad80cd5675daebc068e404890fa7e191412c1bc7a4ac5f; patchelf_sha=2281dd071995b449b9ce7c53c71d6d56ec3a280ae1cc66b779442abf624f7c10 ;; \
-  esac \
-  && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${TARGETARCH}.zip" \
-  && echo "$rclone_sha  /tmp/rclone.zip" | sha256sum -c - \
-  && unzip -j /tmp/rclone.zip '*/rclone' -d . \
-  && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/patchelf.tgz "https://github.com/NixOS/patchelf/releases/download/${PATCHELF_VERSION}/patchelf-${PATCHELF_VERSION}-${arch}.tar.gz" \
-  && echo "$patchelf_sha  /tmp/patchelf.tgz" | sha256sum -c - \
-  && mkdir /tmp/patchelf && tar -xzf /tmp/patchelf.tgz -C /tmp/patchelf \
-  && cp /usr/bin/tini-static tini && cp /etc/ssl/certs/ca-certificates.crt . \
-  && for lib in $(ldd anycloud-runner | grep -o '/[^ ]*'); do cp -L "$lib" .; done \
-  && loader="$(/tmp/patchelf/bin/patchelf --print-interpreter anycloud-runner)" \
-  && /tmp/patchelf/bin/patchelf --force-rpath --set-rpath /opt/anycloud-runner anycloud-runner \
-  && /tmp/patchelf/bin/patchelf --set-interpreter "/opt/anycloud-runner/$(basename "$loader")" anycloud-runner \
-  && glibc="$(dpkg-query -W -f '${Version}' libc6)" \
-  && { printf '\nIn that directory, tini %s is under the MIT License; the GNU C\nLibrary %s, under the LGPL-2.1 (source:\nhttps://sources.debian.org/src/glibc/%s/); and the CA bundle from\nca-certificates %s, under the MPL-2.0. Their Debian copyright files and the\nLGPL-2.1 follow.\n\n' \
-      "$(dpkg-query -W -f '${Version}' tini)" "$glibc" "$glibc" "$(dpkg-query -W -f '${Version}' ca-certificates)"; \
-    cat /usr/share/doc/tini/copyright /usr/share/doc/libc6/copyright /usr/share/doc/ca-certificates/copyright /usr/share/common-licenses/LGPL-2.1; } >>/NOTICE
-
-# The runner starts in an image without glibc, even with a foreign libc on
-# LD_LIBRARY_PATH, and in one with nothing but its own directory; rclone
-# verifies TLS with its own CA bundle in an image without one. The API image
-# copies the directory from the last check, so a failing check fails the
-# build.
-FROM mirror.gcr.io/library/alpine:3.20 AS runner-musl-check
-COPY --from=runner /opt/anycloud-runner /opt/anycloud-runner
-RUN mkdir /tmp/decoy && echo decoy > /tmp/decoy/libc.so.6 \
-  && { env -i LD_LIBRARY_PATH=/tmp/decoy /opt/anycloud-runner/anycloud-runner 2>&1; true; } | tee /tmp/err \
-  && grep -q 'ANYCLOUD_RUNNER_WORKDIR_COPY is not set' /tmp/err
-FROM gcr.io/distroless/static-debian12:debug AS runner-static-check
-SHELL ["/busybox/sh", "-c"]
-COPY --from=runner-musl-check /opt/anycloud-runner /opt/anycloud-runner
-RUN { env -i /opt/anycloud-runner/anycloud-runner 2>&1; true; } | tee /tmp/err \
-  && grep -q 'ANYCLOUD_RUNNER_WORKDIR_COPY is not set' /tmp/err
-FROM mirror.gcr.io/library/ubuntu:24.04 AS runner-check
-COPY --from=runner-static-check /opt/anycloud-runner /opt/anycloud-runner
-RUN [ ! -e /etc/ssl/certs/ca-certificates.crt ] \
-  && SSL_CERT_FILE=/opt/anycloud-runner/ca-certificates.crt /opt/anycloud-runner/rclone lsf --http-url https://downloads.rclone.org :http: >/dev/null
+RUN yarn build
 
 # Clean runtime stage — same pinned node image as the base stage (see top).
 FROM ${NODE_IMAGE}
@@ -128,8 +65,7 @@ COPY --from=deps-prod /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/LICENSE ./LICENSE
-COPY --from=runner /NOTICE ./NOTICE
-COPY --from=runner-check /opt/anycloud-runner /opt/anycloud-runner
+COPY --from=builder /app/NOTICE ./NOTICE
 # The digest-pinned chart this image installs and upgrades to
 # (`yarn -s chart:publish <version>` prints it); bootstrap and upgrades read
 # it from the image config. Last, so a new chart reuses every layer above.

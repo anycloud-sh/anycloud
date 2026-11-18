@@ -37,8 +37,6 @@ import { createNotificationsCommand } from './commands/notifications.js';
 import { createDbCommand } from './commands/db/index.js';
 import { createDocsCommand } from './commands/docs.js';
 import { createClusterCommand } from './commands/cluster.js';
-import { createNodePoolCommand } from './commands/node-pool.js';
-import { createDeploymentCommand } from './commands/deployment.js';
 import { setPreFlightCheck } from '../shared/services/api-client/runtime.js';
 import { inspectLocalApiContainer } from '../shared/local-api-container.js';
 import packageJson from '../../package.json' with { type: 'json' };
@@ -47,15 +45,7 @@ import { maybeShowVersionBanner } from './utils/version-check.js';
 const rootCommandSections = [
   {
     title: 'PLATFORM',
-    commands: [
-      'job',
-      'service',
-      'vm',
-      'cluster',
-      'node-pool',
-      'deployment',
-      'bucket',
-    ],
+    commands: ['job', 'service', 'vm', 'cluster', 'bucket'],
   },
   {
     title: 'MANAGE',
@@ -226,8 +216,6 @@ program.addCommand(createSubmitCommand());
 program.addCommand(createServeCommand());
 program.addCommand(createVmCommand());
 program.addCommand(createClusterCommand());
-program.addCommand(createNodePoolCommand());
-program.addCommand(createDeploymentCommand());
 program.addCommand(createStatusCommand());
 program.addCommand(createWaitCommand());
 program.addCommand(createListCommand());

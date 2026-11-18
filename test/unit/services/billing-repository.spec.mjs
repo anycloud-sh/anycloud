@@ -11,7 +11,6 @@ import {
 } from '../../../src/api/services/repositories/billing.js';
 import { getDB } from '../../../src/api/services/repositories/db.js';
 import { CloudType } from '../../../src/shared/cloud.js';
-import { NodePoolState } from '../../../src/shared/node-pools.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
 import {
   seedBillingCredential as credential,
@@ -97,36 +96,23 @@ describe('bounded billing repository discovery', () => {
               : WorkloadState.Provisioning,
         });
       }
-      const persistence = getPersistence();
-      await persistence.clusters.recordSelf({
-        id: 'billing-cluster',
+      // A destroyed cluster named like a Workload is its own resource group.
+      await getPersistence().clusters.recordSelf({
+        id: 'owner-00',
         ownerUserId: 'test-user',
         name: 'billing-cluster',
         kubernetesIdentity: 'uid-billing-cluster',
         connection: '{"stored":true}',
       });
-      await persistence.nodePools.create({
-        id: 'owner-00',
-        clusterId: 'billing-cluster',
-        ownerUserId: 'test-user',
-        name: 'billing-fixture',
-        computeCredentialId: accountA,
-        region: 'us-east-1',
-        zone: null,
-        vmTypes: ['t3.medium'],
-        minVmCount: 1,
-        maxVmCount: 1,
-      });
-      await db.query('UPDATE node_pools SET state=? WHERE id=?', [
-        NodePoolState.Deleted,
-        'owner-00',
-      ]);
+      await db.query(
+        `UPDATE clusters SET state='destroyed', encrypted_connection=NULL WHERE id='owner-00'`,
+      );
       await db.query(
         `INSERT INTO vms
-         (cloud_id, node_pool_id, credential_id, created_at, ended_at, region, vm_type)
+         (cloud_id, cluster_id, credential_id, created_at, ended_at, region, vm_type)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
-          'node-pool-vm',
+          'management-vm',
           'owner-00',
           accountB,
           NOW - 4 * DAY_MS,
@@ -226,7 +212,7 @@ describe('bounded billing repository discovery', () => {
     expect(plans[0]).toContain('SCAN v USING INDEX idx_vms_pending_cost_group');
   });
 
-  it('discovers node pool and cluster attempts once their owner is gone', async () => {
+  it('discovers cluster attempts once their owner is gone', async () => {
     const db = getDB();
     const account = await credential('account-a');
     // One cluster record: the installer's bootstrap facts and the cluster identity.
@@ -244,80 +230,46 @@ describe('bounded billing repository discovery', () => {
       [account, '0'.repeat(64), '0'.repeat(64), '0'.repeat(64), '0'.repeat(64)],
     );
     await db.query(
-      `INSERT INTO node_pools (
-         id, cluster_id, owner_user_id, name, state, compute_credential_id,
-         region, vm_type, min_vm_count, max_vm_count, created_at, updated_at
-       ) VALUES ('node-pool-a', 'install-a', 'test-user', 'aws-east', 'ready', ?,
-         'us-east-1', 't3.small', 1, 1, 1, 1)`,
-      [account],
+      `INSERT INTO vms
+       (cloud_id, cluster_id, credential_id, created_at, ended_at, region, vm_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        'management-vm',
+        'install-a',
+        account,
+        NOW - 4 * DAY_MS,
+        NOW - 3 * DAY_MS,
+        'us-east-1',
+        't3.medium',
+      ],
     );
-    for (const [column, owner, cloudId] of [
-      ['node_pool_id', 'node-pool-a', 'node-pool-vm'],
-      ['cluster_id', 'install-a', 'management-vm'],
-    ]) {
-      await db.query(
-        `INSERT INTO vms
-         (cloud_id, ${column}, credential_id, created_at, ended_at, region, vm_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          cloudId,
-          owner,
-          account,
-          NOW - 4 * DAY_MS,
-          NOW - 3 * DAY_MS,
-          'us-east-1',
-          't3.medium',
-        ],
-      );
-    }
 
     // Live owners are not eligible yet.
     expect(await listVmsNeedingCost(getDB(), cutoffMs)).toEqual([]);
     expect(await drainPages(5)).toEqual([]);
 
     await db.query(
-      `UPDATE node_pools SET state='deleted' WHERE id='node-pool-a'`,
-    );
-    await db.query(
       `UPDATE clusters SET state='destroyed', encrypted_connection=NULL WHERE id='install-a'`,
     );
     const bulk = await listVmsNeedingCost(getDB(), cutoffMs);
     expect(
-      bulk.map(
-        ({
-          cloud_id,
-          resource_tag,
-          resource_id,
-          node_pool_id,
-          cluster_id,
-        }) => ({
-          cloud_id,
-          resource_tag,
-          resource_id,
-          node_pool_id,
-          cluster_id,
-        }),
-      ),
+      bulk.map(({ cloud_id, resource_tag, resource_id, cluster_id }) => ({
+        cloud_id,
+        resource_tag,
+        resource_id,
+        cluster_id,
+      })),
     ).toEqual([
       {
         cloud_id: 'management-vm',
         resource_tag: 'anycloud_resource',
         resource_id: 'install-a',
-        node_pool_id: null,
         cluster_id: 'install-a',
-      },
-      {
-        cloud_id: 'node-pool-vm',
-        resource_tag: 'anycloud_resource',
-        resource_id: 'node-pool-a',
-        node_pool_id: 'node-pool-a',
-        cluster_id: null,
       },
     ]);
     const groups = await drainPages(1);
     expect(groups.map((group) => group.map((row) => row.cloud_id))).toEqual([
       ['management-vm'],
-      ['node-pool-vm'],
     ]);
   });
 

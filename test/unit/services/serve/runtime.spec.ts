@@ -143,10 +143,7 @@ describe('VM-host Serve runtime', () => {
 describe('Serve runtime router', () => {
   it('routes direct-provider lifecycle operations to VM-host machinery', async () => {
     const vmHost = createRuntime();
-    const runtime = createServeRuntimeRouter({
-      vmHost,
-      nodePool: createRuntime(),
-    });
+    const runtime = createServeRuntimeRouter({ vmHost });
     const workload = makeStoredWorkload({
       workloadType: WorkloadType.Service,
       cloudProvider: CloudType.AWS,
@@ -160,76 +157,9 @@ describe('Serve runtime router', () => {
     expect(vmHost.cleanup).toHaveBeenCalledWith(request);
   });
 
-  it('routes a node-pool-targeted Service to the node pool runtime regardless of its cloud', async () => {
-    const vmHost = createRuntime();
-    const nodePool = createRuntime();
-    const runtime = createServeRuntimeRouter({ vmHost, nodePool });
-    const request = {
-      workload: makeStoredWorkload({
-        workloadType: WorkloadType.Service,
-        // The Service reports its node pool's cloud, not a substrate.
-        cloudProvider: CloudType.AWS,
-        nodePoolId: 'node-pool-a',
-        nodePoolName: 'aws-east',
-        credentialId: null,
-      }),
-      placement: { cloudConfig },
-    };
-
-    await runtime.cleanup(request);
-    await runtime.teardown(request);
-    await runtime.deploy(request);
-    expect(nodePool.cleanup).toHaveBeenCalledWith(request);
-    expect(nodePool.teardown).toHaveBeenCalledWith(request);
-    expect(nodePool.deploy).toHaveBeenCalledWith(request);
-    expect(vmHost.cleanup).not.toHaveBeenCalled();
-    expect(vmHost.deploy).not.toHaveBeenCalled();
-  });
-
-  it('routes a node-pool-targeted Service without a resolved cloud, which VM-host would refuse', async () => {
-    const vmHost = createRuntime();
-    const nodePool = createRuntime();
-    const runtime = createServeRuntimeRouter({ vmHost, nodePool });
-    const request = {
-      workload: makeStoredWorkload({
-        workloadType: WorkloadType.Service,
-        cloudProvider: null,
-        nodePoolId: 'node-pool-a',
-      }),
-      placement: { cloudConfig },
-    };
-
-    await runtime.cleanup(request);
-    expect(nodePool.cleanup).toHaveBeenCalledWith(request);
-    expect(vmHost.cleanup).not.toHaveBeenCalled();
-  });
-
-  it('rejects a Deployment target before Service dispatch', () => {
-    const vmHost = createRuntime();
-    const runtime = createServeRuntimeRouter({
-      vmHost,
-      nodePool: createRuntime(),
-    });
-    const request = {
-      workload: makeStoredWorkload({
-        workloadType: WorkloadType.Service,
-        deploymentId: 'model-a',
-      }),
-      placement: { cloudConfig },
-    };
-
-    expect(() => runtime.cleanup(request)).toThrow(
-      'Services cannot target a Deployment',
-    );
-    expect(vmHost.cleanup).not.toHaveBeenCalled();
-  });
-
   it('allows VM-host provider failover without changing runtime ownership', async () => {
     const vmHost = createRuntime();
-    const runtime = createServeRuntimeRouter({
-      vmHost,
-      nodePool: createRuntime(),
-    });
+    const runtime = createServeRuntimeRouter({ vmHost });
     const request = {
       workload: makeStoredWorkload({
         workloadType: WorkloadType.Service,

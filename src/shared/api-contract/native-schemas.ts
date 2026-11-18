@@ -8,13 +8,7 @@ import { workloadPathParametersSchema } from './workload-management-schemas.js';
 const nativeExecRequestSchema = z
   .object({
     params: workloadPathParametersSchema,
-    body: z
-      .object({
-        command: z.string().min(1),
-        /** A Deployment's replica Pod; a ready one when omitted. */
-        replica: z.string().min(1).optional(),
-      })
-      .strict(),
+    body: z.object({ command: z.string().min(1) }).strict(),
   })
   .strict();
 
@@ -100,7 +94,6 @@ export type NativeBucketObjectRequest = z.output<
 export interface ExecRequest {
   id: string;
   command: string;
-  replica?: string;
 }
 
 export type ExecStreamEvent =

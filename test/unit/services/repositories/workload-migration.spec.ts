@@ -245,6 +245,19 @@ describe('0105 Workload rename through the current schema', () => {
         kubernetes_root_installations: 'clusters',
         root_installation_id: 'cluster_id',
       };
+      // 0171 and 0172 drop the Deployment and node pool columns.
+      const removed: Record<string, string[]> = {
+        workloads: [
+          'deployment_id',
+          'current_execution_id',
+          'submission_revision',
+          'first_claimed_at',
+          'claim_deadline_at',
+          'node_pool_id',
+        ],
+        container_specs: ['deployment_id'],
+        vms: ['node_pool_id'],
+      };
       for (const [table, rows] of Object.entries(renamed.tables)) {
         // 0122 drops the Cluster tables; 0123 drops checkpoint publication.
         if (
@@ -261,6 +274,12 @@ describe('0105 Workload rename through the current schema', () => {
         ) {
           continue;
         }
+        // 0171 and 0172 drop the Deployment and node pool tables, empty here.
+        if (table === 'deployments' || table === 'node_pools') {
+          expect(rows.filter(survives)).toEqual([]);
+          expect(after.tables[table]).toBeUndefined();
+          continue;
+        }
         if (table === 'api_ownership_backfill_targets') {
           expect(after.tables[table], table).toEqual(
             rows.filter((row) => row.vm_id === 11),
@@ -270,17 +289,13 @@ describe('0105 Workload rename through the current schema', () => {
         expect(after.tables[collapsed[table] ?? table], table).toEqual(
           rows.filter(survives).map(({ cluster_id: _dropped, ...row }) => ({
             ...Object.fromEntries(
-              Object.entries(row).map(([key, value]) => [
-                collapsed[key] ?? key,
-                value,
-              ]),
+              Object.entries(row)
+                .filter(([key]) => !removed[table]?.includes(key))
+                .map(([key, value]) => [collapsed[key] ?? key, value]),
             ),
-            // 0128 adds public endpoint columns; 0129 adds the cleanup reason.
+            // 0129 adds the cleanup reason.
             ...(table === 'workloads'
               ? {
-                  public_endpoint_ip: null,
-                  public_endpoint_state: null,
-                  public_endpoint_error: null,
                   cleanup_error: null,
                   end_reason: null,
                   last_attempt_end_reason: null,
@@ -298,12 +313,8 @@ describe('0105 Workload rename through the current schema', () => {
               ? {
                   launch_diagnosis: null,
                   launch_region_denied: null,
-                  // 0153 adds the remediation breaker's stamp.
-                  remediated_at: null,
                 }
               : {}),
-            // 0148 adds a managed Deployment's image Entrypoint.
-            ...(table === 'container_specs' ? { entrypoint: null } : {}),
           })),
         );
       }
@@ -324,8 +335,8 @@ describe('0105 Workload rename through the current schema', () => {
       );
       expect(sqlite.pragma('foreign_key_list(container_specs)')).toContainEqual(
         expect.objectContaining({
-          table: 'deployments',
-          from: 'deployment_id',
+          table: 'workloads',
+          from: 'workload_id',
           to: 'id',
           on_delete: 'CASCADE',
         }),
@@ -337,9 +348,9 @@ describe('0105 Workload rename through the current schema', () => {
       expect(
         database.query(`SELECT cloud_id FROM vms INDEXED BY idx_vms_pending_cost_group
         WHERE cost IS NULL AND ended_at IS NOT NULL
-          AND (workload_id IS NOT NULL OR node_pool_id IS NOT NULL OR cluster_id IS NOT NULL)
+          AND (workload_id IS NOT NULL OR cluster_id IS NOT NULL)
           AND CASE WHEN workload_id IS NOT NULL THEN 'anycloud_deployment' ELSE 'anycloud_resource' END = 'anycloud_deployment'
-          AND COALESCE(node_pool_id, cluster_id, workload_id) = 'service-a'`),
+          AND COALESCE(cluster_id, workload_id) = 'service-a'`),
       ).toEqual([{ cloud_id: 'existing-cloud-vm' }]);
 
       await runMigrations(database, undefined, '2.0.0');

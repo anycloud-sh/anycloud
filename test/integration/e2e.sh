@@ -291,26 +291,6 @@ if [ "${ANYCLOUD_PUSH_API_IMAGE:-}" = "true" ]; then
     print_success "Pushed $IMAGE_TAG for the cluster bootstrap"
 fi
 
-# The `user-namespace` live check's three images (RFC 0049 C32), each a
-# target of one fixture, pushed beside the API image under this run's tag and
-# passed by digest.
-LIVE_CHECKS=",${E2E_CLUSTER_LIVE_CHECKS:-},"
-if [ "${ANYCLOUD_PUSH_API_IMAGE:-}" = "true" ] && [[ "${LIVE_CHECKS// /,}" == *,user-namespace,* ]]; then
-    E2E_USER_NAMESPACE_IMAGES=""
-    for target in root sudo no-sudo; do
-        tag="$IMAGE_NAME:$VERSION-userns-$target"
-        retry_cmd 3 15 docker build --target "$target" -t "$tag" \
-            -f "$PROJECT_ROOT/test/integration/fixtures/user-namespace-job.Dockerfile" \
-            "$PROJECT_ROOT/test/integration/fixtures" >> "$BUILD_LOG" 2>&1
-        retry_cmd 3 15 docker push "$tag"
-        digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$tag" | sed 's/.*@//')"
-        [ -n "$digest" ] || fail "Could not read the digest of $tag"
-        E2E_USER_NAMESPACE_IMAGES="$E2E_USER_NAMESPACE_IMAGES $tag@$digest"
-    done
-    export E2E_USER_NAMESPACE_IMAGES
-    print_success "Pushed the user-namespace check images"
-fi
-
 ensure_cipher_key() {
     local key_file="$ANYCLOUD_DIR/cipher.key"
     mkdir -p "$ANYCLOUD_DIR"

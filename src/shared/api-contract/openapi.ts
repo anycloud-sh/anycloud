@@ -1,28 +1,14 @@
 import { OpenAPIGenerator } from '@orpc/openapi';
-import {
-  JSON_SCHEMA_INPUT_REGISTRY,
-  ZodToJsonSchemaConverter,
-} from '@orpc/zod/zod4';
+import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4';
 import { apiContract } from './contract.js';
 import {
   CLIENT_VERSION_OPENAPI_PARAMETER,
   USER_OPENAPI_SECURITY_SCHEME,
-  WORKLOAD_OPENAPI_SECURITY_SCHEME,
 } from './base.js';
-import { workloadAdmissionInputSchema } from './workload-admission-schemas.js';
 import { apiOpenApiSchemas } from './openapi-schema-registry.js';
 import { createApiErrorOpenApi } from './openapi-errors.js';
 
 const zodSchemaConverter = new ZodToJsonSchemaConverter();
-const workloadAdmissionOpenApiSchema: Parameters<
-  typeof JSON_SCHEMA_INPUT_REGISTRY.add
->[1] = {
-  $ref: '#/components/schemas/WorkloadAdmissionInput',
-};
-JSON_SCHEMA_INPUT_REGISTRY.add(
-  workloadAdmissionInputSchema,
-  workloadAdmissionOpenApiSchema,
-);
 
 export interface ApiOpenApiDocumentOptions {
   version: string;
@@ -213,7 +199,7 @@ export async function generateApiOpenApiDocument(
             in: 'header',
             required: true,
             description:
-              "The client's package version. Workload, Deployment, node-pool and credential read, quota status, cost and token operations accept this release's or the previous release's; the API upgrade operations and the token exchange also accept a newer one; every other operation needs this release's.",
+              "The client's package version. Workload and credential read, quota status, cost and token operations accept this release's or the previous release's; the API upgrade operations and the token exchange also accept a newer one; every other operation needs this release's.",
             schema: { type: 'string' },
           },
         },
@@ -222,12 +208,6 @@ export async function generateApiOpenApiDocument(
             type: 'http',
             scheme: 'bearer',
             description: 'GitHub access token for the AnyCloud user.',
-          },
-          [WORKLOAD_OPENAPI_SECURITY_SCHEME]: {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
-            description: 'Projected Kubernetes ServiceAccount token',
           },
         },
         schemas: errors.schemas,

@@ -2,7 +2,9 @@
 
 <span id="rfc-0030-anycloud-deployment-autoscaling"></span>
 
-> Status: Proposed
+> Status: Superseded — node pools, Kubernetes Deployments and node pool
+> Services were removed (migrations 0171 and 0172); VM Jobs and VM Services
+> replace them.
 > Date: 2026-08-31
 > Author: Luis Fernando De Pombo
 > Depends on: RFC 0029's promoted O19 Deployment candidate

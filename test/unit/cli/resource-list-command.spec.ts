@@ -269,26 +269,6 @@ describe('resource listing and launch', () => {
     },
   );
 
-  it('passes --deployment after job list to listing instead of Job submission', async () => {
-    await run([
-      'job',
-      'list',
-      '--deployment',
-      'deployment-a',
-      '-n',
-      '400',
-      '--json',
-    ]);
-    expect(api.listWorkloads).toHaveBeenCalledWith({
-      query: expect.objectContaining({
-        workloadType: 'job',
-        deploymentId: 'deployment-a',
-        limit: '400',
-      }),
-    });
-    expect(api.submit).not.toHaveBeenCalled();
-  });
-
   it.each(resources)(
     '%s list rejects attempts to override its type',
     async (type) => {
@@ -302,7 +282,6 @@ describe('resource listing and launch', () => {
   );
 
   it.each([
-    ['job', '--deployment', 'deployment-a'],
     ['job', '--env', 'NAME=value'],
     ['service', '--credentials', 'prod'],
     ['vm', '--id', 'my-vm'],
@@ -319,18 +298,6 @@ describe('resource listing and launch', () => {
     expect(api.listWorkloads).not.toHaveBeenCalled();
     expect(api.submit).not.toHaveBeenCalled();
   });
-
-  it.each([WorkloadType.Service, WorkloadType.Vm])(
-    '%s list does not expose Job-only filtering or watch',
-    async (type) => {
-      for (const args of [['--deployment', 'deployment-a'], ['--watch']]) {
-        await expect(run([type, 'list', ...args])).rejects.toMatchObject({
-          code: 'commander.unknownOption',
-        });
-      }
-      expect(api.listWorkloads).not.toHaveBeenCalled();
-    },
-  );
 
   it.each(commands)(
     '%s still launches tagged images, including reserved names',
@@ -379,20 +346,6 @@ describe('resource listing and launch', () => {
             '--epochs',
             '10',
           ],
-        }),
-      );
-      expect(api.listWorkloads).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(['job'])(
-    '%s --deployment still submits identity-only Jobs',
-    async (name) => {
-      await run([name, '--deployment', 'model-deployment']);
-      expect(api.submit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          deployment: 'model-deployment',
-          workloadType: 'job',
         }),
       );
       expect(api.listWorkloads).not.toHaveBeenCalled();

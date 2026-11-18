@@ -12,11 +12,7 @@ import {
 } from './spend-controls-store.js';
 import {
   ClusterRecordStore,
-  NodePoolStore,
-  NodePoolVmStore,
   type ClusterRecordRepository,
-  type NodePoolRepository,
-  type NodePoolVmRepository,
 } from './cluster-store.js';
 import {
   ClusterInstallerStore,
@@ -37,11 +33,6 @@ import {
 import { closeDB, getDB, resetDB, type DB } from './repositories/db.js';
 import { bindDatabaseApiIdentity, getApiIdentity } from './api-identity.js';
 import { log } from './logger.js';
-import {
-  DeploymentStore,
-  type DeploymentRepository,
-} from './deployment-store.js';
-import { createJobChanges, type JobChanges } from './job-changes.js';
 import { WorkloadLifecycleStore } from './repositories/workload-lifecycle.js';
 import { WorkloadOutcomeStore } from './repositories/workload-outcomes.js';
 import { ProvisioningAttemptStore } from './repositories/provisioning-attempts.js';
@@ -49,13 +40,8 @@ import { WorkloadEventStore } from './repositories/workload-events.js';
 import { CredentialSecretStore } from './repositories/credential-secrets.js';
 import { WorkloadQueryStore } from './repositories/workload-queries.js';
 import { WorkloadSpendStore } from './repositories/workload-spend.js';
-import { DeploymentExecutionStore } from './repositories/deployment-executions.js';
-import { PoolJobStore } from './repositories/pool-job-store.js';
-import { ReplicaDemandStore } from './repositories/replica-demand.js';
-import { NodePoolServiceStore } from './repositories/node-pool-services.js';
 
 export interface Persistence {
-  readonly jobChanges: JobChanges;
   readonly workloadQueries: WorkloadQueryStore;
   readonly workloadSpend: WorkloadSpendStore;
   readonly workloadLifecycle: WorkloadLifecycleStore;
@@ -63,17 +49,10 @@ export interface Persistence {
   readonly provisioningAttempts: ProvisioningAttemptStore;
   readonly workloadEvents: WorkloadEventStore;
   readonly credentialSecrets: CredentialSecretStore;
-  readonly deploymentExecutions: DeploymentExecutionStore;
-  readonly poolJobs: PoolJobStore;
-  readonly replicaDemand: ReplicaDemandStore;
-  readonly nodePoolServices: NodePoolServiceStore;
   readonly spendControls: SpendControlsRepository;
   readonly clusterRecords: ClusterRecordRepository;
-  readonly nodePools: NodePoolRepository;
-  readonly nodePoolVms: NodePoolVmRepository;
   readonly clusters: ClusterInstallerRepository;
   readonly systemReleases: SystemReleaseIntentRepository;
-  readonly deployments: DeploymentRepository;
   readonly apiOwnership: ApiOwnershipRepository;
   readonly notifications: NotificationsRepository;
 }
@@ -84,27 +63,18 @@ interface PersistenceState {
 }
 
 function createPersistence(db: DB): Persistence {
-  const jobChanges = createJobChanges();
   return {
-    jobChanges,
     workloadQueries: new WorkloadQueryStore(db),
     workloadSpend: new WorkloadSpendStore(db),
-    workloadLifecycle: new WorkloadLifecycleStore(db, jobChanges),
-    workloadOutcomes: new WorkloadOutcomeStore(db, jobChanges),
+    workloadLifecycle: new WorkloadLifecycleStore(db),
+    workloadOutcomes: new WorkloadOutcomeStore(db),
     provisioningAttempts: new ProvisioningAttemptStore(db),
     workloadEvents: new WorkloadEventStore(db),
     credentialSecrets: new CredentialSecretStore(db),
-    deploymentExecutions: new DeploymentExecutionStore(db, jobChanges),
-    poolJobs: new PoolJobStore(db),
-    replicaDemand: new ReplicaDemandStore(db),
-    nodePoolServices: new NodePoolServiceStore(db),
     spendControls: new SpendControlsStore(db),
     clusterRecords: new ClusterRecordStore(db),
-    nodePools: new NodePoolStore(db),
-    nodePoolVms: new NodePoolVmStore(db),
     clusters: new ClusterInstallerStore(db),
     systemReleases: new SystemReleaseIntentStore(db),
-    deployments: new DeploymentStore(db, jobChanges),
     apiOwnership: new ApiOwnershipStore(db),
     notifications: new NotificationsStore(db),
   };
@@ -189,24 +159,8 @@ export function getCredentialSecretStore(): CredentialSecretStore {
   return getPersistence().credentialSecrets;
 }
 
-export function getDeploymentExecutionStore(): DeploymentExecutionStore {
-  return getPersistence().deploymentExecutions;
-}
-
-export function getPoolJobStore(): PoolJobStore {
-  return getPersistence().poolJobs;
-}
-
-export function getReplicaDemandStore(): ReplicaDemandStore {
-  return getPersistence().replicaDemand;
-}
-
 export function getSpendControlsStore(): SpendControlsRepository {
   return getPersistence().spendControls;
-}
-
-export function getDeploymentStore(): DeploymentRepository {
-  return getPersistence().deployments;
 }
 
 export function getApiOwnershipStore(): ApiOwnershipRepository {

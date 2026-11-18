@@ -3,10 +3,7 @@ import {
   STALE_AFTER_MS,
   staleIds,
 } from '../../../ci/cleanup/e2e-cluster-stale-ids';
-import {
-  generateClusterId,
-  generateNodePoolId,
-} from '../../../src/shared/id-generator';
+import { generateClusterId } from '../../../src/shared/id-generator';
 
 test('selects only ids older than the longest e2e-cluster-cloud job', () => {
   const now = Date.parse('2026-10-09T00:00:00Z');
@@ -34,12 +31,8 @@ test('selects only ids older than the longest e2e-cluster-cloud job', () => {
 });
 
 test('reads the creation time the product embeds in its ids', () => {
-  for (const id of [
-    generateClusterId('e2e-cluster-abcdef0123'),
-    generateNodePoolId('p-abcdef0123'),
-  ]) {
-    const created = Number(id.split('-').at(-2));
-    expect(staleIds([id], created + STALE_AFTER_MS)).toEqual([]);
-    expect(staleIds([id], created + STALE_AFTER_MS + 1)).toEqual([id]);
-  }
+  const id = generateClusterId('e2e-cluster-abcdef0123');
+  const created = Number(id.split('-').at(-2));
+  expect(staleIds([id], created + STALE_AFTER_MS)).toEqual([]);
+  expect(staleIds([id], created + STALE_AFTER_MS + 1)).toEqual([id]);
 });

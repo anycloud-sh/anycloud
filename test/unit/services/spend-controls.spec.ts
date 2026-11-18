@@ -9,14 +9,12 @@ import {
   computeSpend,
   currentBurnRate,
   findBlockingCap,
-  findReplicaCapBlock,
   formatBlockReason,
   formatSpendBlockMessage,
   SpendCache,
   type CapBlock,
 } from '../../../src/api/services/spend-controls';
 import {
-  getPersistence,
   getSpendControlsStore,
   getWorkloadSpendStore,
   resetPersistence,
@@ -680,49 +678,6 @@ describe('findBlockingCap', () => {
     expect(block).toBeNull();
   });
 
-  it('charges a candidate on an existing Node at session scope only', async () => {
-    await seedRunning('pool', 15, 'sess-A');
-    await getSpendControlsStore().setThrottle('account', 10);
-    await getSpendControlsStore().setThrottle('agent-session', 20);
-    const throttles = await getSpendControlsStore().listThrottles();
-    const shared = caches();
-
-    // The account is already at $15/hr against a $10/hr throttle, but the
-    // Node's VM is counted there, so a share on it adds nothing.
-    expect(
-      await findBlockingCap(
-        { session: 'sess-A', hourlyUsd: 4, onExistingNode: true },
-        throttles,
-        [],
-        shared,
-      ),
-    ).toBeNull();
-    // The session's $15 + $4 + $4 crosses its $20/hr throttle.
-    const block = await findBlockingCap(
-      { session: 'sess-A', hourlyUsd: 4, onExistingNode: true },
-      throttles,
-      [],
-      shared,
-    );
-    expect(block).toMatchObject({ kind: 'throttle', scope: 'agent-session' });
-    expect(block?.spentUsd).toBeCloseTo(23, 6);
-  });
-
-  it('holds a Pending replica on account budgets, never account throttles', async () => {
-    await seedRunning('hot', 30);
-    await getSpendControlsStore().setThrottle('account', 10);
-    expect(await findReplicaCapBlock('pool')).toBeNull();
-
-    await getDB().query(
-      `UPDATE vms SET created_at = ? WHERE workload_id = 'hot'`,
-      [Date.now() - 60 * 60 * 1000],
-    );
-    await getSpendControlsStore().setBudget('month', 'account', 5);
-    expect(await findReplicaCapBlock('pool')).toMatch(
-      /^blocked by monthly budget: /,
-    );
-  });
-
   it('concurrent candidates respect the throttle cap (no burst overshoot)', async () => {
     // Regression: BurnRateCache.charge() commits only after each candidate's
     // cap check returns, so under Promise.allSettled (how the scheduler
@@ -869,61 +824,6 @@ describe('currentBurnRate', () => {
   it('filters by session', async () => {
     await seedVm({ id: 'a', pricePerHour: 3, session: 'sess-A' });
     await seedVm({ id: 'b', pricePerHour: 5, session: 'sess-B' });
-    expect(await currentBurnRate({ sessionFilter: 'sess-A' })).toBeCloseTo(
-      3,
-      6,
-    );
-  });
-
-  it('includes node pool capacity in account burn but not workload sessions', async () => {
-    const persistence = getPersistence();
-    await persistence.clusters.recordSelf({
-      id: 'burn-cluster',
-      ownerUserId: 'owner-1',
-      name: 'burn-cluster',
-      kubernetesIdentity: 'uid-burn-cluster',
-      connection: '{"stored":true}',
-    });
-    await persistence.nodePools.create({
-      id: 'burn-pool',
-      clusterId: 'burn-cluster',
-      ownerUserId: 'owner-1',
-      name: 'burn-pool',
-      computeCredentialId: credentialId,
-      region: 'us-east-1',
-      zone: null,
-      vmTypes: ['t3.medium'],
-      minVmCount: 1,
-      maxVmCount: 1,
-    });
-    // A pool VM counts from its attempt, while it provisions (RFC 0044
-    // decision 22), but not once its failed launch is claimed for removal.
-    for (const [cloudId, ip, price, removalRequestedAt] of [
-      ['node-pool-capacity-vm', '1.2.3.5', 7, null],
-      ['node-pool-in-flight-vm', null, 11, null],
-      ['node-pool-failed-launch', null, 999, Date.now()],
-    ] as const) {
-      await getDB().query(
-        `INSERT INTO vms (
-           node_pool_id, ip, cloud_id, created_at, region,
-           credential_id, price_per_hour, vm_type, removal_requested_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          'burn-pool',
-          ip,
-          cloudId,
-          Date.now() - 60_000,
-          'us-east-1',
-          credentialId,
-          price,
-          't3.medium',
-          removalRequestedAt,
-        ],
-      );
-    }
-    await seedVm({ id: 'session-vm', session: 'sess-A', pricePerHour: 3 });
-
-    expect(await currentBurnRate({})).toBeCloseTo(21, 6);
     expect(await currentBurnRate({ sessionFilter: 'sess-A' })).toBeCloseTo(
       3,
       6,

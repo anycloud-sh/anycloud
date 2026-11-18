@@ -47,43 +47,6 @@ const expectedContractEndpoints = {
   'clusters.get': ['GET', '/clusters/{id}'],
   'clusters.destroy': ['DELETE', '/clusters/{id}'],
   'clusters.forget': ['POST', '/clusters/{id}/forget'],
-  'nodePools.create': ['POST', '/node-pools'],
-  'nodePools.list': ['GET', '/node-pools'],
-  'nodePools.get': ['GET', '/node-pools/{id}'],
-  'nodePools.delete': ['DELETE', '/node-pools/{id}'],
-  'deployments.create': ['POST', '/deployments'],
-  'deployments.list': ['GET', '/deployments'],
-  'deployments.get': ['GET', '/deployments/{id}'],
-  'deployments.update': ['PATCH', '/deployments/{id}'],
-  'deployments.delete': ['DELETE', '/deployments/{id}'],
-  'deploymentWorkload.candidate': [
-    'GET',
-    '/deployments/{deploymentId}/jobs/candidate',
-  ],
-  'deploymentWorkload.claim': [
-    'POST',
-    '/deployments/{deploymentId}/jobs/{jobId}/claim',
-  ],
-  'deploymentWorkload.cancellation': [
-    'GET',
-    '/deployments/{deploymentId}/jobs/{jobId}/cancellation',
-  ],
-  'deploymentWorkload.outcome': [
-    'POST',
-    '/deployments/{deploymentId}/jobs/{jobId}/outcome',
-  ],
-  'deploymentWorkload.cleanup': [
-    'POST',
-    '/deployments/{deploymentId}/jobs/{jobId}/cleanup',
-  ],
-  'deploymentWorkload.execution': [
-    'GET',
-    '/deployments/{deploymentId}/jobs/{jobId}/execution',
-  ],
-  'deploymentWorkload.report': [
-    'POST',
-    '/deployments/{deploymentId}/jobs/{jobId}/report',
-  ],
   'apiAccess.list': ['GET', '/api-access/users'],
   'apiAccess.grant': ['POST', '/api-access/users'],
   'apiAccess.revoke': ['DELETE', '/api-access/users/{userId}'],
@@ -100,7 +63,6 @@ const expectedContractEndpoints = {
   'workloads.status': ['GET', '/workloads/{id}'],
   'workloads.sshAccess': ['GET', '/workloads/{id}/ssh-access'],
   'workloads.resubmit': ['POST', '/workloads/{id}/resubmissions'],
-  'workloads.observeSubmission': ['POST', '/workloads/{id}/claim-observation'],
   'admission.submit': ['POST', '/workloads'],
   'bucket.list': ['GET', '/credentials/{credentialName}/buckets'],
   'bucket.objects': [
@@ -132,7 +94,6 @@ const expectedContractEndpoints = {
   'serviceUpgrade.upgrade': ['POST', '/workloads/{id}/upgrades'],
   'systemRelease.request': ['POST', '/system-release'],
   'systemRelease.status': ['GET', '/system-release'],
-  'systemRelease.drain': ['POST', '/system-release/drain'],
   'systemRelease.kubernetes': ['POST', '/system-release/kubernetes'],
   'systemRelease.backup': ['POST', '/system-release/backup'],
   'systemRelease.selfDelete': ['POST', '/system-release/self-delete'],
@@ -140,20 +101,14 @@ const expectedContractEndpoints = {
 } as const;
 
 const expectedReplayExceptions = {
-  'deploymentWorkload.claim': 'safe',
-  'deploymentWorkload.outcome': 'safe',
-  'deploymentWorkload.cleanup': 'safe',
-  'deploymentWorkload.report': 'safe',
   'database.query': 'safe',
   'bucket.storageTokens': 'safe',
   'apiAccess.exchangeToken': 'safe',
-  'workloads.observeSubmission': 'safe',
   'admission.submit': 'not-processed',
   'quota.status': 'never',
   'quota.canceled': 'never',
   'serviceUpgrade.upgrade': 'not-processed',
   'systemRelease.request': 'not-processed',
-  'systemRelease.drain': 'safe',
   'systemRelease.kubernetes': 'safe',
   'systemRelease.backup': 'safe',
   // A repeat answers with the delete already running.
@@ -173,14 +128,6 @@ const expectedNonDefaultSuccessStatuses = {
   'credentials.update': 204,
   'credentials.delete': 204,
   'clusters.destroy': 202,
-  'nodePools.create': 202,
-  'nodePools.delete': 202,
-  'deployments.create': 202,
-  'deployments.update': 202,
-  'deployments.delete': 202,
-  'deploymentWorkload.outcome': 204,
-  'deploymentWorkload.cleanup': 204,
-  'deploymentWorkload.report': 204,
   'apiAccess.revoke': 204,
   'workloads.terminate': 202,
   'workloads.resubmit': 202,
@@ -227,17 +174,6 @@ const expectedCommandRetrySemantics = {
   'clusters.destroy': 'idempotent', // destroying and destroyed installations re-return their current summary
   'clusters.forget':
     'conflict — recovery: clusters.get returns 404 once the record is forgotten',
-  'nodePools.create':
-    'conflict — recovery: node pools.get with the client-supplied name, unique per scope',
-  'nodePools.delete': 'idempotent', // already-deleting and already-deleted both re-return the node pool
-  'deployments.create':
-    'conflict — recovery: deployments.get with the client-supplied name, unique per scope',
-  'deployments.update': 'duplicate', // replay advances the desired generation again
-  'deployments.delete': 'idempotent', // draining and deleted rows re-return their current summary
-  'deploymentWorkload.claim': 'redeliver', // the exact Job, revision, and execution UUID recover the same held execution
-  'deploymentWorkload.outcome': 'idempotent', // the exact execution and report replay as one transition
-  'deploymentWorkload.cleanup': 'idempotent', // matching cleanup acknowledgement is replay-safe
-  'deploymentWorkload.report': 'idempotent', // a phase or the recorded end replays as one transition
   'apiAccess.grant': 'idempotent', // upsert by resolved GitHub user id
   'apiAccess.revoke': 'idempotent', // removing an absent user still returns 204
   'apiAccess.issueServiceToken':
@@ -249,7 +185,6 @@ const expectedCommandRetrySemantics = {
   'workloads.terminate': 'idempotent', // re-terminating and terminating a missing workload both return 202
   'workloads.resubmit':
     'conflict — recovery: workloads.status; a resubmitted workload left the resubmittable states, so the retry is rejected (as 400, not 409)',
-  'workloads.observeSubmission': 'idempotent', // a revision's unclaimed deadline expires at most once
   'admission.submit':
     'conflict — recovery: workloads.status with the client-supplied id (409 WORKLOAD_ID_CONFLICT); an id-less submit cannot detect the replay and admits a duplicate workload',
   'bucket.create': 'idempotent', // gateways upsert the bucket
@@ -260,7 +195,6 @@ const expectedCommandRetrySemantics = {
     'conflict — recovery: workloads.status; queueing moved the workload out of running, so the retry is rejected as 409',
   'systemRelease.request':
     'conflict — recovery: systemRelease.status; a replayed operationId re-returns the recorded release, a stale revision is 409 SYSTEM_RELEASE_STALE',
-  'systemRelease.drain': 'idempotent', // renews the claim hold and reads again; force skips replicas already stopping
   'systemRelease.kubernetes': 'idempotent', // the id names one host-step Job; a repeat reports it
   'systemRelease.backup': 'idempotent', // a repeat writes one more backup version; the newest is the restore point
   'systemRelease.selfDelete': 'idempotent', // a repeat while it runs returns its status; refusals change nothing
@@ -571,18 +505,12 @@ describe('API contract endpoint policy', () => {
     }
   });
 
-  it("limits the 30-second request budget to Deployment acquisition, cancellation, submission observation, and a role connection's check", () => {
+  it("limits the 30-second request budget to a role connection's check", () => {
     const actual = Object.entries(procedurePolicies())
       .filter(([, procedure]) => procedure.meta.timeoutMs === 30_000)
       .map(([name]) => name)
       .sort();
-    expect(actual).toEqual([
-      'credentials.save',
-      'deploymentWorkload.cancellation',
-      'deploymentWorkload.candidate',
-      'deploymentWorkload.claim',
-      'workloads.observeSubmission',
-    ]);
+    expect(actual).toEqual(['credentials.save']);
   });
 
   it('keeps every native stream in the reviewed endpoint inventory', () => {

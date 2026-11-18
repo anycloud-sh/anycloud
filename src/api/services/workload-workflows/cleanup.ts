@@ -17,7 +17,6 @@ import { errorMessage } from '../../../shared/log-diagnostics.js';
 import type { WorkloadReconcileResult } from '../workload-reconciler.js';
 import { withTimeout } from '../../../shared/utils.js';
 import type { StoredWorkload } from '../workload-record.js';
-import type { CloudConfig } from '../../../shared/cloud.js';
 import { WorkloadType } from '../../../shared/workload.js';
 import {
   hasWorkloadWork,
@@ -52,42 +51,6 @@ export interface CleanupPersistence {
   credentials: CleanupCredentials;
 }
 
-/**
- * A Service on a node pool owns no VM attempt, credential or bucket of its
- * own: its cloud is the node pool's, and its native objects are removed
- * through the node pool Service runtime. The shared cleanup fence still
- * commits `cleaned_at` only once that runtime confirms nothing remains.
- */
-async function reconcileNodePoolServiceCleanup(
-  workload: StoredWorkload,
-): Promise<WorkloadReconcileResult> {
-  const { id } = workload;
-  if (workload.cloudProvider === null) {
-    log.warn('Cleanup deferred — node pool Service has no resolved cloud', {
-      id,
-    });
-    return { disposition: 'deferred' };
-  }
-  const cloudConfig: CloudConfig = { cloudProvider: workload.cloudProvider };
-  const cleanup = completeWorkloadCleanup(
-    cloudConfig,
-    id,
-    async (terminalWorkload) => {
-      await getDefaultServeRuntime().cleanup({
-        workload: terminalWorkload,
-        placement: { cloudConfig },
-      });
-    },
-  );
-  trackWorkloadWork(id, cleanup);
-  const cleaned = await withTimeout(
-    cleanup,
-    TERMINATION_TIMEOUT_MS,
-    `cleanup for ${id}`,
-  );
-  return { disposition: cleaned ? 'completed' : 'deferred' };
-}
-
 export async function reconcileCleanupCandidate(
   { store, outcomes, attempts: ledger, credentials }: CleanupPersistence,
   workload: StoredWorkload,
@@ -101,10 +64,6 @@ export async function reconcileCleanupCandidate(
 
     if (workload.completedAt === null || workload.cleanedAt !== null) {
       return { disposition: 'stale' };
-    }
-
-    if (workload.nodePoolId !== null) {
-      return await reconcileNodePoolServiceCleanup(workload);
     }
 
     // Resubmission remains blocked until cleaned_at is set, so no attempt can

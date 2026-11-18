@@ -91,14 +91,11 @@ cleanup keeps the Service in `recovering` without consuming setup retry attempts
 For VM-backed Services with public ingress, startup waits up to 60 seconds for
 both authoritative DNS servers to publish the Service hostname before reporting
 `running`. A slow publication keeps its DNS diagnostic and goes through normal
-startup recovery. Services on a node pool also verify DNS before reporting their
-public endpoint as `published`.
+startup recovery.
 
 The API queries those servers directly, so its network must allow outbound DNS
 on port 53 to them. If neither server answers, a VM-backed Service fails without
-retrying, with an error naming port 53 and both servers. A Service on a node
-pool keeps running, and its public endpoint shows `re-pointing` with that error
-until the servers answer.
+retrying, with an error naming port 53 and both servers.
 
 ## Service behavior
 
@@ -113,15 +110,6 @@ until the servers answer.
   checkpoint buckets yet.
 - Services use the same environment, secret, placement, disk, and Docker
   options as VM-backed Jobs.
-- With `--node-pool`, a Service runs as one `Recreate` replica on an explicit
-  [node pool](/reference/cli/node-pools) in the cluster. It
-  keeps its Service ID and desired configuration in Anycloud; the native
-  Deployment, Service, route and Secrets are runtime details. It is published
-  at `https://<id>.anycloud.sh` through the node pool's ingress entry once it
-  is running (`anycloud status` shows `URL:` and `Public endpoint:`), and
-  upgrades and checkpoint storage on node pools
-  arrive in later releases. See
-  [Services on a node pool](/reference/cli/service#services-on-a-node-pool).
 - A service stays live until you terminate or upgrade it. It does not
   automatically shut down when a request completes.
 - On VM-backed providers with public ingress, Anycloud exposes the application

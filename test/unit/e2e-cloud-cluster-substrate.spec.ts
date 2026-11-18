@@ -17,16 +17,8 @@ import {
   CloudClusterEnvironment,
   type CloudClusterEnvironmentOptions,
 } from '../integration/e2e/internal/substrates/cloud-cluster/environment.js';
-import {
-  type GcpComputeClients,
-  GcpPoolInventory,
-} from '../integration/e2e/internal/substrates/cloud-cluster/gcp-pool.js';
-import {
-  type AzurePoolClients,
-  AzurePoolInventory,
-} from '../integration/e2e/internal/substrates/cloud-cluster/azure-pool.js';
+import { AzurePoolInventory } from '../integration/e2e/internal/substrates/cloud-cluster/azure-pool.js';
 import { resolveDnsRecord } from '../integration/e2e/internal/substrates/cloud-cluster/dns-records.js';
-import { LambdaPoolInventory } from '../integration/e2e/internal/substrates/cloud-cluster/lambda-pool.js';
 import {
   E2E_CLUSTER_ID_PREFIX,
   E2E_CLUSTER_NAME_PREFIX,
@@ -77,14 +69,6 @@ const azureProfile = {
     subscriptionId: 'sub-test',
   },
   vmTypes: ['Standard_D2s_v5'],
-} as const;
-
-const lambdaProfile = {
-  slug: 'lambda',
-  provider: CloudType.Lambda,
-  credentialName: 'lambda-test',
-  credential: { cloudProvider: CloudType.Lambda, apiKey: 'key-test' },
-  vmTypes: ['cpu_4x_general'],
 } as const;
 
 /** The kubeconfig the startup script leaves in the checkpoint bucket. */
@@ -185,7 +169,6 @@ async function seedAnswer(
 function environment(
   answers: CliAnswer,
   cliAnswers: CliAnswer = () => ({ rows: [], rowCount: 0, truncated: false }),
-  pool?: CloudClusterEnvironmentOptions['pool'],
   /** DNS Worker answer per `DELETE …?subdomain=`: HTTP status by subdomain (default 404). */
   dnsStatus: (subdomain: string) => number = () => 404,
   /** Where the management VM runs, and its test seams. */
@@ -304,11 +287,6 @@ function environment(
     profile: awsProfile,
     region: 'us-east-2',
     managementVmType: 't3.medium',
-    pool: pool ?? {
-      profile: awsProfile,
-      region: 'us-east-2',
-      vmTypes: ['t3.small'],
-    },
     runId: 'abcdef0123',
     runner,
     wait: new Waiter(new AbortController().signal),
@@ -382,7 +360,6 @@ const cluster = (state: string) => ({
   connected: true,
   kubernetesIdentity: 'uid-cluster',
   connectionRevision: 1,
-  activeNodePoolCount: 0,
   address: '203.0.113.5',
   managementApiUrl: 'https://e2e-clust-1790000000000-e5f6.anycloud.sh',
   release: {
@@ -464,9 +441,8 @@ describe('AWS cluster substrate', () => {
     for (const step of [
       'Sweep AWS resources tagged for this run',
       'Sweep DNS records of the run',
-      'Sweep GCP cluster and node pool resources',
-      'Sweep Lambda node pool resources',
-      'Sweep Azure cluster and node pool resources',
+      'Sweep GCP cluster resources',
+      'Sweep Azure cluster resources',
     ]) {
       const body = workflow.slice(workflow.indexOf(`- name: ${step}`));
       expect(body.slice(0, body.indexOf('- name:', 8)), step).toContain(
@@ -485,7 +461,6 @@ describe('AWS cluster substrate', () => {
           args[1] === 'delete'
             ? deleteResult(args.includes('--delete-buckets'))
             : cluster('running'),
-        undefined,
         undefined,
         {
           clusterBucketDeleter: {
@@ -556,7 +531,6 @@ describe('AWS cluster substrate', () => {
       const { aws } = environment(
         (args) => (args.includes('list-buckets') ? [...listed] : []),
         (args) => (args[1] === 'delete' ? result : cluster('running')),
-        undefined,
         undefined,
         { clusterBucketDeleter: { deleteBucket: async () => {} } },
       );
@@ -637,7 +611,6 @@ describe('AWS cluster substrate', () => {
       () => [],
       (args) => (args[0] === 'api' ? restarted : cluster('running')),
       undefined,
-      undefined,
       {
         fromRelease: {
           version: '0.1.65',
@@ -684,7 +657,6 @@ describe('AWS cluster substrate', () => {
       () => [],
       () => restarted,
       undefined,
-      undefined,
       {
         fromRelease: {
           version: '0.1.65',
@@ -710,36 +682,30 @@ describe('AWS cluster substrate', () => {
 
   test('the installer is not upgraded while the released creation runs, and a failed creation stops the bootstrap before it', async () => {
     const states = ['provisioning', 'provisioning', 'failed'];
-    const { aws, cliRuns } = environment(
-      () => [],
-      undefined,
-      undefined,
-      undefined,
-      {
-        fromRelease: {
-          version: '0.1.66',
-          installerDirectory: '/tmp/installer',
-          cli: {
-            run: vi.fn(async (args: readonly string[]) =>
-              commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [
-                        {
-                          name: 'e2e-cluster-abcdef0123',
-                          state: states.shift() ?? 'failed',
-                          lastError: 'no capacity',
-                        },
-                      ]
-                    : { id: 'c-1', state: 'provisioning' },
-                ),
-              }),
-            ),
-          },
+    const { aws, cliRuns } = environment(() => [], undefined, undefined, {
+      fromRelease: {
+        version: '0.1.66',
+        installerDirectory: '/tmp/installer',
+        cli: {
+          run: vi.fn(async (args: readonly string[]) =>
+            commandResultForTest({
+              stdout: JSON.stringify(
+                args[1] === 'list'
+                  ? [
+                      {
+                        name: 'e2e-cluster-abcdef0123',
+                        state: states.shift() ?? 'failed',
+                        lastError: 'no capacity',
+                      },
+                    ]
+                  : { id: 'c-1', state: 'provisioning' },
+              ),
+            }),
+          ),
         },
-        wait: pollsOnly(),
       },
-    );
+      wait: pollsOnly(),
+    });
     await expect(aws.bootstrap(60_000)).rejects.toThrow(
       "the 0.1.66 installer's cluster is failed: no capacity",
     );
@@ -752,7 +718,6 @@ describe('AWS cluster substrate', () => {
     const states = ['bootstrapping', 'ready'];
     const { aws, cleanup, cliRuns } = environment(
       () => [],
-      undefined,
       undefined,
       undefined,
       {
@@ -800,36 +765,30 @@ describe('AWS cluster substrate', () => {
 
   test('a creation stuck past the bootstrap budget is not waited for again: cleanup reads it once and leaves it to the sweep', async () => {
     const released: string[][] = [];
-    const { aws, cleanup } = environment(
-      () => [],
-      undefined,
-      undefined,
-      undefined,
-      {
-        fromRelease: {
-          version: '0.1.66',
-          installerDirectory: '/tmp/installer',
-          cli: {
-            run: vi.fn(async (args: readonly string[]) => {
-              released.push([...args]);
-              return commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [
-                        {
-                          name: 'e2e-cluster-abcdef0123',
-                          state: 'provisioning',
-                        },
-                      ]
-                    : { id: 'c-1', state: 'provisioning' },
-                ),
-              });
-            }),
-          },
+    const { aws, cleanup } = environment(() => [], undefined, undefined, {
+      fromRelease: {
+        version: '0.1.66',
+        installerDirectory: '/tmp/installer',
+        cli: {
+          run: vi.fn(async (args: readonly string[]) => {
+            released.push([...args]);
+            return commandResultForTest({
+              stdout: JSON.stringify(
+                args[1] === 'list'
+                  ? [
+                      {
+                        name: 'e2e-cluster-abcdef0123',
+                        state: 'provisioning',
+                      },
+                    ]
+                  : { id: 'c-1', state: 'provisioning' },
+              ),
+            });
+          }),
         },
-        wait: pollsOnly(),
       },
-    );
+      wait: pollsOnly(),
+    });
     await expect(aws.bootstrap(60_000, 900_000)).rejects.toThrow(
       'cluster is provisioning',
     );
@@ -981,7 +940,6 @@ describe('AWS cluster substrate', () => {
           return deleteResult();
         },
         undefined,
-        undefined,
         {
           profile,
           ...(profile.provider === CloudType.AWS
@@ -990,7 +948,6 @@ describe('AWS cluster substrate', () => {
                 clusterInventory: {
                   liveInstances: async () => [],
                   networkLeftovers: async () => [],
-                  terminateInstance: async () => undefined,
                 },
               }),
         },
@@ -1065,78 +1022,6 @@ describe('AWS cluster substrate', () => {
     await expect(aws.hostedKubeConfig()).rejects.toThrow();
   });
 
-  // GCP's termination action, then Azure's eviction policy.
-  test.each([
-    ['DELETE', true],
-    ['STOP', false],
-    ['Delete', true],
-    ['Deallocate', false],
-  ])(
-    'proves a spot pool host is deleted on eviction (%s), and skips an on-demand pool',
-    async (eviction, deletes) => {
-      const spotEviction = vi.fn(async () => eviction);
-      const inventory = {
-        liveInstances: async () => ['us-central1-a/vm-1'],
-        networkLeftovers: async () => [],
-        spotEviction,
-        terminateInstance: async () => {},
-      };
-      const pool = (spot: boolean) =>
-        environment(() => [], undefined, {
-          profile: gcpProfile,
-          region: 'us-central1',
-          vmTypes: ['e2-standard-2'],
-          spot,
-          inventory,
-        }).aws.proveSpotEviction('p-pool-1');
-      await (deletes
-        ? expect(pool(true)).resolves.toBeUndefined()
-        : expect(pool(true)).rejects.toThrow(
-            `is not deleted on eviction: ${eviction}`,
-          ));
-      expect(spotEviction).toHaveBeenCalledWith('us-central1-a/vm-1');
-      spotEviction.mockClear();
-      await pool(false);
-      expect(spotEviction).not.toHaveBeenCalled();
-      // A ready spot pool with no instance read proves nothing.
-      inventory.liveInstances = async () => [];
-      await expect(pool(true)).rejects.toThrow('has no running instance');
-    },
-  );
-
-  test.each([
-    [['one-time', 'terminate'], true],
-    [['persistent', 'stop'], false],
-  ])('reads an AWS spot host’s request (%s)', async (request, deletes) => {
-    const { aws, runs } = environment(
-      (args) =>
-        args[1] === 'describe-instances'
-          ? ['i-spot']
-          : args[1] === 'describe-spot-instance-requests'
-            ? request
-            : {},
-      undefined,
-      {
-        profile: awsProfile,
-        region: 'us-east-2',
-        vmTypes: ['t3.small'],
-        spot: true,
-      },
-    );
-    const proof = aws.proveSpotEviction('np-1');
-    await (deletes
-      ? expect(proof).resolves.toBeUndefined()
-      : expect(proof).rejects.toThrow(
-          'is not deleted on eviction: persistent/stop',
-        ));
-    expect(runs[1]).toEqual(
-      expect.arrayContaining([
-        'describe-spot-instance-requests',
-        'Name=instance-id,Values=i-spot',
-      ]),
-    );
-  });
-
   test('a failed read before the delete leaves the cluster to the settled read', async () => {
     let failList = false;
     const { aws, cleanup, cliRuns } = environment(
@@ -1149,7 +1034,6 @@ describe('AWS cluster substrate', () => {
         }
         return cluster('running');
       },
-      undefined,
       undefined,
       { wait: pollsOnly() },
     );
@@ -1180,7 +1064,6 @@ describe('AWS cluster substrate', () => {
               }
             : deleteResult();
         },
-        undefined,
         undefined,
         { wait: pollsOnly(), http: { get } },
       );
@@ -1215,7 +1098,6 @@ describe('AWS cluster substrate', () => {
       () => [],
       () => cluster('running'),
       undefined,
-      undefined,
       { wait: pollsOnly(), http: { get } },
     );
     await aws.bootstrap(60_000, 900_000);
@@ -1241,7 +1123,6 @@ describe('AWS cluster substrate', () => {
     const { aws } = environment(
       () => [],
       () => cluster('running'),
-      undefined,
       undefined,
       { http: { get } },
     );
@@ -1271,7 +1152,6 @@ describe('AWS cluster substrate', () => {
                 'Failed to list clusters: Client/API version mismatch. Client version 0.1.999 must exactly match API version 0.1.65.',
             }
           : 'not restarted',
-      undefined,
       undefined,
       {
         fromRelease: {
@@ -1316,7 +1196,6 @@ describe('AWS cluster substrate', () => {
           args[0] === 'api'
             ? 'Local API server is on 0.1.70; restarting it'
             : cluster('running'),
-        undefined,
         undefined,
         {
           lookup4,
@@ -1410,7 +1289,6 @@ describe('AWS cluster substrate', () => {
         () => [],
         () => cluster('running'),
         undefined,
-        undefined,
         { lookup4 },
       );
       await aws.bootstrap(60_000);
@@ -1419,14 +1297,14 @@ describe('AWS cluster substrate', () => {
   });
 
   test('records the hosted API identity after bootstrap and sweeps VMs by its owner tag', async () => {
-    // Pool and Job VMs the hosted API creates all carry anycloud_owner_api,
-    // so neither their pool ids nor their Job ids need recording.
+    // Service and Job VMs the hosted API creates all carry anycloud_owner_api,
+    // so none of their ids need recording.
     const identity = hostedApiIdentity('e2e-clust-1790000000000-e5f6');
     const ownerFilter = `Name=tag:anycloud_owner_api,Values=${identity}`;
     const { aws, runs, artifacts } = environment(
       (args) =>
         args.includes('describe-instances') && args.includes(ownerFilter)
-          ? ['i-unrecorded-pool-vm']
+          ? ['i-unrecorded-vm']
           : [],
       () => cluster('running'),
     );
@@ -1439,7 +1317,7 @@ describe('AWS cluster substrate', () => {
       }),
     );
     const leftovers = await aws.sweep();
-    expect(leftovers.instances).toEqual(['i-unrecorded-pool-vm']);
+    expect(leftovers.instances).toEqual(['i-unrecorded-vm']);
     for (const operation of [
       'describe-instances',
       'describe-security-groups',
@@ -1454,13 +1332,12 @@ describe('AWS cluster substrate', () => {
       'utf8',
     );
     expect(workflow).toContain('.hostedApiIdentity // empty');
-    // A failed GPU or from_release run's resources are purged, not only
-    // reported, on every cloud's sweep.
+    // A failed run's resources are purged, not only reported, on every
+    // cloud's sweep.
     for (const sweep of [
       'Sweep AWS resources tagged for this run',
-      'Sweep GCP cluster and node pool resources',
-      'Sweep Lambda node pool resources',
-      'Sweep Azure cluster and node pool resources',
+      'Sweep GCP cluster resources',
+      'Sweep Azure cluster resources',
     ]) {
       const start = workflow.indexOf(`- name: ${sweep}`);
       expect(start).toBeGreaterThan(-1);
@@ -1478,7 +1355,6 @@ describe('AWS cluster substrate', () => {
     const { aws, runs, dnsDeletes } = environment((args) =>
       args.includes('list-buckets') ? ['e2e-clust-1790300000000-a1b2'] : [],
     );
-    aws.recordNodePool('p-pool-1');
     expect((await aws.sweep()).buckets).toEqual([]);
     expect(dnsDeletes).toEqual([]);
     expect(runs.some((args) => args.includes('list-buckets'))).toBe(false);
@@ -1500,7 +1376,6 @@ describe('AWS cluster substrate', () => {
       },
       // `cluster create` returns the id, then the creation fails.
       () => cluster('failed'),
-      undefined,
       () => 500,
     );
     await expect(aws.bootstrap(60_000)).rejects.toThrow(
@@ -1511,14 +1386,13 @@ describe('AWS cluster substrate', () => {
       'e2e-cluster-cloud-resources',
       expect.objectContaining({ installationId: id, hostedApiIdentity: null }),
     );
-    aws.recordNodePool('p-pool-1');
     const leftovers = await aws.sweep();
     // The Worker's 2xx is idempotent: only a failed delete is a leftover,
     // unverified.
     expect(leftovers).toEqual({
-      instances: ['i-0123', 'i-0123'],
+      instances: ['i-0123'],
       securityGroups: [],
-      volumes: ['vol-9', 'vol-9'],
+      volumes: ['vol-9'],
       buckets: [id],
       // A create that failed leaves its stack and what it tagged.
       installation: [
@@ -1536,10 +1410,7 @@ describe('AWS cluster substrate', () => {
       .flatMap((args) => args)
       .filter((arg) => arg.startsWith('Name=tag:'));
     expect(new Set(filters)).toEqual(
-      new Set([
-        `Name=tag:anycloud_cluster,Values=${id}`,
-        'Name=tag:anycloud_resource,Values=p-pool-1',
-      ]),
+      new Set([`Name=tag:anycloud_cluster,Values=${id}`]),
     );
     for (const env of envs) expect(env.AWS_ACCESS_KEY_ID).toBe('AKIA-test');
     // The harness's own inventory reads; the seed's are its CLI's text and JSON.
@@ -1552,247 +1423,9 @@ describe('AWS cluster substrate', () => {
       'cluster-native-sweep',
       expect.objectContaining({
         runId: 'abcdef0123',
-        instances: ['i-0123', 'i-0123'],
+        instances: ['i-0123'],
       }),
     );
-  });
-
-  test('host loss terminates the one running pool instance by its tag and refuses any other count', async () => {
-    let running = ['i-gpu-1'];
-    const { aws, runs } = environment((args) =>
-      args[1] === 'describe-instances' ? running : {},
-    );
-    await expect(aws.terminatePoolInstance('np-1')).resolves.toBe('i-gpu-1');
-    expect(runs).toEqual([
-      expect.arrayContaining([
-        'describe-instances',
-        'Name=tag:anycloud_resource,Values=np-1',
-        'Name=instance-state-name,Values=pending,running',
-      ]),
-      expect.arrayContaining(['terminate-instances', 'i-gpu-1']),
-    ]);
-    running = ['i-gpu-1', 'i-gpu-2'];
-    await expect(aws.terminatePoolInstance('np-1')).rejects.toThrow(
-      'has 2 running instances, expected 1',
-    );
-    expect(runs).toHaveLength(3);
-  });
-
-  test('captures every recorded pool at the hosted API, and the clusters, before cleanup; a failed read hides no other', async () => {
-    const { aws, cliRuns, artifacts } = environment(
-      () => [],
-      (args) => {
-        if (args[0] === 'cluster') return cluster('running');
-        return args.includes('p-pool-2')
-          ? { failed: 'Failed to read node pool: fetch failed' }
-          : { id: 'p-pool-1', state: 'provisioning' };
-      },
-    );
-    await aws.prepare();
-    await aws.bootstrap(60_000);
-    aws.recordNodePool('p-pool-1');
-    aws.recordNodePool('p-pool-2');
-    const before = cliRuns.length;
-    await aws.captureNodePoolDiagnostics();
-    const statuses = cliRuns
-      .slice(before)
-      .filter(({ args }) => args[0] === 'node-pool');
-    expect(statuses.map(({ args }) => args.slice(0, 2))).toEqual([
-      ['node-pool', 'status'],
-      ['node-pool', 'status'],
-    ]);
-    for (const { env } of statuses) {
-      expect(env?.API_URL).toBe(cluster('running').managementApiUrl);
-    }
-    expect(artifacts.json).toHaveBeenCalledWith(
-      'e2e-cluster-cloud-node-pool-diagnostics',
-      expect.objectContaining({
-        runId: 'abcdef0123',
-        clusters: [expect.objectContaining({ id: cluster('running').id })],
-        nodePools: [
-          expect.objectContaining({
-            nodePoolId: 'p-pool-1',
-            status: { id: 'p-pool-1', state: 'provisioning' },
-          }),
-          expect.objectContaining({
-            nodePoolId: 'p-pool-2',
-            status: {
-              unavailable: expect.stringContaining('fetch failed'),
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test('runs the node pool on GCP against the AWS cluster: credential, request, sweep and native loss', async () => {
-    const terminated: unknown[] = [];
-    const clients: GcpComputeClients = {
-      instances: {
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async *aggregatedListAsync(request) {
-          expect(request.filter).toBe(
-            'labels.anycloud_resource=p-pool-1 AND status!=TERMINATED',
-          );
-          yield [
-            'zones/us-central1-a',
-            {
-              instances: [
-                {
-                  name: 'anycloud-p-pool-1-vm-1',
-                  zone: 'https://…/zones/us-central1-a',
-                },
-              ],
-            },
-          ];
-        },
-        delete: async (request) => {
-          terminated.push(request);
-          return undefined;
-        },
-        get: async (request) => {
-          expect(request).toEqual({
-            project: 'proj-test',
-            zone: 'us-central1-a',
-            instance: 'anycloud-p-pool-1-vm-1',
-          });
-          return [
-            {
-              scheduling: {
-                provisioningModel: 'SPOT',
-                instanceTerminationAction: 'DELETE',
-              },
-            },
-          ];
-        },
-      },
-      firewalls: {
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async *listAsync() {
-          yield { name: 'p-pool-122', targetTags: ['p-pool-1'] };
-          yield { name: 'other', targetTags: ['p-other'] };
-        },
-      },
-    };
-    const inventory = new GcpPoolInventory(gcpProfile.credential, clients);
-    const { aws, runs, cliRuns } = environment(
-      () => [],
-      () => ({
-        rows: [
-          {
-            id: 1,
-            cloudId: 'anycloud-p-pool-1-vm-1',
-            region: 'us-central1',
-            availabilityZone: 'a',
-            endedAt: null,
-          },
-        ],
-        rowCount: 1,
-        truncated: false,
-      }),
-      {
-        profile: gcpProfile,
-        region: 'us-central1',
-        vmTypes: ['e2-standard-2'],
-        inventory,
-      },
-    );
-    await aws.prepare();
-    // This tree's create reads its cloud session: nothing is saved.
-    expect(cliRuns).toEqual([]);
-    aws.recordNodePool('p-pool-1');
-    expect(
-      await inventory.spotEviction('us-central1-a/anycloud-p-pool-1-vm-1'),
-    ).toBe('DELETE');
-    expect(await aws.terminatePoolInstance('p-pool-1')).toBe(
-      'us-central1-a/anycloud-p-pool-1-vm-1',
-    );
-    expect(terminated).toEqual([
-      {
-        project: 'proj-test',
-        zone: 'us-central1-a',
-        instance: 'anycloud-p-pool-1-vm-1',
-      },
-    ]);
-    const leftovers = await aws.sweep();
-    expect(leftovers.instances).toEqual([
-      'gcp:us-central1-a/anycloud-p-pool-1-vm-1',
-    ]);
-    expect(leftovers.securityGroups).toEqual(['gcp:firewall/p-pool-122']);
-    // No installation yet and no bucket: nothing to delete at the Worker.
-    expect(leftovers.dnsRecords).toEqual([]);
-    expect(leftovers.dnsDeferred).toBe(false);
-    expect(runs.flat().some((arg) => arg.includes('anycloud_resource'))).toBe(
-      false,
-    );
-  });
-
-  test('runs the node pool on Azure against the AWS cluster: credential, request, sweep and native host loss', async () => {
-    const calls: string[] = [];
-    const tagged = (name: string, pool = 'p-pool-1') => ({
-      name,
-      tags: { anycloud_resource: pool },
-    });
-    const list = <T>(kind: string, items: T[]) =>
-      // eslint-disable-next-line @typescript-eslint/require-await
-      async function* (group: string) {
-        calls.push(`list ${kind} ${group}`);
-        yield* items;
-      };
-    const clients: AzurePoolClients = {
-      vms: list('vms', [
-        {
-          ...tagged('p-pool-1-vm-a'),
-          provisioningState: 'Succeeded',
-          priority: 'Spot',
-          evictionPolicy: 'Delete',
-        },
-        { ...tagged('p-pool-1-vm-old'), provisioningState: 'Deleting' },
-        tagged('p-other-vm-b', 'p-other'),
-      ]),
-      deleteVm: async (group, vm) => calls.push(`delete vm ${group}/${vm}`),
-      disks: list('disks', [tagged('p-pool-1-vm-a_OsDisk_1'), { name: 'x' }]),
-      nics: list('nics', [tagged('p-pool-1-vm-a')]),
-      publicIps: list('ips', []),
-      nsgs: list('nsgs', [tagged('p-pool-1')]),
-      vnets: list('vnets', [tagged('p-pool-1', 'p-other')]),
-    };
-    const inventory = new AzurePoolInventory(
-      azureProfile.credential,
-      'westus2',
-      clients,
-    );
-    const { aws, cliRuns } = environment(() => [], undefined, {
-      profile: azureProfile,
-      region: 'westus2',
-      vmTypes: ['Standard_NC4as_T4_v3'],
-      inventory,
-    });
-    await aws.prepare();
-    // This tree's create reads its cloud session: nothing is saved.
-    expect(cliRuns).toEqual([]);
-    expect(aws.poolProvider).toBe('azure');
-    aws.recordNodePool('p-pool-1');
-    expect(await aws.poolInstances('p-pool-1')).toEqual(['p-pool-1-vm-a']);
-    expect(await inventory.spotEviction('p-pool-1-vm-a')).toBe('Delete');
-    expect(await inventory.spotEviction('p-pool-1-vm-old')).toBeNull();
-    expect(await aws.terminatePoolInstance('p-pool-1')).toBe('p-pool-1-vm-a');
-    // Azure deletes the OS disk with the VM (deleteOption: Delete).
-    expect(calls.filter((call) => !call.startsWith('list'))).toEqual([
-      'delete vm anycloud-westus2/p-pool-1-vm-a',
-    ]);
-    const leftovers = await aws.sweep();
-    expect(leftovers.instances).toEqual(['azure:p-pool-1-vm-a']);
-    expect(leftovers.securityGroups).toEqual([
-      'azure:disk/p-pool-1-vm-a_OsDisk_1',
-      'azure:nic/p-pool-1-vm-a',
-      'azure:nsg/p-pool-1',
-    ]);
-    expect(
-      calls
-        .filter((call) => call.startsWith('list'))
-        .every((call) => call.endsWith(' anycloud-westus2')),
-    ).toBe(true);
   });
 
   test.each([
@@ -1811,7 +1444,6 @@ describe('AWS cluster substrate', () => {
           scopes.push(scope);
           return ['firewall/anycloud-cluster-rule'];
         },
-        terminateInstance: async () => undefined,
       };
       const pages = [
         {
@@ -1842,7 +1474,6 @@ describe('AWS cluster substrate', () => {
           cloudProvider: profile.provider,
           region,
         }),
-        { profile, region, vmTypes: [profile.vmTypes[0]!] },
         undefined,
         { profile, region, clusterInventory, clusterStorage },
       );
@@ -1850,10 +1481,7 @@ describe('AWS cluster substrate', () => {
       await aws.bootstrap(60_000);
       expect(artifacts.json).toHaveBeenCalledWith(
         'e2e-cluster-cloud-resources',
-        expect.objectContaining({
-          clusterProvider: cloud,
-          poolProvider: cloud,
-        }),
+        expect.objectContaining({ clusterProvider: cloud }),
       );
       expect(await aws.backupObjectVersions()).toBeNull();
       const leftovers = await aws.sweep();
@@ -1876,71 +1504,6 @@ describe('AWS cluster substrate', () => {
     },
   );
 
-  test('runs the node pool on Lambda against the AWS cluster: credential, request, sweep and native loss', async () => {
-    const requests: string[] = [];
-    const lambdaFetch = vi.fn(
-      async (url: string | URL | Request, init?: RequestInit) => {
-        const path = String(url).replace('https://cloud.lambda.ai/api/v1', '');
-        requests.push(`${init?.method ?? 'GET'} ${path} ${init?.body ?? ''}`);
-        const tag = (value: string) => [{ key: 'anycloud:resource', value }];
-        const data =
-          path === '/instances'
-            ? [
-                { id: 'i-live', status: 'active', tags: tag('p-pool-1') },
-                { id: 'i-gone', status: 'terminated', tags: tag('p-pool-1') },
-                { id: 'i-other', status: 'active', tags: tag('p-pool-2') },
-              ]
-            : path === '/firewall-rulesets'
-              ? [
-                  { id: 'fw-1', name: 'anycloud-p-pool-1' },
-                  { id: 'fw-2', name: 'anycloud-p-pool-2' },
-                ]
-              : { terminated_instances: [] };
-        return new Response(JSON.stringify({ data, page_token: null }));
-      },
-    );
-    const inventory = new LambdaPoolInventory(
-      lambdaProfile.credential,
-      lambdaFetch as typeof fetch,
-    );
-    const { aws, runs, cliRuns } = environment(
-      () => [],
-      () => ({
-        rows: [
-          {
-            id: 1,
-            cloudId: 'i-live',
-            region: 'us-east-1',
-            availabilityZone: null,
-            endedAt: null,
-          },
-        ],
-        rowCount: 1,
-        truncated: false,
-      }),
-      {
-        profile: lambdaProfile,
-        region: 'us-east-1',
-        vmTypes: ['cpu_4x_general'],
-        inventory,
-      },
-    );
-    await aws.prepare();
-    // This tree's create reads its cloud session: nothing is saved.
-    expect(cliRuns).toEqual([]);
-    aws.recordNodePool('p-pool-1');
-    expect(await aws.terminatePoolInstance('p-pool-1')).toBe('i-live');
-    expect(requests).toContain(
-      'POST /instance-operations/terminate {"instance_ids":["i-live"]}',
-    );
-    const leftovers = await aws.sweep();
-    expect(leftovers.instances).toEqual(['lambda:i-live']);
-    expect(leftovers.securityGroups).toEqual(['lambda:ruleset/fw-1']);
-    expect(runs.flat().some((arg) => arg.includes('anycloud_resource'))).toBe(
-      false,
-    );
-  });
-
   test('the workflow sweeps a GCP or Azure management VM, its network and checkpoint bucket', () => {
     const workflow = readFileSync(
       '.github/workflows/e2e-cluster-cloud.yml',
@@ -1949,12 +1512,7 @@ describe('AWS cluster substrate', () => {
     expect(workflow).toContain('options: [aws, gcp, azure]');
     // GCP: the management VM's resource scope, or without a record every
     // stale e2e installation's; GCS buckets named after installations.
-    expect(workflow).toContain(
-      'scopes="$scopes anycloud-cluster-$installation"',
-    );
-    expect(workflow).toContain(
-      `pattern="$([ "$cluster_here" = true ] && echo '^(p-|anycloud-cluster-e2e-clust-)' || echo '^p-')"`,
-    );
+    expect(workflow).toContain('scopes="anycloud-cluster-$installation"');
     // An empty scope never becomes an empty (list-everything) filter.
     expect(workflow).toContain('if [ -n "${scopes//[[:space:]]/}" ]; then');
     expect(workflow).toContain(
@@ -1966,9 +1524,6 @@ describe('AWS cluster substrate', () => {
       '"[?tags.anycloud_cluster].tags.anycloud_cluster"',
     );
     expect(workflow).toContain(
-      "CLUSTER_REGION: ${{ inputs.cluster_provider == 'azure' && (inputs.region || 'westus2') || '' }}",
-    );
-    expect(workflow).toContain(
       `account="anycloud$(printf '%s' "$AZURE_SUBSCRIPTION_ID" | tr -d '-' | cut -c1-8)"`,
     );
     // Every id the owner purge reaches is this member's, wherever it was found.
@@ -1977,16 +1532,13 @@ describe('AWS cluster substrate', () => {
     );
     // The container check runs before, and regardless of, the installations' owners.
     const azure = workflow.slice(
-      workflow.indexOf('- name: Sweep Azure cluster and node pool resources'),
+      workflow.indexOf('- name: Sweep Azure cluster resources'),
     );
     expect(azure.indexOf('az storage container list')).toBeGreaterThan(0);
     expect(azure.indexOf('az storage container list')).toBeLessThan(
       azure.indexOf('for id in $INSTALLATION_IDS'),
     );
     expect(azure).not.toContain('No installation ids to sweep on Azure');
-    // A spot pool Job's managed checkpoint bucket ends in the run's id, on
-    // S3, GCS and Azure.
-    expect(workflow.split('grep -E -- "-${run_id}\\$"')).toHaveLength(4);
     // Only a cluster on that cloud (or sweep_only) widens either sweep.
     expect(workflow).toContain(
       'cluster_here="${{ inputs.cluster_provider == \'gcp\' || inputs.sweep_only }}"',
@@ -1994,46 +1546,6 @@ describe('AWS cluster substrate', () => {
     expect(workflow).toContain(
       "CLUSTER_HERE: ${{ inputs.cluster_provider == 'azure' || inputs.sweep_only }}",
     );
-  });
-
-  test('the workflow sweeps Azure by installation and owner, under the Azure GPU lock', () => {
-    const workflow = readFileSync(
-      '.github/workflows/e2e-cluster-cloud.yml',
-      'utf8',
-    );
-    expect(workflow).toContain('options: [cluster, aws, gcp, azure, lambda]');
-    // The pool's cloud is the cluster's unless pool_provider names another.
-    expect(workflow).toContain(
-      "format('e2e-gpu-qualification-{0}', (inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider))",
-    );
-    expect(workflow).toContain(
-      'INSTALLATION_IDS: ${{ steps.installations.outputs.ids }}',
-    );
-    // The sweep's fallback region is the harness default for an Azure pool.
-    expect(workflow).toContain(
-      "POOL_REGION: ${{ inputs.pool_region || (inputs.cluster_provider == 'azure' && inputs.region) || 'westus2' }}",
-    );
-    // Every pool resource carries its installation (node-pool-controller.ts).
-    expect(workflow).toContain('--tag "anycloud_cluster=$id"');
-  });
-
-  test('the workflow passes the Lambda key and sweeps a Lambda pool by its tag and ruleset name', () => {
-    const workflow = readFileSync(
-      '.github/workflows/e2e-cluster-cloud.yml',
-      'utf8',
-    );
-    expect(workflow).toContain('LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}');
-    const lambda = workflow.slice(
-      workflow.indexOf('- name: Sweep Lambda node pool resources'),
-    );
-    expect(lambda).toContain(
-      "if: always() && ((inputs.pool_provider == 'cluster' && inputs.cluster_provider || inputs.pool_provider) == 'lambda' || inputs.sweep_only)",
-    );
-    // The same identities LambdaPoolInventory reads (gateways/lambda.ts).
-    expect(lambda).toContain('.key == "anycloud:resource" and ours(.value)');
-    expect(lambda).toContain('ours(.name | ltrimstr("anycloud-"))');
-    // Paged: a page token continues the listing.
-    expect(lambda).toContain("token=\"$(jq -r '.page_token // empty | @uri'");
   });
 
   test('reads a missing Azure regional group as an empty pool', async () => {
@@ -2055,7 +1567,6 @@ describe('AWS cluster substrate', () => {
         publicIps: missing,
         nsgs: missing,
         vnets: missing,
-        deleteVm: vi.fn(),
       },
     );
     expect(await inventory.liveInstances('p-pool-1')).toEqual([]);
@@ -2155,7 +1666,6 @@ describe('the dead-API delete', () => {
         return reports[flag];
       },
       undefined,
-      undefined,
       { wait: pollsOnly() },
     );
     await aws.bootstrap(60_000);
@@ -2232,7 +1742,6 @@ describe('the dead-API delete when it fails', () => {
           remaining: [],
         };
       },
-      undefined,
       undefined,
       { wait: pollsOnly() },
     );
@@ -2319,7 +1828,6 @@ describe('the seed installation after delete', () => {
         () => [],
         (args) =>
           args.includes('delete') ? deleteResult() : cluster('running'),
-        undefined,
         undefined,
         { wait: pollsOnly() },
       );

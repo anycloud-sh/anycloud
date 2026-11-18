@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import packageJson from '../../../../package.json' with { type: 'json' };
 
-import { ApiClient, declaredApiError } from './api.js';
+import { ApiClient } from './api.js';
 import { ApiAuthScenarios, type ApiAuthResult } from './api-auth.js';
 import {
   BucketAccessDeniedScenario,
@@ -15,7 +15,7 @@ import {
 import { ArtifactStore, Redactor, safeName } from './artifacts.js';
 import { CleanupStack } from './cleanup.js';
 import { CliClient, type CliRunOptions } from './cli.js';
-import { vmReadyByCli, waitReadyByCli } from './cli-observations.js';
+import { vmReadyByCli } from './cli-observations.js';
 import { ControllerEndpoint } from './controller-session.js';
 import {
   ClusterCloudContract,
@@ -25,59 +25,22 @@ import {
   ClusterLocalContract,
   type ClusterLocalContractResult,
 } from './contracts/cluster-local.js';
-import {
-  ClaimBurstContract,
-  type ClaimBurstContractResult,
-} from './contracts/claim-burst.js';
-import { IN_FLIGHT_CAP } from '../../../../src/api/services/deployment-replicas.js';
-import { SCALE_IN_IDLE_WINDOW_MS } from '../../../../src/api/services/pool-scaling.js';
-import {
-  PoolScalingLocalContract,
-  type PoolScalingLocalContractResult,
-} from './contracts/pool-scaling-local.js';
-import { DeploymentMutationTransport } from './deployment-mutations.js';
-import { TrackedDeploymentKernel } from './deployments.js';
-import { KubernetesQualificationTransport } from './kubernetes-transport.js';
-import {
-  NodePoolCliTransport,
-  NodePoolMutationTransport,
-} from './node-pool-mutations.js';
-import { TrackedNodePoolKernel } from './node-pools.js';
-import { WorkspacePythonSdk } from './python-sdk.js';
 import { CloudClusterEnvironment } from './substrates/cloud-cluster/environment.js';
-import { CloudPoolChecks } from './substrates/cloud-cluster/pool-checks.js';
-import { PoolChecks } from './contracts/pool-checks.js';
 import {
   RoleConnectionChecks,
   ROLE_CHECKS,
 } from './contracts/role-connections.js';
 import { CloudRoleConnections } from './substrates/cloud-cluster/role-connections.js';
 import { AZURE_ROLE_REGION } from './substrates/cloud-cluster/role-trusts.js';
-import { CloudType } from '../../../../src/shared/cloud.js';
-import {
-  getVCPUsForVMType,
-  gpuCapabilityForVMType,
-} from '../../../../src/shared/cloud-config.js';
-import { USER_NAMESPACE_BASE_SPEC } from '../../../../src/api/services/kubernetes/user-namespace.js';
 import {
   HostedApiStage,
-  pushReceiverImage,
   assertHostedStageConfiguration,
 } from './substrates/cloud-cluster/hosted-stage.js';
 import {
   clusterCloudConfiguration,
   roleCheckPolicy,
-  GCP_GPU_QUOTA,
-  LIVE_CHECK_POOLS,
-  USER_NAMESPACE_CHECK_VM,
-  poolJobStorageClouds,
-  releaseHasRunnerFeatures,
 } from './substrates/cloud-cluster/configuration.js';
 import { ClusterLocalEnvironment } from './substrates/local-cluster/environment.js';
-import { clusterLocalK3sImage } from './substrates/local-cluster/constants.js';
-import { LocalClaimBurst } from './substrates/local-cluster/claim-burst.js';
-import { ClusterNodePoolAdapter } from './targets/cluster-node-pool.js';
-import { CliNodePoolServiceTransport } from './transports/node-pool-service.js';
 import { PersistentVmHostLossContract } from './contracts/persistent-vm-host-loss.js';
 import {
   StorageTokensContract,
@@ -181,16 +144,6 @@ import {
 } from './read-models/owner.js';
 import { getLoopbackApiPort } from '../../../../src/shared/config.js';
 
-/**
- * An AWS node pool VM must launch, run cloud-init, download the K3s agent and
- * join the cluster before its Node is Ready; the replacement stage repeats that
- * once. Fifteen minutes covers a slow launch and a slow download without
- * hiding a join that will never happen.
- */
-const AWS_NODE_POOL_READY_BUDGET_MS = 15 * 60_000;
-/** A GPU pool VM also boots the Deep Learning AMI and registers its device. */
-const AWS_GPU_NODE_POOL_READY_BUDGET_MS = 25 * 60_000;
-
 export type CommandShimBehavior =
   | { readonly kind: 'exit'; readonly code: number }
   | { readonly kind: 'hang'; readonly milliseconds: number };
@@ -214,12 +167,6 @@ export interface E2EWorld {
     clusterLocal(
       target: 'e2e-cluster-local',
     ): Promise<Omit<ClusterLocalContractResult, 'records'>>;
-    claimBurst(
-      target: 'e2e-claim-burst-local',
-    ): Promise<Omit<ClaimBurstContractResult, 'records'>>;
-    poolScalingLocal(
-      target: 'e2e-pool-scaling-local',
-    ): Promise<Omit<PoolScalingLocalContractResult, 'records'>>;
     persistentVm(
       target: PersistentVmTarget,
     ): Promise<PersistentVmContractResult>;
@@ -686,37 +633,9 @@ export async function createE2ELifecycle(
     runId,
     bearer: bearerFor,
   });
-  // Local cluster member: the substrate is created lazily on first use so every
-  // other member keeps its zero-cost startup; the cleanup stack still owns
-  // the K3s cluster, the API child and every node pool VM it starts.
-  const nodePoolKernel = new TrackedNodePoolKernel(
-    api,
-    cleanup,
-    waiter,
-    manifestDirectory,
-    { api: cleanupApi, wait: cleanupWaiter },
-  );
-  const nodePoolMutations = new NodePoolMutationTransport(nodePoolKernel, api);
-  const nodePoolCli = new NodePoolCliTransport(nodePoolKernel, cli);
-  const pythonSdk = new WorkspacePythonSdk({
-    anycloudDirectory,
-    endpoint: controllerEndpoint,
-    projectRoot: options.projectRoot,
-    runId,
-    runner,
-    token,
-    workspaceDirectory: workspace,
-  });
-  const cleanupPythonSdk = new WorkspacePythonSdk({
-    anycloudDirectory,
-    endpoint: controllerEndpoint,
-    projectRoot: options.projectRoot,
-    runId: `${runId}-cleanup`,
-    runner: cleanupRunner,
-    token,
-    workspaceDirectory: workspace,
-    wheelDirectoryRelative: `python/dist/e2e-${runId}`,
-  });
+  // Local cluster member: the substrate starts only when the contract runs,
+  // so every other member keeps its zero-cost startup; the cleanup stack
+  // still owns the K3s cluster and the API child.
   const clusterLocalEnvironment = new ClusterLocalEnvironment({
     api,
     artifacts,
@@ -725,165 +644,35 @@ export async function createE2ELifecycle(
     projectRoot: options.projectRoot,
     redactor,
     runId,
-    sdk: pythonSdk,
     stateRoot: path.join(workspace, 'e2e-cluster-local'),
     wait: waiter,
   });
-  const kubernetesTransport = new KubernetesQualificationTransport({
-    nodePools: nodePoolCli,
-    workloads: kernel,
-    environment: clusterLocalEnvironment,
-    sdk: pythonSdk,
-    artifacts,
-    cli,
-    signal: options.signal,
-  });
-  const kubernetesCleanupTransport = new KubernetesQualificationTransport({
-    nodePools: nodePoolCli,
-    workloads: kernel,
-    environment: clusterLocalEnvironment,
-    sdk: cleanupPythonSdk,
-    artifacts,
-    cli,
-    signal: cleanupController.signal,
-    readArtifactPrefix: 'cleanup-observation',
-  });
-  const deploymentKernel = new TrackedDeploymentKernel(
-    kubernetesTransport,
-    nodePoolKernel,
-    cleanup,
-    waiter,
-    manifestDirectory,
-    { transport: kubernetesCleanupTransport, wait: cleanupWaiter },
-  );
-  const deploymentMutations = new DeploymentMutationTransport(
-    deploymentKernel,
-    kubernetesTransport,
-  );
   const sha256 = (value: string): string =>
     createHash('sha256').update(value).digest('hex');
-  const clusterNodePoolTarget = new ClusterNodePoolAdapter(
-    kubernetesTransport,
-    nodePoolCli,
-    nodePoolMutations,
-    deploymentKernel,
-    deploymentMutations,
-    (reference, timeoutMs) => waitReadyByCli(cli, reference, timeoutMs),
-  );
   const clusterLocal = new ClusterLocalContract({
-    nodePools: nodePoolKernel,
-    deployments: deploymentKernel,
-    jobs: { kernel, vmLedger },
-    names,
-    namedSecret: new NamedSecretProbeFixture({
-      names,
-      redactor,
-      secrets,
-      sha256,
-    }),
-    githubSecret: () => {
-      if (environment.optional('E2E_PRIVATE_REPO_SKIP')) return undefined;
-      const token = environment.secret('E2E_PRIVATE_REPO_TOKEN');
-      return async () => {
-        const name = names.secret('github');
-        await secrets.create(name, { GITHUB_TOKEN: token });
-        return { name, release: () => secrets.delete(name) };
-      };
-    },
-    refuseSecretDeletion: (name) =>
-      api.deleteSecret(name, undefined, { force: false }).then(
-        () => undefined,
-        (error: unknown) => declaredApiError(error)?.status,
-      ),
     progress,
-    policy: {
-      nodePoolTimeoutMs: 300_000,
-      serviceImage: kubernetesE2EServeImage,
-      servicePort: kubernetesE2EServePort,
-      serviceCleanupTimeoutMs: 600_000,
-      workloadImage: clusterLocalEnvironment.workloadImage(),
-      workloadTimeoutMs: 240_000,
-    },
     cluster: {
+      prepare: () => clusterLocalEnvironment.prepare(),
       registered: () => clusterLocalEnvironment.recordedCluster(),
       intact: () => clusterLocalEnvironment.clusterIntact(),
+      replaceController: () => clusterLocalEnvironment.replaceController(),
       hostedChartRepair: () => clusterLocalEnvironment.hostedChartRepair(),
-      kubeletRestrictions: (nodePoolId) =>
-        clusterLocalEnvironment.kubeletRestrictions(nodePoolId),
-      userNamespacePolicy: () => clusterLocalEnvironment.userNamespacePolicy(),
     },
-    services: new CliNodePoolServiceTransport({
-      kernel,
-      mutations,
-      vmLedger,
-      cli,
-    }),
-    target: clusterNodePoolTarget,
-    wait: waiter,
   });
-  const claimBurst = new ClaimBurstContract({
-    nodePools: nodePoolKernel,
-    target: clusterNodePoolTarget,
-    burst: new LocalClaimBurst({
-      environment: clusterLocalEnvironment,
-      cli,
-      transport: kubernetesTransport,
-      apiUrl: () => {
-        const url = controllerEndpoint.snapshot()?.url;
-        if (!url) throw new Error('The local API is not attached');
-        return url;
-      },
-      runId,
-    }),
-    names,
-    progress,
-    policy: {
-      nodePoolTimeoutMs: 300_000,
-      burstTimeoutMs: 1_800_000,
-      levelTimeoutMs: 300_000,
-      inFlightCap: IN_FLIGHT_CAP,
-      burstJobs: 1_000,
-      burstReplicas: 20,
-      levels: [IN_FLIGHT_CAP, 500],
-      kwokJobMs: 30_000,
-    },
-    wait: waiter,
-  });
-  const poolScalingLocal = new PoolScalingLocalContract({
-    nodePools: nodePoolKernel,
-    names,
-    progress,
-    policy: {
-      nodePoolTimeoutMs: 300_000,
-      workloadTimeoutMs: 240_000,
-      idleWindowMs: SCALE_IN_IDLE_WINDOW_MS,
-    },
-    target: clusterNodePoolTarget,
-    wait: waiter,
-    clock: { now: () => Date.now() },
-  });
-  // The cluster member reads cloud secrets, so it is composed only when run;
-  // it shares the node-pool kernel and Service transport with the local cluster.
+  // The cluster member reads cloud secrets, so it is composed only when run.
   const clusterCloud = (): ClusterCloudContract => {
     const {
       clusterProvider,
       clusterRegion,
       managementVmType,
-      poolProvider,
-      poolRegion,
-      poolVmTypes,
-      poolSpot,
-      gpuPool,
+      vmType,
       hostedStage,
-      gpuWorkload,
-      gpuReplicas,
       fromRelease,
       deadApiDelete,
       restoreStage,
       liveChecks,
-      userNamespaceImages,
     } = clusterCloudConfiguration((name) => environment.optional(name));
-    const poolProfile = providers.vm(poolProvider);
+    const clusterProfile = providers.vm(clusterProvider);
     // `from_release`: the workflow installs that release's CLI, and e2e.sh
     // starts the installer (data in its ANYCLOUD_DIR) with it.
     const released = fromRelease
@@ -910,15 +699,9 @@ export async function createE2ELifecycle(
       database: new CliDatabase(cli),
       installerDirectory: environment.optional('ANYCLOUD_DIR') || undefined,
       http: targetHttp,
-      profile: providers.vm(clusterProvider),
+      profile: clusterProfile,
       region: clusterRegion,
       managementVmType,
-      pool: {
-        profile: poolProfile,
-        region: poolRegion,
-        vmTypes: poolVmTypes,
-        spot: poolSpot,
-      },
       runId,
       runner,
       wait: waiter,
@@ -929,20 +712,8 @@ export async function createE2ELifecycle(
     // workflow from this tree).
     const journey = assertHostedStageConfiguration({
       hostedStage,
-      gpuPool,
       alternateImage: environment.optional('E2E_CLUSTER_ALTERNATE_IMAGE'),
-      poolProvider,
-      poolRegion,
-      // The admission check reads the list's first type (all share one GPU kind).
-      poolVmType: poolVmTypes[0],
-      clusterRegion,
     });
-    // A Lambda pool (either stage) is a GPU pool: it registers its devices
-    // before Ready.
-    const nodePoolReadyMs =
-      gpuPool || poolProvider === 'lambda'
-        ? AWS_GPU_NODE_POOL_READY_BUDGET_MS
-        : AWS_NODE_POOL_READY_BUDGET_MS;
     const hostedApi = new HostedApiStage(
       {
         artifacts,
@@ -957,65 +728,16 @@ export async function createE2ELifecycle(
         token,
         ...(released ? { fromRelease: { cli: released.cli } } : {}),
         credential: {
-          name: poolProfile.credentialName,
-          material: poolProfile.credential,
+          name: clusterProfile.credentialName,
+          material: clusterProfile.credential,
         },
-        // A GCP or Lambda pool can't list the AWS cluster's
-        // checkpoint bucket; the decrypt check uses the cluster's.
-        ...(poolProvider === clusterProvider
-          ? {}
-          : {
-              backup: {
-                credential: {
-                  name: providers.vm(clusterProvider).credentialName,
-                  material: providers.vm(clusterProvider).credential,
-                },
-                region: clusterRegion,
-              },
-            }),
-        storage: Object.fromEntries(
-          Object.entries(
-            poolJobStorageClouds({ poolProvider, poolSpot, gpuPool }),
-          ).map(([role, cloud]) => [
-            role,
-            {
-              credential: {
-                name: providers.vm(cloud).credentialName,
-                material: providers.vm(cloud).credential,
-              },
-              // A Lambda pool's cluster is on AWS.
-              region: {
-                aws: clusterRegion,
-                gcp: 'us-central1',
-                azure: 'westus2',
-              }[cloud],
-            },
-          ]),
-        ),
-        pool: {
-          region: poolRegion,
-          vmTypes: poolVmTypes,
-          spot: poolSpot,
-        },
-        gpu: gpuPool && gpuWorkload,
-        replicas: gpuReplicas,
-        ...(hostedStage || gpuPool ? {} : { singleVm: true }),
+        vm: { region: clusterRegion, vmType },
         service: {
           image: kubernetesE2EServeImage,
           port: kubernetesE2EServePort,
         },
-        receiverImage: () =>
-          pushReceiverImage({
-            runner,
-            projectRoot: options.projectRoot,
-            wheelDirectory: () => pythonSdk.wheelDirectoryRelative(),
-            tag: `${packageJson.apiImage}:${packageJson.version}-receiver`,
-            ...(gpuPool ? { gpu: gpuWorkload } : {}),
-          }),
         timeouts: {
-          nodePoolMs: nodePoolReadyMs,
-          // A GPU pool's receiver pulls the 9.8 GB MACE base.
-          workloadMs: gpuPool ? 1_200_000 : 600_000,
+          workloadMs: 600_000,
           releaseMs: 900_000,
           recursionMs: 1_500_000,
         },
@@ -1034,72 +756,9 @@ export async function createE2ELifecycle(
         upgradeRequested: () => cloudCluster.noteHostedUpgrade(),
       },
     );
-    const poolCloud = {
-      aws: CloudType.AWS,
-      gcp: CloudType.GCP,
-      azure: CloudType.Azure,
-      lambda: CloudType.Lambda,
-    }[poolProvider];
-    const gpusOf = (vmType: string) => {
-      const capability = gpuCapabilityForVMType(poolCloud, vmType);
-      return capability.kind === 'nvidia' ? (capability.count ?? 0) : 0;
-    };
-    const checkPools =
-      poolProvider === 'lambda' ? undefined : LIVE_CHECK_POOLS[poolProvider];
     const checks = liveChecks.length
       ? {
           selected: liveChecks,
-          ...(fromRelease
-            ? { releaseFeatures: releaseHasRunnerFeatures(fromRelease) }
-            : {}),
-          run: new PoolChecks({
-            port: new CloudPoolChecks({
-              hosted: hostedApi,
-              kubeConfig: () => cloudCluster.hostedKubeConfig(),
-              poolInstances: (id) => cloudCluster.poolInstances(id),
-              coldStart: (id, podUid) => cloudCluster.poolColdStart(id, podUid),
-              recordNodePool: (id) => cloudCluster.recordNodePool(id),
-              artifacts,
-              cleanup,
-            }),
-            policy: {
-              gpusPerNode: gpusOf(poolVmTypes[0]),
-              ...(checkPools
-                ? {
-                    cpu: {
-                      vmType: checkPools.cpu,
-                      vCPUs: getVCPUsForVMType(checkPools.cpu, poolCloud) ?? 0,
-                      smallVmType: checkPools.small,
-                    },
-                    ...(checkPools.gpu
-                      ? {
-                          gpuPool: {
-                            vmType: checkPools.gpu,
-                            gpusPerNode: gpusOf(checkPools.gpu),
-                            region: checkPools.gpuRegion,
-                          },
-                        }
-                      : {}),
-                  }
-                : {}),
-              ...(poolProvider !== 'lambda' && userNamespaceImages.length
-                ? {
-                    userNamespace: {
-                      vmType: USER_NAMESPACE_CHECK_VM[poolProvider],
-                      images: userNamespaceImages as [string, string, string],
-                      k3sImage: clusterLocalK3sImage,
-                      baseSpec: USER_NAMESPACE_BASE_SPEC,
-                    },
-                  }
-                : {}),
-              poolVCPUs: getVCPUsForVMType(poolVmTypes[0], poolCloud) ?? 0,
-              nodePoolMs: AWS_GPU_NODE_POOL_READY_BUDGET_MS,
-              workloadMs: 1_200_000,
-            },
-            wait: waiter,
-            progress,
-            clock: { now: () => Date.now() },
-          }),
           ...(liveChecks.some((check) =>
             (ROLE_CHECKS as readonly string[]).includes(check),
           )
@@ -1149,14 +808,6 @@ export async function createE2ELifecycle(
       policy: {
         bootstrapTimeoutMs: 2_400_000,
         destroyTimeoutMs: 900_000,
-        nodePoolTimeoutMs: nodePoolReadyMs,
-        gpuReplicas,
-        gpuWorkload,
-        ...(gpuPool && poolProvider === 'gcp'
-          ? {
-              gpuScaleSkipped: `the burst needs a second GPU; the GCP project allows ${String(GCP_GPU_QUOTA)}`,
-            }
-          : {}),
         keepOnFailure:
           environment.optional('E2E_CLUSTER_KEEP_ON_FAILURE', 'false') ===
           'true',
@@ -1164,7 +815,6 @@ export async function createE2ELifecycle(
         restoreStage,
       },
       substrate: cloudCluster,
-      wait: waiter,
     });
   };
   const localTarget = new LocalSmolvmPersistentVmAdapter(
@@ -1579,26 +1229,6 @@ export async function createE2ELifecycle(
       clusterLocal: async (target) => {
         const result = await clusterLocal.run(target);
         await artifacts.json('e2e-cluster-local-contract', result);
-        return {
-          contract: result.contract,
-          qualification: result.qualification,
-          target: result.target,
-          satisfied: result.satisfied,
-        };
-      },
-      claimBurst: async (target) => {
-        const result = await claimBurst.run(target);
-        await artifacts.json('e2e-claim-burst-local-contract', result);
-        return {
-          contract: result.contract,
-          qualification: result.qualification,
-          target: result.target,
-          satisfied: result.satisfied,
-        };
-      },
-      poolScalingLocal: async (target) => {
-        const result = await poolScalingLocal.run(target);
-        await artifacts.json('e2e-pool-scaling-local-contract', result);
         return {
           contract: result.contract,
           qualification: result.qualification,

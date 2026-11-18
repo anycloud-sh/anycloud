@@ -38,7 +38,7 @@ anycloud/
 | `yarn test:watch`                                     | Watch mode (Vitest); selects integration specs too, never constrained E2E spec files |
 | **Local Integration:**                                |                                                                                      |
 | `yarn test:local-smolvm:runtime`                      | Live image, boot, SSH, init, and VM-host contracts                                   |
-| `yarn test:e2e-cluster-local:vitest`                  | Cluster and node-pool surface on a real K3s                                          |
+| `yarn test:e2e-cluster-local:vitest`                  | Cluster record and hosted chart repair on a real K3s                                 |
 | **E2E:**                                              |                                                                                      |
 | `test/integration/e2e.sh <name> --vitest`             | One constrained E2E spec on its own conductor (CI fans out via matrix)               |
 | `test/integration/e2e.sh local-held-job --vitest`     | Internal Local Job lifecycle on disposable microVMs                                  |
@@ -135,8 +135,8 @@ cleanup. The dedicated Serve lane adds mapped guest TCP/80, a hard API restart
 while the workload is still `Starting`, adoption of the same VM and guest
 container, replacement upgrade, null URL/DNS assertions, and closure of every
 forwarded port. Neither lane mounts the runner's Docker socket into the API.
-This is distinct from `yarn test:e2e-cluster-local:vitest`, which drives the
-cluster and node-pool surface against a real K3s on Docker.
+This is distinct from `yarn test:e2e-cluster-local:vitest`, which checks the
+cluster record and hosted chart repair against a real K3s on Docker.
 
 `local-smolvm / nuke` requires at least 300 overlay Jobs plus a second caller's
 witness cohort, with at most 50 concurrent submission processes. Every Job gets a

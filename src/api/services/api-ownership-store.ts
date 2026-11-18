@@ -97,20 +97,19 @@ export class ApiOwnershipStore implements ApiOwnershipRepository {
               v.cloud_id AS cloudId,
               CASE WHEN v.workload_id IS NOT NULL
                    THEN 'workload' ELSE 'resource' END AS ownerKind,
-              COALESCE(v.workload_id, v.node_pool_id) AS ownerId,
-              COALESCE(d.user_id, p.owner_user_id) AS userId,
+              v.workload_id AS ownerId,
+              d.user_id AS userId,
               v.ended_at AS endedAt,
               COALESCE(v.credential_id, d.credential_id) AS credentialId,
               COALESCE(creds.cloud_provider, d.requested_compute_provider)
                 AS cloudProvider,
-              COALESCE(v.region, d.region, p.region) AS region,
+              COALESCE(v.region, d.region) AS region,
               COALESCE(v.availability_zone, d.availability_zone)
                 AS availabilityZone,
               v.vm_type AS vmType
        FROM api_ownership_backfill_targets t
        JOIN vms v ON v.id = t.vm_id
        LEFT JOIN workloads d ON d.id = v.workload_id
-       LEFT JOIN node_pools p ON p.id = v.node_pool_id
        LEFT JOIN credentials creds
          ON creds.id = COALESCE(v.credential_id, d.credential_id)
        WHERE t.status IN ('pending', 'retry')

@@ -211,12 +211,11 @@ const E2E_ACCESS_NAME = 'anycloud-e2e-access';
 /**
  * Exactly what the e2e harness's checks call (test/integration/e2e), as
  * `[apiGroup, resource, verbs]`, no wildcards: cluster-wide reads, Pod
- * deletion and ServiceAccount tokens, where node pool namespaces are named at
- * run time; a namespaced Role for the rest. kube-system holds the host shell
- * and victim Pods and the victim's Secret; the role live checks mint the API's
- * and the trust probe's tokens in anycloud-system and a Deployment's Pod-bound
- * token in its node pool's namespace, plus the Helm state a timed-out
- * hosted upgrade's capture lists.
+ * deletion and ServiceAccount tokens; a namespaced Role for the rest.
+ * kube-system holds the host shell and victim Pods and the victim's Secret;
+ * the role live checks mint the API's and the trust probe's tokens in
+ * anycloud-system, plus the Helm state a timed-out hosted upgrade's capture
+ * lists.
  */
 const E2E_ACCESS_ROLES: Record<string, [string, string, string[]][]> = {
   '': [

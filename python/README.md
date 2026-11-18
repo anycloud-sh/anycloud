@@ -1,6 +1,6 @@
 # AnyCloud Python SDK
 
-Submit Jobs, run persistent Kubernetes Deployments, and manage your cloud resources with
+Submit Jobs and manage your cloud resources with
 [AnyCloud](https://anycloud.sh/). Python 3.10 or newer is required. One
 `anycloud-sdk` installation provides `anycloud` and `anycloud_workflows`.
 
@@ -91,6 +91,15 @@ asyncio.run(main())
 [`job_completion.py`](examples/job_completion.py) contains runnable examples
 for both clients. HTTP calls and async polling allow other tasks to progress.
 
+Share one `AsyncClient` across concurrent handlers on the same event loop.
+`AsyncJob` provides `await job.wait()`, `status()`, `terminate()`, and explicit
+`resubmit()`. Services and other API families use generated operations through
+`client.api_client`. Task cancellation propagates normally; supply and save
+`workload_id` before submission if you need to recover after a local timeout or
+request cancellation. Close the client with its async context manager or
+`await client.aclose()`. See the
+[async reference](https://anycloud.sh/reference/python-sdk/#async-operations).
+
 ### Chain Jobs with shared storage
 
 Wait for one Job before submitting its dependent Job. Attach bucket names
@@ -127,129 +136,6 @@ application-managed output prefixes for concurrent workflows. See
 [Buckets](https://anycloud.sh/platform/buckets/) for checkpoint storage and sync
 guarantees.
 
-## Submit to an existing Deployment
-
-A Deployment supplies the container, credentials, and compute settings. Submit its
-name or ID and, optionally, your own Job ID:
-
-```python
-from anycloud import Client
-
-with Client() as client:
-    job = client.submit(deployment="model-deployments", workload_id="request-123")
-    status = job.status()
-    state = status.workload.state
-
-    if state in {"completed", "errored", "failed", "invalid", "terminated"}:
-        print("Job finished:", state)
-    elif state == "running":
-        print("Deployment picked up the Job")
-    elif state == "queued":
-        if status.jobs_ahead is None:
-            print("Queue position is unavailable")
-        elif status.jobs_ahead == 0:
-            print("First in the queue; waiting for pickup")
-        else:
-            print("Jobs ahead:", status.jobs_ahead)
-
-        deployment = client.get_deployment("model-deployments")
-        workload = deployment.workload
-        if deployment.deletion_requested_at is not None or deployment.deleted_at is not None:
-            print("Deployment is draining or deleted")
-        elif workload is None or workload.observed_generation != deployment.generation:
-            print("Current Deployment readiness is not yet known")
-        elif not workload.container_ready:
-            print("Current Deployment container is not ready")
-        else:
-            print("Current Deployment container is ready")
-        print("Total queued:", deployment.jobs.queued)
-        print("Jobs holding a slot:", deployment.jobs.unreleased)
-    else:
-        print("Job state:", state)
-```
-
-Supply exactly one of `image` or `deployment`. The Deployment must be a name/ID string,
-not a `DeploymentSummary`; use `deployment.id` for a returned summary. Deployment-targeted
-submissions reject execution options, including empty mappings or lists.
-
-Queue position and capacity are advisory. `jobs_ahead` counts earlier Jobs in
-the shared Deployment queue; `None` also applies outside a queued targeted Job.
-Deployment lookup is a separate observation from Job status. `jobs.unreleased`
-counts Jobs still holding a slot during cleanup, and readiness must describe
-the current revision. Terminated Deployments cannot accept work. Zero
-Jobs ahead and a ready Deployment do not guarantee immediate pickup; only Job state
-`"running"` confirms it. See the
-[queue-status reference](https://anycloud.sh/reference/python-sdk/#jobs-on-deployments)
-for details.
-
-## Async Deployment submission
-
-Use `AsyncClient` in an async backend to submit a Deployment Job and await its first
-durable claim with the same configuration and guarantees as `Client`:
-
-```python
-import asyncio
-
-from anycloud import AsyncClient
-from anycloud_workflows import JobSubmissionExpired, JobSubmissionUncertain
-
-
-async def main() -> None:
-    async with AsyncClient() as client:
-        try:
-            job = await client.submit(deployment="model-deployments", timeout=5, wait=True)
-        except JobSubmissionExpired as error:
-            print("Expired before pickup:", error.job.id)
-        except JobSubmissionUncertain as error:
-            print("Submission outcome unknown; retain this ID:", error.job.id)
-        else:
-            print("Claimed:", job.id)
-
-
-asyncio.run(main())
-```
-
-`timeout=5` is the server's admission-to-first-claim deadline. Confirmed expiry
-means that submission cannot start later, so another provider can be scheduled.
-An HTTP timeout or lost response is uncertain; observe `error.job` or reattach
-with `await client.get(saved_id)` before deciding whether to fall back.
-Observation never resubmits work.
-
-Share one `AsyncClient` across concurrent handlers on the same event loop.
-`AsyncClient` supports every `Client` submission and Deployment management method,
-including `await client.create_deployment(...)`, `list_deployments()`, `get_deployment()`,
-`update_deployment()`, and `delete_deployment()`. Each async method takes the same
-arguments and returns the corresponding generated models or `AsyncJob` handle.
-`AsyncJob` provides `await job.wait()`, `wait_for_claim()`, `status()`,
-`terminate()`, and explicit `resubmit(...)`.
-
-Image Jobs use `await job.wait()` for completion. First-claim deadlines and
-`wait=True` remain specific to Deployment submissions. Services and other API
-families use generated operations through `client.api_client`. Task cancellation
-propagates normally; supply and save `workload_id` before submission if you
-need to recover after a local timeout or request cancellation. Close the client
-with its async context manager or `await client.aclose()`.
-
-See the [async reference](https://anycloud.sh/reference/python-sdk/#async-operations)
-and the runnable [`async_deployment_submission.py`](examples/async_deployment_submission.py)
-request-handler example.
-
-Deployment management preserves the synchronous update rules. For example:
-
-```python
-from anycloud import AsyncClient
-
-
-async def clear_deployment_environment(client: AsyncClient, deployment: str) -> None:
-    updated = await client.update_deployment(deployment, env=None)
-    print(updated.env_keys)
-    for item in await client.list_deployments():
-        print(item.name, item.jobs.queued)
-```
-
-Omitting `env` preserves it; explicit `None` clears it. Deleting a Deployment requests
-draining and does not wait for Jobs or Pods to finish.
-
 ## Wait, terminate, or reattach
 
 Save `job.id` to observe the same Job from another process:
@@ -282,154 +168,6 @@ and clears `last_status` after success. The API requires a resubmittable termina
 state and completed cleanup, so immediate resubmission after `terminate()` can
 fail. Resubmission uses the client's configured request timeout as its elapsed
 request budget.
-
-## Handle Jobs inside a Deployment
-
-Install the same SDK in the Deployment image. `current_deployment()` discovers the
-injected Deployment identity and rotating workload token. This sequential example
-defines a handler that performs ten short work steps and checks cancellation
-between them:
-
-```python
-import time
-
-import httpx
-
-from anycloud.exceptions import ServiceException
-from anycloud_workflows import CurrentJob, current_deployment
-
-
-def handle(job: CurrentJob) -> None:
-    for step in range(10):
-        if job.cancellation_requested():
-            job.cleanup()
-            return
-        print(f"Processing {job.id}: step {step}")
-        time.sleep(1)  # Replace this step with your application's work.
-    job.complete()
-
-
-with current_deployment() as deployment:
-    while True:
-        try:
-            job = deployment.next_job()
-        except (httpx.HTTPError, ServiceException, TimeoutError):
-            time.sleep(1)
-            continue  # Replays the pending acquisition request safely.
-        if job is None:
-            continue
-        handle(job)
-```
-
-`next_job(timeout=20)` waits up to 20 seconds to discover a candidate, claims it,
-and returns its `CurrentJob`. A waiting receive wakes on committed availability
-or Kubernetes Pod changes and checks current identity and readiness again.
-An empty bounded receive needs no additional sleep. Pace repeated immediate
-`timeout=0` lookups in application code. An attempted claim may resolve later within the
-separate request budget. Omitting `timeout` uses the 20-second wait; passing
-`timeout=0` performs one immediate lookup. `None` means this call
-has no unresolved claim that can assign work later. Keep the same context after
-an exception: it retries the exact pending claim before discovering other work,
-even when the next call uses a different timeout. Request timeouts remain
-exceptions. `current_deployment(timeout_seconds=...)` sets the separate elapsed
-request budget, capped at 30 seconds and shared by caller serialization,
-discovery, claim, decoding, and cancellation. Lifecycle calls remain usable
-while discovery waits.
-
-For submission, `client.submit(deployment="model-deployments", timeout=30, wait=True)`
-returns after a durable first claim. Use `job.wait()` separately for completion.
-With `wait=False`, `job.wait_for_claim()` observes the persisted deadline later.
-Confirmed `JobSubmissionExpired` means the submission cannot start later;
-`JobSubmissionTerminated` and `JobSubmissionChanged` distinguish other pre-claim
-termination and explicit resubmission. These exceptions retain `.job`,
-`.workload_id`, and `.revision` for recovery. Deployment `Client.submit()` raises
-`JobSubmissionUncertain` with the unreturned `.job` and original `.cause` when
-admission is uncertain or its internal claim wait fails. Definitive admission
-rejections retain their generated exception types.
-Existing-handle request errors keep their original types. These submission
-exceptions are exported from `anycloud_workflows`.
-
-`job.resubmit(timeout=..., wait=True)` keeps the ID and acknowledges a new
-revision; omission clears the old deadline. Automatic retries preserve their
-first-claim evidence. Use matching API/SDK releases.
-
-Handlers need only the Job handle. Alongside `complete()`, they can report
-`error(message)`, `invalid(message)`, or `retry(message)`.
-`cancellation_requested()` returns a `bool`; outcome methods and `cleanup()`
-return `None`. Cancellation is cooperative: stop work and release its resources
-before calling `cleanup()`. Outcomes do not stop application tasks for you.
-
-For a cancellation watcher running alongside the work, call
-`job.cancellation_requested(timeout=20)`. It holds one request until termination,
-the execution ends, or the wait expires. `timeout` accepts 0 through 20 seconds;
-the default `0` checks immediately, as in the example above. A waiting call
-blocks its calling thread, while completion and cleanup remain available through
-separate connections. `False` means no termination was observed, including when
-the wait expires or the Job completes or retries. Keep watching only while the
-local task is active.
-
-Transport and stale-execution errors remain exceptions. After a transient
-disconnect or API restart, callers can repeat the wait on the same handle within
-their own retry deadline; the API reads persisted state. Resubmission starts a
-new submission and is not required to resume observation.
-
-Your application owns invocation lookup, concurrency, capacity, and liveness.
-Call `next_job()` only when there is capacity to handle another Job, keep the
-context open until every handler finishes, and exit if the critical acquisition
-loop dies so Kubernetes can replace the process. Every operation refreshes the
-projected token and preserves generated API exceptions.
-
-`job.selected` exposes the original generated `SelectedJob`. Context lifecycle
-methods also accept handles or generated selections. For applications that own
-their generated client, `DeploymentJobPoller.next_job()` returns `SelectedJob`
-directly.
-
-## Create and manage Deployments
-
-Create a Deployment on an existing node pool and pass its ID to `submit()`:
-
-```python
-from anycloud import Client
-
-with Client() as client:
-    deployment = client.create_deployment(
-        "model-deployments",
-        "ghcr.io/acme/model-deployment:latest",
-        node_pool="training",
-        command=["python", "deployment.py"],
-        max_concurrent_jobs_per_replica=4,
-    )
-    job = client.submit(deployment=deployment.id)
-    print(job.id)
-```
-
-`create_deployment()`, `get_deployment()`, `update_deployment()`, and `delete_deployment()`
-return generated `DeploymentSummary` models. Updates preserve omitted settings;
-explicit `None` clears only `command`, `env`, `secrets`, or `docker_options`. Deletion
-starts draining without waiting for active Jobs or Pods to finish.
-
-List Deployments across node pools or filter by node pool name or ID:
-
-```python
-from anycloud import Client
-
-with Client(request_timeout_seconds=10) as client:
-    all_deployments = client.list_deployments()
-    deployments = client.list_deployments(node_pool="training")
-    print([deployment.name for deployment in deployments])
-```
-
-`list_deployments()` returns a list of `DeploymentSummary` models, or an empty list when
-no Deployments match. Omitting `node_pool` or passing `None` lists all Deployments. The
-optional request timeout is shared by the Client's operations and defaults to
-30 seconds.
-
-The node pool's VM type determines GPU capacity. On verified NVIDIA capacity, omitting GPU
-options uses all GPUs on one capacity VM; CPU capacity requests none. Use
-`docker_options={"gpus": "all"}` or a positive integer string such as
-`{"gpus": "1"}` for explicit GPU access.
-Deployments do not accept named application Secrets; use an application-owned
-secret source rather than putting sensitive values in `env`.
 
 ## Other resource operations
 
@@ -514,8 +252,7 @@ workload operations, method arguments, and return models.
 
 ## Errors and current limitations
 
-Generated API exceptions retain their types, except for uncertain Deployment
-submission wrapped in `JobSubmissionUncertain` with its recovery handle.
+Generated API exceptions retain their types.
 Catch `anycloud.exceptions.ApiException` or a status-specific subclass, such as
 `ConflictException`. HTTP status is in `error.status`; declared error data is
 in `error.data`. See
@@ -524,7 +261,7 @@ typed error examples.
 
 `from anycloud import Client` and `from anycloud_workflows import Client` refer
 to the same class; the corresponding `AsyncClient` imports also share one class.
-Import `AsyncJob`, `current_deployment`, `CurrentJob`, and polling errors
+Import `AsyncJob` and polling errors
 from `anycloud_workflows`. Select compute credentials per submission with
 `credential_name=`, and use `timeout_seconds=` for waiting.
 

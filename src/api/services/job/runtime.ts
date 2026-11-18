@@ -114,15 +114,9 @@ export function createJobRuntimeRouter({
 }: JobRuntimeRouterDeps): JobRuntime {
   const forCloud = (
     cloudProvider: CloudType | null,
-    workload: StoredWorkload,
   ): JobRuntime | Promise<JobRuntime> => {
     if (cloudProvider === null) {
       throw new Error('Job runtime requires a resolved cloud provider');
-    }
-    if (workload.deploymentId) {
-      throw new Error(
-        `Targeted Job ${workload.id} cannot enter the dedicated Job runtime`,
-      );
     }
     return vmHost;
   };
@@ -139,7 +133,7 @@ export function createJobRuntimeRouter({
       request.placement.cloudConfig.cloudProvider,
       allowUnresolvedVmHost,
     );
-    return forCloud(provider, request.workload);
+    return forCloud(provider);
   };
 
   const invoke = <Result>(

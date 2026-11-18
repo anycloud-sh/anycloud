@@ -622,9 +622,8 @@ gcloud projects add-iam-policy-binding PROJECT_ID \
   {JSON.stringify(gcpRole, null, 2)}
 </CodeBlock>
 
-`resourcemanager.projects.get` reads the project's number, which a
-[spot node pool's Job](/platform/jobs#jobs-on-a-node-pool) checks before it
-reuses a checkpoint bucket that already has its name.
+`resourcemanager.projects.get` reads the project's number, which Anycloud
+checks before it reuses a checkpoint bucket that already has its name.
 
 The two `bigquery` permissions are needed only for per-VM costs from a billing
 export; remove them if you don't configure one. Anycloud runs the cost query

@@ -7,8 +7,6 @@ import type { FirstBackupStatus } from './first-backup.js';
 import * as semver from 'semver';
 import { errorMessage } from '../../shared/log-diagnostics.js';
 import type {
-  DrainPoolJobsInput,
-  DrainPoolJobsResponse,
   KubernetesStep,
   KubernetesStepInput,
   KubernetesStepResponse,
@@ -117,10 +115,6 @@ export interface SystemReleaseDomainDependencies {
   /** A release hook Job by name; null when it cannot be read. */
   observeHookJob(name: string): Promise<HookJobObservation | null>;
   generateOperationId(): string;
-  drainPoolJobs(
-    force: boolean,
-    keep?: readonly string[],
-  ): Promise<DrainPoolJobsResponse['jobs']>;
   /** Whether the management Node carries its label; null when unreadable. */
   observeManagementLabel(): Promise<boolean | null>;
   /** Root scripts on the management host, run from a host-step Job. */
@@ -142,9 +136,7 @@ export interface SystemReleaseDomain {
   status(actor: User, signal?: AbortSignal): Promise<SystemReleaseStatus>;
   /** C28: `cluster delete`'s final backup, the one an upgrade takes. */
   backup(actor: User): Promise<SystemBackupResponse>;
-  /** Decision 30's drain before an upgrade; any API serves it. */
-  drain(actor: User, input: DrainPoolJobsInput): Promise<DrainPoolJobsResponse>;
-  /** RFC 0049 C26 (b)'s K3s step, which `api upgrade` runs after the drain. */
+  /** RFC 0049 C26 (b)'s K3s step, which `api upgrade` runs first. */
   kubernetes(
     actor: User,
     input: KubernetesStepInput,
@@ -339,7 +331,7 @@ export function createSystemReleaseDomain(
 
   /**
    * Everything that can refuse a release, or find it already carried,
-   * before anything changes: `drain` runs it before it stops pool Jobs.
+   * before anything changes.
    */
   async function prepare(
     input: RequestSystemReleaseInput,
@@ -422,16 +414,6 @@ export function createSystemReleaseDomain(
     async selfDeleteStatus() {
       return selfDelete().status();
     },
-    async drain(_actor, { force, image, keep }) {
-      // A hosted upgrade that would be refused, or finds its image already
-      // carried, stops no pool Job.
-      if (image) {
-        const prepared = await prepare({ image });
-        if (prepared.carried === prepared.image) return { jobs: [] };
-      }
-      return { jobs: await deps.drainPoolJobs(force, keep) };
-    },
-
     async kubernetes(_actor, { id, image }) {
       // A poll observes the step it started without resolving the image
       // again, through an API server the step may be restarting.

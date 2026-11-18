@@ -1,4 +1,4 @@
-import type { DedicatedWorkloadAdmissionInput } from '../../shared/api-contract/workload-admission-schemas.js';
+import type { WorkloadAdmissionInput } from '../../shared/api-contract/workload-admission-schemas.js';
 import {
   bindInlineCredentials,
   getRegions,
@@ -7,11 +7,15 @@ import {
   extractCredentials,
   isCloudType,
   isComputeCredentials,
+  nestedVirtualizationSupport,
   normalizeDiskTier,
   requiresComputeCredentials,
 } from '../../shared/cloud-config.js';
 import { validateDockerOptionsRequest } from '../../shared/docker-options.js';
-import { InvalidAnycloudConfigError } from '../../shared/errors.js';
+import {
+  DeployError,
+  InvalidAnycloudConfigError,
+} from '../../shared/errors.js';
 import {
   GP3_BASELINE_IOPS,
   gp3MinimumSizeGb,
@@ -22,7 +26,6 @@ import { isHostedApiImage } from '../../shared/hosted-api.js';
 import {
   computeProviderData,
   isComputeProvider,
-  assertHostsVmWorkloads,
   storageOnlyComputeMessage,
 } from '../../shared/providers.js';
 import {
@@ -32,7 +35,6 @@ import {
 } from '../../shared/cloud.js';
 import { WorkloadType } from '../../shared/workload.js';
 import { toArray } from '../../shared/utils.js';
-import { nestedVirtualizationVmTypes } from './node-pool-admission.js';
 import {
   resolveCredentialByName,
   resolveStorageCredential,
@@ -58,7 +60,7 @@ const resolvedWorkloadAdmissionBrand: unique symbol = Symbol(
 export interface ResolvedWorkloadAdmission {
   readonly [resolvedWorkloadAdmissionBrand]: true;
   readonly actor: User;
-  readonly input: DedicatedWorkloadAdmissionInput;
+  readonly input: WorkloadAdmissionInput;
   readonly requestedWorkloadType: WorkloadType;
   readonly requestedCredentiallessCompute?: CloudType;
   readonly resolvedComputeCredential?: ResolvedComputeCredential;
@@ -68,7 +70,7 @@ export interface ResolvedWorkloadAdmission {
 }
 
 function parseWorkloadType(
-  value: DedicatedWorkloadAdmissionInput['workloadType'],
+  value: WorkloadAdmissionInput['workloadType'],
 ): WorkloadType {
   if (value === undefined || value === WorkloadType.Job) {
     return WorkloadType.Job;
@@ -83,7 +85,7 @@ function parseWorkloadType(
 }
 
 function hasExplicitComputePlacement(
-  cloudConfig: DedicatedWorkloadAdmissionInput['cloudConfig'],
+  cloudConfig: WorkloadAdmissionInput['cloudConfig'],
   gpuType: string | string[] | undefined,
 ): boolean {
   return Boolean(
@@ -98,7 +100,7 @@ function hasExplicitComputePlacement(
 }
 
 async function inferAvailableCredentiallessCompute(args: {
-  cloudConfig: DedicatedWorkloadAdmissionInput['cloudConfig'];
+  cloudConfig: WorkloadAdmissionInput['cloudConfig'];
   credentialName?: string;
   gpuType?: string | string[];
 }): Promise<void> {
@@ -146,7 +148,7 @@ async function credentialRequiredMessage(): Promise<string> {
 }
 
 export function normalizeCredentiallessComputeRequest(args: {
-  cloudConfig: DedicatedWorkloadAdmissionInput['cloudConfig'];
+  cloudConfig: WorkloadAdmissionInput['cloudConfig'];
   credentialName?: string;
   gpuType?: string | string[];
 }): CloudType | undefined {
@@ -224,7 +226,7 @@ function validateServiceCapacity(
   }
   if (value > 1) {
     throw new InvalidAnycloudConfigError(
-      `${field}>1 is not supported for service workloads; launch multiple service workloads for node pools`,
+      `${field}>1 is not supported for service workloads; launch one Service per VM`,
     );
   }
 }
@@ -271,7 +273,7 @@ function validateVmCapacity(value: number | undefined, field: string): void {
 
 function validateVmWorkloadShape(args: {
   cloudConfig: CloudConfig;
-  dockerOptions?: DedicatedWorkloadAdmissionInput['dockerOptions'];
+  dockerOptions?: WorkloadAdmissionInput['dockerOptions'];
   command?: string[];
   inputStorageCredentialName?: string;
   outputStorageCredentialName?: string;
@@ -322,7 +324,7 @@ function validateVmWorkloadShape(args: {
 }
 
 /**
- * A VM Job's `--require-nested-virtualization`, like a node pool's: only the
+ * A VM Job's `--require-nested-virtualization`: only the
  * VM types the catalog reports nesting for, so GCP's insert isn't refused and
  * AWS and Azure launch with KVM. Refuses when none is left.
  */
@@ -338,12 +340,19 @@ export function nestedVmJobTypes(
       '--require-nested-virtualization needs --vm-type',
     );
   }
-  const kept = nestedVirtualizationVmTypes(
-    config.cloudProvider,
-    vmTypes,
-    config.region,
-    config.availabilityZone,
+  const { cloudProvider: cloud, region, availabilityZone: zone } = config;
+  // The types, in order, that the catalog reports nested virtualization for
+  // in the region or zone (anywhere when unpinned).
+  const kept = vmTypes.filter(
+    (vmType) =>
+      nestedVirtualizationSupport(cloud, vmType, region, zone) === true,
   );
+  if (kept.length === 0) {
+    throw new DeployError(
+      `--require-nested-virtualization: the ${cloud} catalog reports nested virtualization for none of ${vmTypes.join(', ')}${region ? ` in ${zone ?? region}` : ''}; anycloud vm-types --details shows each type's support`,
+      400,
+    );
+  }
   return kept.length === 1 ? kept[0]! : kept;
 }
 
@@ -353,7 +362,7 @@ export function nestedVmJobTypes(
  */
 export async function resolveWorkloadAdmission(args: {
   actor: User;
-  input: DedicatedWorkloadAdmissionInput;
+  input: WorkloadAdmissionInput;
 }): Promise<ResolvedWorkloadAdmission> {
   const { actor, input } = args;
   const cloudConfig = { ...input.cloudConfig };
@@ -422,7 +431,6 @@ export async function resolveWorkloadAdmission(args: {
         : '"cloudConfig.cloudProvider" could not be resolved',
     );
   }
-  assertHostsVmWorkloads(cloudConfig.cloudProvider);
   const inlineComputeCredentials =
     usingInlineCompute && cloudConfig.credentials
       ? bindInlineCredentials(
@@ -449,7 +457,7 @@ export async function resolveWorkloadAdmission(args: {
     resolvedCloudConfig.vmType = nestedVmJobTypes(resolvedCloudConfig);
   }
   assertGp3Performance(resolvedCloudConfig);
-  // As a pool Job's: no other checkpoint option goes with it.
+  // No other checkpoint option goes with --no-checkpoint.
   if (
     input.noCheckpoint &&
     (cloudConfig.checkpointBucket ||
