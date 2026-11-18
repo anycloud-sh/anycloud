@@ -46,7 +46,6 @@ function deploymentFixture(): StoredDeployment {
     minReplicas: 1,
     maxReplicas: 1,
     managed: false,
-    apiIdentity: false,
     runnerRelease: null,
     generation: 2,
     deletionRequestedAt: null,

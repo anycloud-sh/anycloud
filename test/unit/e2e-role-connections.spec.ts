@@ -520,9 +520,7 @@ class FakeClouds implements RoleConnectionsPort {
   async record(name: string, value: unknown) {
     this.records[name] = value;
   }
-  /** The signer's pool, its mints, and what its tokens may do. */
-  signerPool: string | undefined;
-  signerRemoved = false;
+  /** The mints, and what their tokens may do. */
   mints: unknown[] = [];
   removedBuckets: string[] = [];
   deletes: Record<RoleCloud, boolean> = { aws: false, gcp: true, azure: false };
@@ -542,15 +540,7 @@ class FakeClouds implements RoleConnectionsPort {
       },
     };
   }
-  async signer(pool: string) {
-    this.signerPool = pool;
-    return {
-      remove: async () => {
-        this.signerRemoved = true;
-      },
-    };
-  }
-  async mintAsSigner(
+  async mint(
     _connection: string,
     cloud: RoleCloud,
     grants: readonly unknown[],
@@ -636,12 +626,9 @@ function checks(
 }
 
 describe('role-connection checks', () => {
-  test('a registered Deployment mints a prefix token on each role connection', async () => {
+  test('a member mints a prefix token on each role connection', async () => {
     const port = new FakeClouds();
-    await checks(port, {}, { now: () => port.now }).storageTokens('pool-1');
-    expect(port.signerPool).toBe('pool-1');
-    // Before the journey deletes its pool, which a live reference refuses.
-    expect(port.signerRemoved).toBe(true);
+    await checks(port, {}, { now: () => port.now }).storageTokens();
     // A noDelete rw/ grant, for five minutes so Azure's token outlives the checks.
     expect(port.mints).toEqual(
       ['aws', 'gcp', 'azure'].map((cloud) => ({
@@ -674,22 +661,22 @@ describe('role-connection checks', () => {
     const port = new FakeClouds();
     port.slow = true;
     await expect(
-      checks(port, {}, { now: () => port.now }).storageTokens('pool-1'),
-    ).rejects.toThrow(/aws: the signer's token neared its expiry/u);
+      checks(port, {}, { now: () => port.now }).storageTokens(),
+    ).rejects.toThrow(/aws: the minted token neared its expiry/u);
   });
 
   test('a GCP role token refused before its expiry fails the check', async () => {
     const port = new FakeClouds();
     port.refusesEarly = true;
     await expect(
-      checks(port, {}, { now: () => port.now }).storageTokens('pool-1'),
+      checks(port, {}, { now: () => port.now }).storageTokens(),
     ).rejects.toThrow(/gcp: the role token was refused before its expiry/u);
   });
 
   test('an AWS token that deletes inside its grant fails the check', async () => {
     const port = new FakeClouds();
     port.deletes.aws = true;
-    await expect(checks(port).storageTokens('pool-1')).rejects.toThrow(
+    await expect(checks(port).storageTokens()).rejects.toThrow(
       /aws: deleting inside rw\/ was allowed/u,
     );
   });

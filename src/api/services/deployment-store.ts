@@ -8,7 +8,6 @@ import {
 import type { DB, DBTransaction } from './repositories/db.js';
 import { createJobChanges, type JobChanges } from './job-changes.js';
 import type { OwnershipScope } from './repositories/ownership-filter.js';
-import { deploymentApiIdentitySql } from './repositories/api-access-policy.js';
 import {
   nodePoolDeploymentReferencesSql,
   nodePoolGpuReservationSql,
@@ -49,11 +48,6 @@ export interface StoredDeployment {
   maxReplicas: number;
   /** An anycloud-managed Deployment that runs pool Jobs (RT8). */
   managed: boolean;
-  /**
-   * `api access add --service-account` registered this unmanaged
-   * Deployment's name, so its replicas get an API token (RFC 0049 C29).
-   */
-  apiIdentity: boolean;
   /**
    * The release whose runner a managed Deployment's replicas run (RFC 0049
    * C27); null on a user Deployment, or one no release was recorded for.
@@ -256,7 +250,6 @@ interface DeploymentRow extends EncodedContainerSpec {
   min_replicas: number;
   max_replicas: number;
   managed: number;
-  api_identity: number;
   runner_release: string | null;
   generation: number;
   deletion_requested_at: number | null;
@@ -267,8 +260,7 @@ interface DeploymentRow extends EncodedContainerSpec {
 
 const DEPLOYMENT_SPEC_COLUMNS = `w.*, s.deployment_id AS container_spec_owner_id,
   s.image, s.image_digest, s.command, s.docker_options, s.env,
-  s.registry_username, s.registry_token, s.entrypoint,
-  ${deploymentApiIdentitySql('w')} AS api_identity`;
+  s.registry_username, s.registry_token, s.entrypoint`;
 const DEPLOYMENT_SPEC_JOIN =
   'LEFT JOIN container_specs s ON s.deployment_id = w.id';
 const DEPLOYMENT_METADATA_COLUMNS = `w.id, w.node_pool_id, w.managed,
@@ -369,7 +361,6 @@ async function toStored(row: DeploymentRow): Promise<StoredDeployment> {
     secretNames: row.secret_names
       ? (JSON.parse(row.secret_names) as string[])
       : [],
-    apiIdentity: row.api_identity === 1,
     gpuCount: row.gpu_count,
     maxConcurrentJobsPerReplica: row.max_concurrent_jobs_per_replica,
     minReplicas: row.min_replicas,

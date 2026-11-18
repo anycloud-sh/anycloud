@@ -3,9 +3,6 @@ import { randomUUID } from 'node:crypto';
 
 import { ORPCError } from '@orpc/client';
 
-import { nodePoolNamespace } from '../../../../../../src/api/services/kubernetes/node-pool-scheduling.js';
-import { kubernetesWorkloadResourceName } from '../../../../../../src/api/services/kubernetes/identity.js';
-import { ANYCLOUD_API_TOKEN_AUDIENCE } from '../../../../../../src/api/services/kubernetes/pool-objects.js';
 import { createApiClient } from '../../../../../../src/shared/services/api-client/rpc.js';
 import { SYSTEM_RELEASE_NAMESPACE } from '../../../../../../src/shared/system-release.js';
 import type { CloudCredential } from '../../../../../../src/shared/api-contract/credentials-schemas.js';
@@ -31,6 +28,7 @@ import type {
   TrustVariant,
 } from '../../contracts/role-connections.js';
 import type { CliClient } from '../../cli.js';
+import { cliArgs } from '../../cli-surface.js';
 import type { ProcessRunner } from '../../process.js';
 import type { Waiter } from '../../wait.js';
 import type { HostedApiStage } from './hosted-stage.js';
@@ -78,7 +76,6 @@ export interface CloudRoleConnectionsOptions {
     | 'logs'
     | 'readBucketObject'
     | 'bucketDeletion'
-    | 'registeredDeployment'
     | 'seedBucket'
   >;
   readonly hostedUrl: () => string;
@@ -116,9 +113,6 @@ export class CloudRoleConnections implements RoleConnectionsPort {
     RoleCloud,
     { deployed: DeployedTrust; name: string }
   >();
-  #signer:
-    | { nodePoolId: string; id: string; podName: string; podUid: string }
-    | undefined;
   #minted: MintedTokens | undefined;
 
   constructor(options: CloudRoleConnectionsOptions) {
@@ -349,53 +343,26 @@ export class CloudRoleConnections implements RoleConnectionsPort {
     return { bucket, remove };
   }
 
-  async signer(nodePoolId: string) {
-    const name = `signer-${roleObjectName().slice('e2e-role-'.length)}`;
-    const { remove, ...deployment } = await this.#o.hosted.registeredDeployment(
-      nodePoolId,
-      name,
-    );
-    this.#signer = { nodePoolId, ...deployment };
-    return { remove };
-  }
-
-  /**
-   * A token like the one the replica's projected volume holds: its
-   * ServiceAccount's, for the `anycloud-api` audience, bound to its running
-   * Pod. The harness requests it, so it proves the API admits a Pod-bound
-   * token, not that the replica's mount is right.
-   */
-  async #signerToken(): Promise<string> {
-    const signer = this.#signer;
-    if (!signer) throw new Error('the signer Deployment is not running');
-    const core = (await this.#o.kubeConfig()).makeApiClient(CoreV1Api);
-    const { status } = await core.createNamespacedServiceAccountToken({
-      name: kubernetesWorkloadResourceName('deployment', signer.id),
-      namespace: nodePoolNamespace(signer.nodePoolId),
-      body: {
-        spec: {
-          audiences: [ANYCLOUD_API_TOKEN_AUDIENCE],
-          expirationSeconds: 600,
-          boundObjectRef: {
-            apiVersion: 'v1',
-            kind: 'Pod',
-            name: signer.podName,
-            uid: signer.podUid,
-          },
-        },
-      },
+  /** The run's API token for the hosted API, which the CLI saved. */
+  async #bearer(): Promise<string> {
+    const result = await this.#o.cli.run(cliArgs('api token', {}), {
+      label: 'hosted-api-token',
+      timeoutMs: 120_000,
+      recordArtifact: false,
+      env: { API_URL: this.#o.hostedUrl() },
     });
-    if (!status?.token) throw new Error('TokenRequest returned no token');
-    return status.token;
+    if (result.exitCode !== 0 || result.timedOut)
+      throw new Error(`api token failed (exit ${String(result.exitCode)})`);
+    return result.stdout.trim();
   }
 
-  async mintAsSigner(
+  async mint(
     connection: string,
     cloud: RoleCloud,
     grants: readonly (StorageTokenGrant & { readonly noDelete: boolean })[],
     lifetimeSeconds: number,
   ): Promise<MintOutcome> {
-    const client = createApiClient(await this.#signerToken(), {
+    const client = createApiClient(await this.#bearer(), {
       apiUrl: this.#o.hostedUrl(),
     });
     try {
@@ -419,7 +386,7 @@ export class CloudRoleConnections implements RoleConnectionsPort {
   }
 
   #tokens(): MintedTokens {
-    if (!this.#minted) throw new Error('the signer minted no tokens');
+    if (!this.#minted) throw new Error('no tokens were minted');
     return this.#minted;
   }
 

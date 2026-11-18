@@ -81,7 +81,7 @@ describe('api access policy', () => {
     await assertApiAccess({ id: '200', username: 'renamed-member' }, db);
 
     await expect(listApiAccessUsers(db)).resolves.toEqual([
-      { userId: '200', username: 'renamed-member', deploymentId: null },
+      { userId: '200', username: 'renamed-member' },
     ]);
   });
 
@@ -100,7 +100,6 @@ describe('api access policy', () => {
     await expect(removeApiAccessUser(' 200 ', db)).resolves.toEqual({
       userId: '200',
       username: 'member',
-      deploymentId: null,
     });
     await expect(listApiAccessUsers(db)).resolves.toEqual([]);
     await expect(removeApiAccessUser('200', db)).resolves.toBeNull();
