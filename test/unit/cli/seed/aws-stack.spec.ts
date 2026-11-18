@@ -115,6 +115,16 @@ describe('AWS stack template', () => {
     ]);
   });
 
+  it("boots the management VM on gp3's baseline 3,000 IOPS and 125 MiB/s", () => {
+    // A t3 can't sustain more, and provisioned IOPS and MiB/s bill monthly.
+    expect(resources.Instance.Properties.BlockDeviceMappings).toEqual([
+      {
+        DeviceName: '/dev/sda1',
+        Ebs: { VolumeType: 'gp3', VolumeSize: 16, DeleteOnTermination: true },
+      },
+    ]);
+  });
+
   it('grants no wildcard actions, and "*" resources only to Describe', () => {
     for (const role of ['VmRole', 'StackDeleteRole']) {
       for (const statement of statements(role)) {
