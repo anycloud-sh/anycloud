@@ -97,7 +97,7 @@ spec:
             - --hosted-api-owner-id
             - {{ .Values.installation.ownerUserId | quote }}
             {{- with .Values.installation.githubAppIds }}
-            - --hosted-api-github-apps
+            - --hosted-api-sign-in-apps
             - {{ toJson . | quote }}
             {{- end }}
           env:

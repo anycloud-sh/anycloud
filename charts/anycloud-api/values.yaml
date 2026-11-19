@@ -22,7 +22,7 @@ installation:
   ownerUsername: ''
   ownerUserId: ''
   # GitHub App ids whose user tokens the API exchanges: seeds its list on the
-  # first start; the owner replaces it with `api upgrade --github-apps`.
+  # first start; the owner replaces it with `api upgrade --sign-in-apps`.
   githubAppIds: []
   # Externally reachable API origin: https://<cluster-id>.anycloud.sh.
   apiUrl: ''

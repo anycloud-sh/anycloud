@@ -352,7 +352,7 @@ export function createApiAccessDomain(
       if (appSignIn) {
         if (policy.githubAppIds.length === 0) {
           throw new ApiTokenExchangeRefusedError(
-            'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --github-apps <id>`.',
+            'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --sign-in-apps <id>`.',
           );
         }
         const app = await github(
@@ -382,8 +382,9 @@ export function createApiAccessDomain(
         );
       }
       signal?.throwIfAborted();
-      // An App's user token is never kept, so nothing later acts with an
-      // App's permissions; what needs a kept sign-in refuses its caller.
+      // An App's user token is never kept and clears a kept sign-in, so
+      // nothing later acts with an App's permissions; what needs a kept
+      // sign-in refuses its caller until `anycloud login` again.
       const token = await dependencies.tokens.exchange({
         userId: signIn.id,
         username: signIn.username,

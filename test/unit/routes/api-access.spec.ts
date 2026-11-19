@@ -529,7 +529,7 @@ describe('GitHub App sign-ins', () => {
     });
   });
 
-  it('keeps an OAuth sign-in kept earlier when the account signs in through an App', async () => {
+  it('forgets an OAuth sign-in kept earlier once the account signs in through an App', async () => {
     vi.mocked(Github.authenticate).mockResolvedValueOnce({
       id: '1',
       username: 'owner',
@@ -537,15 +537,9 @@ describe('GitHub App sign-ins', () => {
     });
     expect((await exchange('gho_owner_sign_in')).status).toBe(200);
     expect((await exchange('ghu_app_sign_in')).status).toBe(200);
-    const [row] = await getDB().query<{ github_ciphertext: string }>(
-      'SELECT github_ciphertext FROM api_tokens',
-    );
-    const { decryptSecret } = await import(
-      '../../../src/api/services/secret-crypto'
-    );
-    await expect(decryptSecret(row.github_ciphertext)).resolves.toBe(
-      'gho_owner_sign_in',
-    );
+    expect(
+      await getDB().query('SELECT github_ciphertext FROM api_tokens'),
+    ).toEqual([{ github_ciphertext: null }]);
   });
 
   it('refuses a user token from an App the API does not list, naming it', async () => {
@@ -574,7 +568,7 @@ describe('GitHub App sign-ins', () => {
     const response = await exchange('ghu_app_sign_in');
     expect(response.status).toBe(401);
     expect(await response.text()).toContain(
-      'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --github-apps <id>`.',
+      'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --sign-in-apps <id>`.',
     );
   });
 

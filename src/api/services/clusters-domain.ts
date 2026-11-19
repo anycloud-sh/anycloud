@@ -1198,7 +1198,7 @@ export function createClustersDomain(
       apiVersion: installation.apiVersion,
       ownerUsername: owner.username,
       ownerUserId: owner.id,
-      // `cluster create --github-apps` lists Apps; an API-made cluster none.
+      // `cluster create --sign-in-apps` lists Apps; an API-made cluster none.
       githubAppIds: [],
       apiUrl: clusterApiUrl(installation.id),
       chart,
@@ -1350,7 +1350,7 @@ export function createClustersDomain(
       apiVersion: intent.apiVersion,
       ownerUsername: owner.username,
       ownerUserId: owner.id,
-      // `cluster create --github-apps` lists Apps; an API-made cluster none.
+      // `cluster create --sign-in-apps` lists Apps; an API-made cluster none.
       githubAppIds: [],
       apiUrl: clusterApiUrl(installation.id),
       chart,

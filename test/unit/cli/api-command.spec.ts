@@ -1118,7 +1118,7 @@ describe('api command', () => {
     );
   });
 
-  it('api upgrade --github-apps sets the App list on an API already on this release', async () => {
+  it('api upgrade --sign-in-apps sets the App list on an API already on this release', async () => {
     useHostedActive();
     mocks.systemReleaseStatus.mockResolvedValue({
       servedVersion: packageJson.version,
@@ -1127,7 +1127,7 @@ describe('api command', () => {
       rollout: null,
     });
     mocks.setGithubApps.mockResolvedValue({ githubAppIds: [5622376] });
-    await runApi(['upgrade', '--github-apps', '5622376', '--json']);
+    await runApi(['upgrade', '--sign-in-apps', '5622376', '--json']);
     expect(mocks.setGithubApps).toHaveBeenCalledWith({
       githubAppIds: [5622376],
     });
@@ -1138,7 +1138,23 @@ describe('api command', () => {
     });
   });
 
-  describe('api upgrade --github-apps on an older API', () => {
+  it('api upgrade --sign-in-apps none clears the App list', async () => {
+    useHostedActive();
+    mocks.systemReleaseStatus.mockResolvedValue({
+      servedVersion: packageJson.version,
+      schemaVersion: packageJson.version,
+      upgrade: null,
+      rollout: null,
+    });
+    mocks.setGithubApps.mockResolvedValue({ githubAppIds: [] });
+    await runApi(['upgrade', '--sign-in-apps', 'none']);
+    expect(mocks.setGithubApps).toHaveBeenCalledWith({ githubAppIds: [] });
+    expect(mocks.printSuccess).toHaveBeenCalledWith(
+      expect.stringContaining('exchanges no GitHub App user tokens'),
+    );
+  });
+
+  describe('api upgrade --sign-in-apps on an older API', () => {
     const older = {
       servedVersion: '0.0.1',
       schemaVersion: '0.0.1',
@@ -1146,7 +1162,7 @@ describe('api command', () => {
       rollout: null,
     };
     const upgraded = (state: string, lastError: string | null = null) => ({
-      servedVersion: state === 'failed' ? '0.0.1' : packageJson.version,
+      servedVersion: state === 'running' ? packageJson.version : '0.0.1',
       schemaVersion: packageJson.version,
       upgrade: {
         number: 1,
@@ -1180,17 +1196,22 @@ describe('api command', () => {
         .mockRejectedValueOnce(
           new ORPCError('SERVICE_UNAVAILABLE', { status: 503 }),
         )
+        // An earlier upgrade's failure is not this run's.
+        .mockResolvedValueOnce({
+          ...older,
+          upgrade: { ...upgraded('failed').upgrade, number: 0 },
+        })
         .mockResolvedValueOnce(upgraded('running'));
-      await runApi(['upgrade', '--github-apps', '5622376', '--json']);
+      await runApi(['upgrade', '--sign-in-apps', '5622376', '--json']);
       expect(mocks.systemReleaseRequest).toHaveBeenCalledWith({
         image: `${packageJson.apiImage}:${packageJson.version}`,
       });
-      expect(mocks.systemReleaseStatus).toHaveBeenCalledTimes(3);
+      expect(mocks.systemReleaseStatus).toHaveBeenCalledTimes(4);
       expect(mocks.setGithubApps).toHaveBeenCalledWith({
         githubAppIds: [5622376],
       });
       expect(
-        mocks.systemReleaseStatus.mock.invocationCallOrder[2],
+        mocks.systemReleaseStatus.mock.invocationCallOrder[3],
       ).toBeLessThan(mocks.setGithubApps.mock.invocationCallOrder[0]!);
       expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toMatchObject({
         outcome: 'started',
@@ -1199,12 +1220,52 @@ describe('api command', () => {
       });
     });
 
+    it('prints the upgrade once, then the list it set', async () => {
+      mocks.systemReleaseStatus
+        .mockResolvedValueOnce(older)
+        .mockResolvedValueOnce(upgraded('running'));
+      await runApi(['upgrade', '--sign-in-apps', '5622376']);
+      const lines = [
+        ...mocks.printInfo.mock.calls,
+        ...mocks.printSuccess.mock.calls,
+      ].map(([line]) => String(line));
+      expect(lines.filter((line) => line.includes('started'))).toEqual([
+        `Hosted API upgrade 1 started: 0.0.1 → ${packageJson.version}.`,
+      ]);
+      expect(mocks.printSuccess).toHaveBeenCalledWith(
+        'Hosted API https://api-1.anycloud.sh exchanges user tokens of GitHub Apps 5622376.',
+      );
+    });
+
+    it('stops waiting after 20 minutes with exit 4, setting nothing', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        mocks.systemReleaseStatus
+          .mockResolvedValueOnce(older)
+          .mockImplementation(async () => {
+            vi.setSystemTime(Date.now() + 21 * 60_000);
+            return upgraded('starting');
+          });
+        await expect(
+          runApi(['upgrade', '--sign-in-apps', '5622376']),
+        ).rejects.toThrow('process.exit:4');
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(mocks.setGithubApps).not.toHaveBeenCalled();
+      expect(mocks.printError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Upgrade 1 is still starting after 20 minutes, so the GitHub App list was not set',
+        ),
+      );
+    });
+
     it('sets nothing when the upgrade fails, and says so', async () => {
       mocks.systemReleaseStatus
         .mockResolvedValueOnce(older)
         .mockResolvedValueOnce(upgraded('failed', 'ready check timed out'));
       await expect(
-        runApi(['upgrade', '--github-apps', '5622376']),
+        runApi(['upgrade', '--sign-in-apps', '5622376']),
       ).rejects.toThrow('process.exit:1');
       expect(mocks.setGithubApps).not.toHaveBeenCalled();
       expect(mocks.printError).toHaveBeenCalledWith(

@@ -6,7 +6,7 @@ export const GITHUB_LOGIN_SCOPES = ['read:org', 'read:packages'] as const;
 
 const HOSTED_API_OWNER_ARG = '--hosted-api-owner';
 const HOSTED_API_OWNER_ID_ARG = '--hosted-api-owner-id';
-const HOSTED_API_GITHUB_APPS_ARG = '--hosted-api-github-apps';
+const HOSTED_API_SIGN_IN_APPS_ARG = '--hosted-api-sign-in-apps';
 
 export interface HostedApiOwner {
   ownerUserId: string;
@@ -15,12 +15,16 @@ export interface HostedApiOwner {
   githubAppIds: number[];
 }
 
-/** A comma-separated list of GitHub App ids, as `cluster create --github-apps` takes it. */
+/**
+ * A comma-separated list of GitHub App ids, as `--sign-in-apps` takes it;
+ * `none` is the empty list.
+ */
 export function parseGithubAppIds(list: string): number[] {
+  if (list.trim() === 'none') return [];
   const ids = list.split(',').map((id) => id.trim());
   if (!ids.every((id) => /^[1-9]\d*$/.test(id))) {
     throw new Error(
-      `GitHub App ids are positive integers separated by commas, not "${list}"`,
+      `GitHub App ids are positive integers separated by commas, or none; not "${list}"`,
     );
   }
   return ids.map(Number);
@@ -74,7 +78,7 @@ function githubAppIdsFromJson(json: string): number[] {
     !ids.every((id) => Number.isSafeInteger(id) && (id as number) > 0)
   ) {
     throw new Error(
-      `${HOSTED_API_GITHUB_APPS_ARG} takes a JSON array of GitHub App ids, not ${json}`,
+      `${HOSTED_API_SIGN_IN_APPS_ARG} takes a JSON array of GitHub App ids, not ${json}`,
     );
   }
   return ids as number[];
@@ -96,7 +100,7 @@ export function hostedApiOwnerFromArgv(
   if (!username) {
     throw new Error(`${HOSTED_API_OWNER_ARG} requires a GitHub username`);
   }
-  const githubApps = argumentValue(argv, HOSTED_API_GITHUB_APPS_ARG);
+  const githubApps = argumentValue(argv, HOSTED_API_SIGN_IN_APPS_ARG);
   return {
     ownerUserId: normalizeUserId(argumentValue(argv, HOSTED_API_OWNER_ID_ARG)!),
     username,

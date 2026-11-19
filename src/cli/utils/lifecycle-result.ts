@@ -27,6 +27,14 @@ sign-in is needed (exit 2). Exit codes: 0 done, 1 refused or failed,
 2 not run (a usage error, an unreachable API or a sign-in; run it again), 130 Ctrl-C
 (no document).`;
 
+/** A hosted API's upgrade `api upgrade --sign-in-apps` gave up waiting on; exits 4. */
+export class HostedApiStillStartingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HostedApiStillStartingError';
+  }
+}
+
 /** A flag or argument the command can't run with; exits 2. */
 export class UsageError extends Error {
   constructor(message: string) {
@@ -72,13 +80,15 @@ export function lifecycleError(
     ? [own, 1]
     : error instanceof LocalApiStillStartingError
       ? ['LOCAL_API_STILL_STARTING', 4]
-      : error instanceof UsageError
-        ? ['INVALID_ARGUMENT', NOT_RUN_EXIT_CODE]
-        : unreachable(error)
-          ? ['API_UNREACHABLE', NOT_RUN_EXIT_CODE]
-          : error instanceof ORPCError && error.defined
-            ? [error.code, 1]
-            : ['UNEXPECTED', 1];
+      : error instanceof HostedApiStillStartingError
+        ? ['HOSTED_API_STILL_STARTING', 4]
+        : error instanceof UsageError
+          ? ['INVALID_ARGUMENT', NOT_RUN_EXIT_CODE]
+          : unreachable(error)
+            ? ['API_UNREACHABLE', NOT_RUN_EXIT_CODE]
+            : error instanceof ORPCError && error.defined
+              ? [error.code, 1]
+              : ['UNEXPECTED', 1];
   return { code, message: errorMessage(error), exitCode };
 }
 

@@ -20,7 +20,7 @@ import { WorkloadState } from '../../../../src/shared/workload.js';
 import { completedCommand, rejectedCommand } from './api-assertions.js';
 import { declaredApiError } from './api.js';
 import { databaseInteger } from './database.js';
-import { githubToken } from './fake-github.js';
+import { appUserToken, githubToken, SIGN_IN_APP_ID } from './fake-github.js';
 import {
   LocalApiProcess,
   unscopedCliEnvironment,
@@ -442,6 +442,30 @@ export class ApiAuthScenarios {
     assert.equal(
       (await this.#request(fixture, 'api-token-bearer', token)).status,
       200,
+    );
+
+    // A listed GitHub App's user token gets the same API token; another
+    // App's, or one that reaches no installation of its App, is refused.
+    assert.equal(
+      await this.#exchangedToken(
+        fixture,
+        'app-sign-in',
+        appUserToken('anycloud-test', SIGN_IN_APP_ID),
+      ),
+      token,
+      "A listed App sign-in must return the account's API token",
+    );
+    for (const [label, bearer] of [
+      ['unlisted-app', appUserToken('anycloud-test', 7)],
+      ['no-installation', appUserToken('anycloud-test', 0)],
+    ] as const) {
+      const refused = await this.#exchange(fixture, label, bearer);
+      assert.equal(refused.status, 401, `A ${label} sign-in was exchanged`);
+    }
+    // The App sign-in kept no GitHub sign-in; logging in again restores it.
+    assert.equal(
+      await this.#exchangedToken(fixture, 'login-again', OWNER),
+      token,
     );
     assert.equal(
       await this.#exchangedToken(fixture, 'second-machine', OWNER),

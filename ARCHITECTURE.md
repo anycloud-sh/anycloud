@@ -980,7 +980,7 @@ Each table, with its purpose, its writer and the invariants it carries:
   `api-access-policy.ts` writes them.
 - **`api_tokens`**: a hosted API's own bearer, one per admitted GitHub account
   (the owner included), looked up by the token's SHA-256 and kept encrypted
-  with the account's newest OAuth sign-in, none for an App-only account.
+  with the account's newest sign-in, none after an App sign-in.
   `api-tokens.ts` writes it; `api-access-policy.ts` deletes a member's row on
   removal.
 - **`api_ownership_backfill_targets`**: the resumable queue that labels legacy
@@ -1470,14 +1470,16 @@ skips GitHub unless the token starts with `gho_` (an OAuth sign-in) or `ghu_`
 (a GitHub App's user token). For `gho_` it requires GitHub to list exactly
 `read:org` and `read:packages`. For `ghu_` it reads the issuing App from
 `GET /user/installations`, which lists only that App's installations the
-person reaches, and requires its ID in the access policy's App list. `cluster
-create --github-apps` seeds that list through the release values on the
-API's first start, and the owner replaces it with `api upgrade --github-apps`;
-a token that reaches no installation names no App and is refused. It takes the account from `GET /user` and checks
-the access policy. It then stores an OAuth sign-in encrypted, for private GHCR
-pulls, Service hostnames and clusters, but never an App's: an App-only account
-has none, so those features refuse it with `GITHUB_SIGN_IN_REQUIRED` or the
-image error. It returns the account's existing token or mints the first. The
+person reaches, and requires its ID in the access policy's App list.
+`cluster create --sign-in-apps` seeds that list through the release values on
+the API's first start, and the owner replaces it with
+`api upgrade --sign-in-apps`; a token that reaches no installation names no
+App and is refused. It takes the account from `GET /user` and checks the
+access policy. It then stores an OAuth sign-in encrypted, for private GHCR
+pulls, Service hostnames, sharing and clusters. An App's sign-in is never
+stored and clears the one kept, so those features refuse the account with
+`GITHUB_SIGN_IN_REQUIRED` or the image error until it signs in with
+`anycloud login` again. It returns the account's existing token or mints the first. The
 exchange and `POST /v1/api-token/rotate` are the only routes that return a
 token; both are logged without it. Rotation replaces the hash and ciphertext in
 one statement, `api access remove` deletes the member's row, and a stale token

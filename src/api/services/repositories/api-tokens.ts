@@ -30,9 +30,9 @@ async function mintApiToken() {
 
 /**
  * The account's token, minted once and returned on every exchange. One
- * statement stores the newest OAuth sign-in (a GitHub App's is never kept)
- * only while the API admits the account, so neither a removal race nor
- * concurrent first exchanges mint a second.
+ * statement stores the newest sign-in (none for a GitHub App's, which clears
+ * a kept one) only while the API admits the account, so neither a removal
+ * race nor concurrent first exchanges mint a second.
  */
 export async function exchangeApiToken(
   owner: ApiTokenOwner,
@@ -54,7 +54,7 @@ export async function exchangeApiToken(
              AND EXISTS (SELECT 1 FROM api_access_users WHERE user_id = ?))
      ON CONFLICT(user_id) DO UPDATE SET
        username = excluded.username,
-       github_ciphertext = coalesce(excluded.github_ciphertext, github_ciphertext)
+       github_ciphertext = excluded.github_ciphertext
      RETURNING token_ciphertext`,
     [
       owner.userId,

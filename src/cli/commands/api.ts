@@ -76,6 +76,7 @@ import { ORPCError } from '@orpc/client';
 import {
   LIFECYCLE_EXIT_HELP,
   NOT_RUN_EXIT_CODE,
+  HostedApiStillStartingError,
   UsageError,
   exitWithLifecycleError,
   lifecycleError,
@@ -279,10 +280,61 @@ async function probeSystemRelease(
   }
 }
 
+const RELEASE_WAIT_MINUTES = 20;
+
+/**
+ * Waits until the hosted API serves `version` after the upgrade numbered
+ * `upgrade` (any upgrade when an older API didn't name it), through its
+ * restart. A failed upgrade, or one still starting after the wait, throws.
+ */
+async function waitForRelease(
+  client: ReturnType<typeof createApiClient>['systemRelease'],
+  version: string,
+  upgrade: number | null,
+): Promise<void> {
+  const deadline = Date.now() + RELEASE_WAIT_MINUTES * 60_000;
+  const ours = (status: SystemReleaseStatus | null) =>
+    status && (upgrade === null || status.upgrade?.number === upgrade)
+      ? status
+      : null;
+  const settled = await runUntilInterrupted(
+    'api upgrade --sign-in-apps',
+    (signal) =>
+      watchUntil(
+        () =>
+          probeSystemRelease(client).catch((error: unknown) => {
+            if (isApiRestart(error)) return null;
+            throw error;
+          }),
+        {
+          intervalSeconds: DEFAULT_WATCH_INTERVAL_SECONDS,
+          signal,
+          done: (status) =>
+            ours(status)?.servedVersion === version ||
+            (upgrade !== null &&
+              ours(status)?.upgrade?.state === WorkloadState.Failed) ||
+            Date.now() > deadline,
+          onRead: () => {},
+        },
+      ),
+  );
+  const status = ours(settled);
+  if (status?.servedVersion === version) return;
+  const name = `Upgrade ${upgrade ?? ''}`.trim();
+  if (status?.upgrade?.state === WorkloadState.Failed) {
+    throw new Error(
+      `${name} failed (${status.upgrade.lastError}), so the GitHub App list was not set. See \`anycloud api status\`.`,
+    );
+  }
+  throw new HostedApiStillStartingError(
+    `${name} is still starting after ${RELEASE_WAIT_MINUTES} minutes, so the GitHub App list was not set. Run \`anycloud api status --watch\`, then this command again.`,
+  );
+}
+
 interface ApiUpgradeOptions {
   image?: string;
   force?: boolean;
-  githubApps?: number[];
+  signInApps?: number[];
   json?: boolean;
 }
 
@@ -303,7 +355,7 @@ export interface ApiUpgradeResult {
    * the step). The K3s binary upgrade (b2) adds the server's versions.
    */
   k3s: { configuration: 'changed' | 'current' } | null;
-  /** The App list `--github-apps` set. */
+  /** The App list `--sign-in-apps` set. */
   githubAppIds?: number[];
 }
 
@@ -323,7 +375,7 @@ function createApiUpgradeCommand(): Command {
       'Stop the pool Jobs the upgrade waits for instead of waiting; each retries on the new release',
     )
     .option(
-      '--github-apps <ids>',
+      '--sign-in-apps <ids>',
       "Hosted API, owner only: replace the comma-separated GitHub App ids whose user tokens it exchanges, once it serves this CLI's release (an older one is upgraded first)",
       (list: string) => {
         try {
@@ -340,7 +392,7 @@ function createApiUpgradeCommand(): Command {
 Examples:
   $ anycloud api upgrade
   $ anycloud api upgrade --image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>
-  $ anycloud api upgrade --github-apps 5622376
+  $ anycloud api upgrade --sign-in-apps 5622376
 
 With the local API active, it is started or restarted on this CLI's release. If the
 active API is a Helm-managed API on a cluster (anycloud cluster create), it is
@@ -380,9 +432,9 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         // A hosted API is upgraded through its own API alone: the local API,
         // and Docker, are not touched.
         if (activeIsLocal) {
-          if (options.githubApps) {
+          if (options.signInApps) {
             throw new UsageError(
-              '--github-apps applies only to a hosted API; a local API exchanges no tokens.',
+              '--sign-in-apps applies only to a hosted API; a local API exchanges no tokens.',
             );
           }
           const localBefore = await reconcileLocalApi(currentVersion, {
@@ -438,9 +490,9 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         const releaseStatus = await probeSystemRelease(hostedRelease);
         if (releaseStatus) {
           const served = releaseStatus.servedVersion;
-          if (options.githubApps && options.image) {
+          if (options.signInApps && options.image) {
             throw new UsageError(
-              "--github-apps sets the list on this CLI's release; leave out --image.",
+              "--sign-in-apps sets the list on this CLI's release; leave out --image.",
             );
           }
           let k3sResult: ApiUpgradeResult['k3s'] = null;
@@ -455,48 +507,28 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
             k3s: k3sResult,
           });
           // Only this release's API keeps an App list: set it at once on one
-          // that serves it, and after the upgrade on an older one.
+          // that serves it, and after this run's upgrade on an older one.
           const finishHosted = async (
             result: ApiUpgradeResult,
             message: string,
           ) => {
-            if (!options.githubApps) return finish(result, message);
+            if (!options.signInApps) return finish(result, message);
+            printInfo(message);
             if (served !== currentVersion) {
-              printInfo(message);
-              const settled = await runUntilInterrupted(
-                'api upgrade --github-apps',
-                (signal) =>
-                  watchUntil(
-                    () =>
-                      probeSystemRelease(hostedRelease).catch(
-                        (error: unknown) => {
-                          if (isApiRestart(error)) return null;
-                          throw error;
-                        },
-                      ),
-                    {
-                      intervalSeconds: DEFAULT_WATCH_INTERVAL_SECONDS,
-                      signal,
-                      done: (status) =>
-                        status?.servedVersion === currentVersion ||
-                        status?.upgrade?.state === WorkloadState.Failed,
-                      onRead: () => {},
-                    },
-                  ),
+              await waitForRelease(
+                hostedRelease,
+                currentVersion,
+                result.upgrade,
               );
-              if (settled!.servedVersion !== currentVersion) {
-                const { number, lastError } = settled!.upgrade!;
-                throw new Error(
-                  `Upgrade ${number} failed (${lastError}), so the GitHub App list was not set. See \`anycloud api status\`.`,
-                );
-              }
             }
             const { githubAppIds } = await hostedClient.apiAccess.setGithubApps(
-              { githubAppIds: options.githubApps },
+              { githubAppIds: options.signInApps },
             );
             finish(
               { ...result, githubAppIds },
-              `${message} It exchanges user tokens of GitHub Apps ${githubAppIds.join(', ') || '(none)'}.`,
+              githubAppIds.length
+                ? `Hosted API ${activeTarget.url} exchanges user tokens of GitHub Apps ${githubAppIds.join(', ')}.`
+                : `Hosted API ${activeTarget.url} exchanges no GitHub App user tokens.`,
             );
           };
           if (!options.image && served === currentVersion) {
@@ -568,7 +600,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
               hostedResult('accepted', null),
               `Hosted API ${activeTarget.url} accepted the upgrade to ${image}.`,
             );
-            if (options.githubApps) return;
+            if (options.signInApps) return;
             printInfo(
               `It keeps running while it is replaced. Run "anycloud api status" until it no longer reports version ${releaseStatus.servedVersion}.`,
             );
@@ -582,7 +614,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
             ),
             `Hosted API upgrade ${result.upgrade.number} started: ${releaseStatus.servedVersion} → ${result.upgrade.apiVersion}.`,
           );
-          if (options.githubApps) return;
+          if (options.signInApps) return;
           printInfo(
             'It backed its database up and keeps running while it is replaced. Run "anycloud api status --watch" to follow the upgrade.',
           );

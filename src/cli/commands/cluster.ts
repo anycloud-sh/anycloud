@@ -69,7 +69,7 @@ interface CreateOptions extends JsonOptions {
   zone?: string;
   vmType?: string;
   checkpointBucket?: string;
-  githubApps?: number[];
+  signInApps?: number[];
 }
 
 const DEFAULT_DESTROY_TIMEOUT_SECONDS = 900;
@@ -255,7 +255,7 @@ function createCreateCommand(): Command {
       "Existing bucket you own for the hosted API state (database backups), in the cloud CLI's account; without it Anycloud creates and manages one named after the cluster",
     )
     .option(
-      '--github-apps <ids>',
+      '--sign-in-apps <ids>',
       'Comma-separated GitHub App ids whose user tokens the API exchanges for its own, like an `anycloud login` sign-in',
       (list: string) => {
         try {
@@ -306,7 +306,7 @@ Examples:
           checkpointBucket: options.checkpointBucket ?? null,
           githubToken,
           owner: await gitHubUser(githubToken),
-          githubAppIds: options.githubApps ?? [],
+          githubAppIds: options.signInApps ?? [],
           version: packageJson.version,
           hostedApi: (apiUrl) => apiClient({ apiUrl }),
           progress: (message) =>
