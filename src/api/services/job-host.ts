@@ -288,6 +288,16 @@ start_docker() {
 }`;
 
 /**
+ * initializeVM's install of a Job host's Docker over SSH, which finishes what
+ * the user data left undone. iptables, which start_docker needs, comes first.
+ * It runs after cloud-init settles, so its dpkg never contends with
+ * cloud-init's package modules for the lock.
+ */
+export const JOB_HOST_SSH_DOCKER = `${JOB_HOST_DOCKER}
+${installIptables(null)}
+install_iptables && install_docker && start_docker`;
+
+/**
  * The preparation a CPU VM Job host runs from its user data while the API
  * waits for SSH: Docker (JOB_HOST_DOCKER), then a pull of a public image
  * through containerd's transfer service, which unpacks layers in parallel,
@@ -364,8 +374,8 @@ echo $rc > "$dir/pull"`
  * cloud-init's network stage, before sshd and cloud-init's later stages. It
  * adds the API's key for root, starts the host's preparation in its own unit
  * (no default dependencies, so systemd starts it at once rather than after
- * boot), and masks apt's timers, so initializeVM's first-boot settle is
- * short. bootcmd runs on every boot; the preparation is idempotent.
+ * boot), and masks apt's timers, which would compete with the Job. bootcmd
+ * runs on every boot; the preparation is idempotent.
  */
 export function generateJobHostUserData(
   sshKeys: SSHKeys,
@@ -392,15 +402,15 @@ const JOB_HOST_DOCKER_WAIT_SECONDS = 180;
 
 /**
  * A Job host's user data installs Docker while the API waits for SSH
- * (generateJobHostUserData); wait for it to finish. A no-op on other hosts.
- * Best-effort: if it failed or is still running, initializeVM's install
- * proceeds.
+ * (generateJobHostUserData); wait for it to finish, and return whether it
+ * did. Best-effort: false on other hosts, or if it failed or is still
+ * running, and initializeVM's install (JOB_HOST_SSH_DOCKER) proceeds.
  */
 export async function waitForJobHostDocker(
   exec: VmExec,
   workloadId: string,
   vmIp: string,
-): Promise<void> {
+): Promise<boolean> {
   const dir = JOB_HOST_PREPARE_DIR;
   try {
     const { stdout } = await exec(
@@ -408,9 +418,6 @@ export async function waitForJobHostDocker(
         `[ -d ${dir} ] || { echo none; exit 0; }`,
         `for _ in $(seq ${JOB_HOST_DOCKER_WAIT_SECONDS * 2}); do [ -s ${dir}/docker ] && break; sleep 0.5; done`,
         `status=$(cat ${dir}/docker 2>/dev/null || echo pending)`,
-        // initializeVM then installs or starts Docker over SSH, which needs
-        // iptables when the user data didn't get it.
-        `[ "$status" = 0 ] || { ${installIptables(null).replace(/\n/g, '\n  ')}\n  install_iptables >/dev/null 2>&1; }`,
         'echo "$status"',
         // A failed prepare's evidence follows the status line.
         `case "$status" in 0) ;; *) tail -c 4000 ${dir}/failure.log ${dir}/docker-install.log ${dir}/iptables.log 2>/dev/null || true ;; esac`,
@@ -418,26 +425,26 @@ export async function waitForJobHostDocker(
       (JOB_HOST_DOCKER_WAIT_SECONDS + 30) * 1000,
     );
     const [status = '', ...evidence] = stdout.trim().split('\n');
-    if (status === 'none') return;
+    if (status === 'none') return false;
     if (status === '0') {
       log.info('Job host Docker prepared by user data', {
         id: workloadId,
         ip: vmIp,
         status,
       });
-    } else {
-      log.warn(
-        status === 'pending'
-          ? 'Job host Docker prepare still running; installing over SSH'
-          : 'Job host Docker prepare failed; installing over SSH',
-        {
-          id: workloadId,
-          ip: vmIp,
-          status,
-          evidence: evidence.join('\n'),
-        },
-      );
+      return true;
     }
+    log.warn(
+      status === 'pending'
+        ? 'Job host Docker prepare still running; installing over SSH'
+        : 'Job host Docker prepare failed; installing over SSH',
+      {
+        id: workloadId,
+        ip: vmIp,
+        status,
+        evidence: evidence.join('\n'),
+      },
+    );
   } catch (error) {
     log.warn('Job host Docker wait failed; installing over SSH', {
       id: workloadId,
@@ -445,6 +452,7 @@ export async function waitForJobHostDocker(
       error,
     });
   }
+  return false;
 }
 
 /** Each wait for a Job host's pre-pull, kept short of NAT idle teardowns. */
