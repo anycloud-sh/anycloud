@@ -6,6 +6,7 @@ import type { User } from './entities.js';
 import { getWorkloadApiUrl } from '../config.js';
 import {
   assertApiAccess,
+  findServiceTokenUser,
   listServiceAccountDeployments,
   type ServiceAccountDeployment,
 } from './repositories/api-access-policy.js';
@@ -165,8 +166,8 @@ async function authenticateServiceAccount(
 }
 
 /**
- * A hosted API admits the API tokens it issues and registered Deployments'
- * ServiceAccount tokens. The access policy is checked on every request, so
+ * A hosted API admits the API tokens it issues (a GitHub account's, or an
+ * owner-issued service's) and registered Deployments' ServiceAccount tokens. The access policy is checked on every request, so
  * removal takes effect on the next one.
  */
 export function createHostedApiAuthentication(
@@ -185,8 +186,12 @@ export function createHostedApiAuthentication(
     }
     const owner = await findApiTokenOwner(token);
     if (!owner) {
+      // A service has no GitHub sign-in; its token row is its admission.
+      const service = await findServiceTokenUser(token);
+      if (service)
+        return { id: service.userId, username: service.username, token: null };
       throw new Error(
-        `This API token was rotated or removed: ${login} for the current one.`,
+        `This API token was rotated or removed: ${login} for the current one, or for a service token ask the API's owner to rotate it.`,
       );
     }
     const identity = { id: owner.userId, username: owner.username };

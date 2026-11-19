@@ -816,14 +816,17 @@ erDiagram
   api_access_policy {
     int id PK "single row"
     text owner_user_id
+    text github_app_ids "JSON App ids"
   }
   api_access_users {
     text user_id PK
     text username
+    text token_hash UK "service tokens only"
   }
   api_tokens {
     text user_id PK
     text token_hash UK
+    text github_ciphertext "null for an App sign-in"
   }
   api_ownership_backfill_targets {
     int vm_id PK, FK
@@ -971,12 +974,15 @@ Each table, with its purpose, its writer and the invariants it carries:
 - **`quota_operations`** and **`quota_operation_targets`**: history of quota
   increase submissions. New submissions are retired, so nothing writes them.
 - **`api_access_policy`** and **`api_access_users`**: the hosted API's single
-  owner identity and its explicit GitHub-account allowlist.
+  owner identity, the GitHub Apps whose user tokens it exchanges, and its
+  explicit allowlist of GitHub accounts, registered Deployment names and
+  owner-issued services, each service with the SHA-256 of its token.
   `api-access-policy.ts` writes them.
 - **`api_tokens`**: a hosted API's own bearer, one per admitted GitHub account
   (the owner included), looked up by the token's SHA-256 and kept encrypted
-  with the account's GitHub sign-in. `api-tokens.ts` writes it;
-  `api-access-policy.ts` deletes a member's row on removal.
+  with the account's newest sign-in, none after an App sign-in.
+  `api-tokens.ts` writes it; `api-access-policy.ts` deletes a member's row on
+  removal.
 - **`api_ownership_backfill_targets`**: the resumable queue that labels legacy
   provider resources with their owning API, one row per VM.
   `api-ownership-store.ts` writes it.
@@ -1460,10 +1466,20 @@ trusts read the current signing key. A hosted API admits only the opaque
 API tokens it issues (`acapi_` plus 32 random bytes), one per admitted GitHub
 account, never a GitHub token. `anycloud login <api>` (or the CLI's first
 command to it) exchanges a GitHub sign-in at `POST /v1/api-token`. The exchange
-skips GitHub unless the token starts with `gho_`, requires GitHub to list
-exactly `read:org` and `read:packages` for it, and checks the access policy. It
-then stores the sign-in encrypted, for private GHCR pulls, Service hostnames
-and clusters, and returns the account's existing token or mints the first. The
+skips GitHub unless the token starts with `gho_` (an OAuth sign-in) or `ghu_`
+(a GitHub App's user token). For `gho_` it requires GitHub to list exactly
+`read:org` and `read:packages`. For `ghu_` it reads the issuing App from
+`GET /user/installations`, which lists only that App's installations the
+person reaches, and requires its ID in the access policy's App list.
+`cluster create --sign-in-apps` seeds that list through the release values on
+the API's first start, and the owner replaces it with
+`api upgrade --sign-in-apps`; a token that reaches no installation names no
+App and is refused. It takes the account from `GET /user` and checks the
+access policy. It then stores an OAuth sign-in encrypted, for private GHCR
+pulls, Service hostnames, sharing and clusters. An App's sign-in is never
+stored and clears the one kept, so those features refuse the account with
+`GITHUB_SIGN_IN_REQUIRED` or the image error until it signs in with
+`anycloud login` again. It returns the account's existing token or mints the first. The
 exchange and `POST /v1/api-token/rotate` are the only routes that return a
 token; both are logged without it. Rotation replaces the hash and ciphertext in
 one statement, `api access remove` deletes the member's row, and a stale token
@@ -1512,6 +1528,12 @@ A local API has one owner, the holder of its token, recorded as
 `local:<api identity>`. A hosted API admits its bound owner plus explicit `api_access_users`
 entries by immutable GitHub ID. Successful authentication refreshes stored
 usernames as display metadata without changing identity.
+
+The owner's `api access add --service <name>` adds `service:<name>` to
+`api_access_users` with the SHA-256 of a new `acapi_` token, printed once and
+never stored; `api token rotate --service` replaces the hash. An `acapi_`
+bearer that matches no member's API token is looked up there; a match admits
+the service as a peer with no GitHub sign-in.
 
 A hosted API also admits a registered Deployment (RFC 0049 C29). The owner's
 `api access add --service-account <deployment>` stores

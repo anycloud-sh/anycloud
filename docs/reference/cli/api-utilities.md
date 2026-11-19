@@ -13,14 +13,14 @@ Manage the active API target:
 anycloud api list|ls [--json]
 anycloud api use [target]
 anycloud api status|describe [--watch [--interval <seconds>]] [--json]
-anycloud api upgrade|update [--image <reference>] [--force] [--json]
+anycloud api upgrade|update [--image <reference>] [--force] [--sign-in-apps <id,...>] [--json]
 anycloud api start [options]
 anycloud api stop
 anycloud api logs [-f]
-anycloud api access add <github-user> | --service-account <deployment>
-anycloud api access remove|rm <github-user-or-id> | --service-account <deployment>
+anycloud api access add <github-user> | --service <name> | --service-account <deployment> [--json]
+anycloud api access remove|rm <github-user-or-id> | --service <name> | --service-account <deployment>
 anycloud api access list|ls [--json]
-anycloud api token [rotate]
+anycloud api token [rotate [--service <name>] [--json]]
 ```
 
 | Option              | Description                                            |
@@ -108,6 +108,18 @@ replacement can't launch stays one VM short until it can.
 The active API selection is not changed. When a stopped active local API has a saved loopback URL with a custom port,
 `api upgrade` starts it again on that port.
 
+`--sign-in-apps <id,...>` replaces the GitHub Apps, by App ID, whose user
+tokens a hosted API exchanges (see [API tokens](#api-tokens)); `none` clears
+the list. Only the API's owner may set it. On an API already on this CLI's
+release it sets the list at once. On an older one it upgrades first, waits
+until the new release serves, and then sets the list. When the upgrade fails
+it sets nothing and exits with status 1; when the upgrade is still starting
+after 20 minutes it sets nothing and exits with status 4
+(`HOSTED_API_STILL_STARTING`). It doesn't combine with `--image`.
+`cluster create --sign-in-apps` sets the first list. Removing an App stops
+further exchanges of its tokens but doesn't revoke the API tokens already
+exchanged; `anycloud api token rotate` does, for each account.
+
 ### Give someone access
 
 The owner of a hosted API can share it with more GitHub accounts:
@@ -141,9 +153,29 @@ APIs](/platform/hosted-apis) for the complete setup, lifecycle, and trust model.
 GitHub user, so a client running in that Deployment authenticates with its
 replicas' ServiceAccount token and stores no API token; see
 [Clients inside the cluster](/platform/hosted-apis#clients-inside-the-cluster).
-`list` shows each entry's `KIND` (`github` or `serviceaccount`) and, for a
-registered Deployment, its ID or `no deployment`; `--json` adds `kind` and
-`deploymentId`.
+`list` shows each entry's `KIND` (`github`, `service` or `serviceaccount`)
+and, for a registered Deployment, its ID or `no deployment`; `--json` adds
+`kind` and `deploymentId`.
+
+### Service tokens
+
+The owner issues a token for a program that isn't a person, such as a CI
+system or a listener running on a VM:
+
+```bash
+anycloud api access add --service ci
+anycloud api token rotate --service ci
+anycloud api access remove --service ci
+```
+
+`add --service` prints the token once; the API keeps only its SHA-256. With
+`--json` it prints `{"kind":"service","userId":"service:ci","username":"ci","token":"acapi_…"}`.
+`rotate --service` prints a new token and the old one is refused on its next
+request; `remove --service` ends access at once. Only the owner issues,
+rotates or removes service tokens. A name is 1–63 lowercase letters, digits
+and hyphens, and can't be the GitHub login of anyone with access. The program
+sets the token as `ANYCLOUD_API_TOKEN` beside `API_URL`, like a member's token;
+see [Service tokens](/platform/hosted-apis#service-tokens).
 
 ### API tokens
 
@@ -157,6 +189,14 @@ from gets the same token, so `anycloud api token` prints it for CI:
 anycloud api token
 anycloud api token rotate
 ```
+
+A hosted API also exchanges a user token (`ghu_`) of a GitHub App its owner
+listed with `cluster create --sign-in-apps` or `api upgrade --sign-in-apps`,
+from a tool that signs you in through that App; one from another App, or one
+that reaches none of the App's installations, is refused. It returns the same
+API token as `anycloud login <api-url>`, but the API never keeps an App's
+sign-in and drops the one it kept: private GHCR images, Services, clusters and
+`api access add` need GitHub until you run `anycloud login <api-url>` again.
 
 In CI or an agent, set `ANYCLOUD_API_TOKEN` to the token together with
 `API_URL`. The CLI and the Python SDK ignore `ANYCLOUD_API_TOKEN` unless

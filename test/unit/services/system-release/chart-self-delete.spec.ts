@@ -37,6 +37,16 @@ describe('the API chart’s self-delete values (RFC 0049 C26 (e))', () => {
     expect(chart('values.yaml')).toMatch(/^e2eAccess: false$/m);
   });
 
+  it('names the listed GitHub Apps to the API process only when there are any', () => {
+    const api = chart('templates/api.yaml');
+    const start = api.indexOf('{{- with .Values.installation.githubAppIds }}');
+    expect(start).toBeGreaterThan(api.indexOf('- --hosted-api-owner-id'));
+    expect(api.slice(start, api.indexOf('{{- end }}', start))).toContain(
+      '- --hosted-api-sign-in-apps\n            - {{ toJson . | quote }}',
+    );
+    expect(chart('values.yaml')).toMatch(/^ {2}githubAppIds: \[\]$/m);
+  });
+
   it('names the digest-pinned release image to the API container', () => {
     const api = chart('templates/api.yaml');
     const env = api.indexOf('- name: ANYCLOUD_RELEASE_IMAGE');

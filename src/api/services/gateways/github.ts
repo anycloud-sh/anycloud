@@ -167,6 +167,32 @@ export default class Github {
     }
   }
 
+  /**
+   * The GitHub App a user token (`ghu_`) belongs to. GET /user/installations
+   * lists only that App's installations the person can reach, so the first
+   * names it; with none reachable, the App can't be told and this is null.
+   */
+  static async issuingApp(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<{ id: number; slug: string } | null> {
+    assertRequestActive(signal);
+    const client = githubClient(accessToken, signal);
+    try {
+      const { data } = await awaitWithSignal(
+        client.apps.listInstallationsForAuthenticatedUser({ per_page: 1 }),
+        signal,
+      );
+      const [installation] = data.installations;
+      return installation
+        ? { id: installation.app_id, slug: installation.app_slug }
+        : null;
+    } catch (err) {
+      assertRequestActive(signal);
+      throw toGithubAuthError(err);
+    }
+  }
+
   static async authenticate(
     accessToken: string,
     signal?: AbortSignal,

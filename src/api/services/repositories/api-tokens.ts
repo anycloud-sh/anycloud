@@ -7,36 +7,40 @@ import { getDB, type DB } from './db.js';
 export const API_TOKEN_PREFIX = 'acapi_';
 const LAST_USED_INTERVAL_MS = 60 * 60 * 1000;
 
-/** An account and its GitHub sign-in, decrypted. */
+/** An account and its GitHub sign-in, decrypted; none for a GitHub App's. */
 export interface ApiTokenOwner {
   userId: string;
   username: string;
-  githubToken: string;
+  githubToken: string | null;
 }
 
-const hashApiToken = (token: string) =>
+export const hashApiToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
-async function mintApiToken() {
+/** A fresh bearer and its SHA-256, the only form a service token is kept in. */
+export function newApiToken(): { token: string; hash: string } {
   const token = `${API_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
-  return {
-    token,
-    hash: hashApiToken(token),
-    ciphertext: await encryptSecret(token),
-  };
+  return { token, hash: hashApiToken(token) };
+}
+
+async function mintApiToken() {
+  const minted = newApiToken();
+  return { ...minted, ciphertext: await encryptSecret(minted.token) };
 }
 
 /**
  * The account's token, minted once and returned on every exchange. One
- * statement stores the newest sign-in only while the API admits the account,
- * so neither a removal race nor concurrent first exchanges mint a second.
+ * statement stores the newest sign-in (none for a GitHub App's, which clears
+ * a kept one) only while the API admits the account, so neither a removal
+ * race nor concurrent first exchanges mint a second.
  */
 export async function exchangeApiToken(
   owner: ApiTokenOwner,
   db: DB = getDB(),
 ): Promise<string> {
   const minted = await mintApiToken();
-  const githubCiphertext = await encryptSecret(owner.githubToken);
+  const githubCiphertext =
+    owner.githubToken === null ? null : await encryptSecret(owner.githubToken);
   // The exchange's admission check, as assertApiAccess decides it;
   // per-request assertApiAccess writes back renamed usernames.
   const [row] = await db.query<{ token_ciphertext: string }>(
@@ -92,7 +96,7 @@ export async function findApiTokenOwner(
     reader.query<{
       user_id: string;
       username: string;
-      github_ciphertext: string;
+      github_ciphertext: string | null;
       last_used_at: number | null;
     }>(
       `SELECT user_id, username, github_ciphertext, last_used_at
@@ -112,6 +116,9 @@ export async function findApiTokenOwner(
   return {
     userId: row.user_id,
     username: row.username,
-    githubToken: await decryptSecret(row.github_ciphertext),
+    githubToken:
+      row.github_ciphertext === null
+        ? null
+        : await decryptSecret(row.github_ciphertext),
   };
 }

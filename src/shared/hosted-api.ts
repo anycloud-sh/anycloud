@@ -6,10 +6,28 @@ export const GITHUB_LOGIN_SCOPES = ['read:org', 'read:packages'] as const;
 
 const HOSTED_API_OWNER_ARG = '--hosted-api-owner';
 const HOSTED_API_OWNER_ID_ARG = '--hosted-api-owner-id';
+const HOSTED_API_SIGN_IN_APPS_ARG = '--hosted-api-sign-in-apps';
 
 export interface HostedApiOwner {
   ownerUserId: string;
   username: string;
+  /** GitHub Apps whose user tokens the exchange accepts. */
+  githubAppIds: number[];
+}
+
+/**
+ * A comma-separated list of GitHub App ids, as `--sign-in-apps` takes it;
+ * `none` is the empty list.
+ */
+export function parseGithubAppIds(list: string): number[] {
+  if (list.trim() === 'none') return [];
+  const ids = list.split(',').map((id) => id.trim());
+  if (!ids.every((id) => /^[1-9]\d*$/.test(id))) {
+    throw new Error(
+      `GitHub App ids are positive integers separated by commas, or none; not "${list}"`,
+    );
+  }
+  return ids.map(Number);
 }
 
 export function isHostedApiImage(image: string | null): boolean {
@@ -49,6 +67,23 @@ export function normalizeUserId(userId: string): string {
   return BigInt(normalized).toString();
 }
 
+/**
+ * The chart passes the list as JSON: Helm reads value numbers as floats, and
+ * only `toJson` prints an App id such as 5622376 whole.
+ */
+function githubAppIdsFromJson(json: string): number[] {
+  const ids: unknown = JSON.parse(json);
+  if (
+    !Array.isArray(ids) ||
+    !ids.every((id) => Number.isSafeInteger(id) && (id as number) > 0)
+  ) {
+    throw new Error(
+      `${HOSTED_API_SIGN_IN_APPS_ARG} takes a JSON array of GitHub App ids, not ${json}`,
+    );
+  }
+  return ids as number[];
+}
+
 export function hostedApiOwnerFromArgv(
   argv: string[],
 ): HostedApiOwner | undefined {
@@ -65,8 +100,10 @@ export function hostedApiOwnerFromArgv(
   if (!username) {
     throw new Error(`${HOSTED_API_OWNER_ARG} requires a GitHub username`);
   }
+  const githubApps = argumentValue(argv, HOSTED_API_SIGN_IN_APPS_ARG);
   return {
     ownerUserId: normalizeUserId(argumentValue(argv, HOSTED_API_OWNER_ID_ARG)!),
     username,
+    githubAppIds: githubApps ? githubAppIdsFromJson(githubApps) : [],
   };
 }

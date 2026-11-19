@@ -10,6 +10,8 @@ import {
 
 const mocks = vi.hoisted(() => ({
   grantApiAccessUser: vi.fn(),
+  issueServiceToken: vi.fn(),
+  rotateServiceToken: vi.fn(),
   listApiAccessUsers: vi.fn(),
   printError: vi.fn(),
   printInfo: vi.fn(),
@@ -23,6 +25,8 @@ vi.mock('../../../src/shared/services/api-client/rpc.js', () => ({
   createApiClient: () => ({
     apiAccess: {
       grant: mocks.grantApiAccessUser,
+      issueServiceToken: mocks.issueServiceToken,
+      rotateServiceToken: mocks.rotateServiceToken,
       list: mocks.listApiAccessUsers,
       revoke: mocks.revokeApiAccessUser,
     },
@@ -42,13 +46,19 @@ vi.mock('../../../src/cli/utils/output.js', () => ({
   setJsonMode: mocks.setJsonMode,
 }));
 
-import { createApiAccessCommand } from '../../../src/cli/commands/api-access.js';
+import {
+  createApiAccessCommand,
+  createApiTokenCommand,
+} from '../../../src/cli/commands/api-access.js';
 
 async function runAccess(argv: string[]): Promise<void> {
   const command = createApiAccessCommand();
   command.exitOverride();
   await command.parseAsync(argv, { from: 'user' });
 }
+
+const SERVICE = { kind: 'service', userId: 'service:ci', username: 'ci' };
+const SERVICE_TOKEN = `acapi_${'a'.repeat(43)}`;
 
 const SERVICE_ACCOUNT = {
   kind: 'serviceaccount',
@@ -247,5 +257,70 @@ describe('api access command', () => {
       'process.exit:1',
     );
     expect(mocks.revokeApiAccessUser).not.toHaveBeenCalled();
+  });
+
+  it('issues a service token, printing only the token on stdout, or JSON', async () => {
+    mocks.issueServiceToken.mockResolvedValue({
+      ...SERVICE,
+      token: SERVICE_TOKEN,
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    await runAccess(['add', '--service', 'ci']);
+    await runAccess(['add', '--service', 'ci', '--json']);
+
+    expect(mocks.issueServiceToken).toHaveBeenCalledWith({ name: 'ci' });
+    expect(mocks.grantApiAccessUser).not.toHaveBeenCalled();
+    expect(logSpy.mock.calls).toEqual([
+      [SERVICE_TOKEN],
+      [JSON.stringify({ ...SERVICE, token: SERVICE_TOKEN })],
+    ]);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    stderr.mockRestore();
+  });
+
+  it('rotates a service token through the active API', async () => {
+    vi.stubEnv('API_URL', 'https://api.example.com');
+    mocks.rotateServiceToken.mockResolvedValue({ token: SERVICE_TOKEN });
+    const command = createApiTokenCommand();
+    command.exitOverride();
+
+    await command.parseAsync(['rotate', '--service', 'ci', '--json'], {
+      from: 'user',
+    });
+
+    expect(mocks.rotateServiceToken).toHaveBeenCalledWith({
+      params: { name: 'ci' },
+    });
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify({ token: SERVICE_TOKEN }),
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it('removes a service by its name and lists one by its ID', async () => {
+    mocks.listApiAccessUsers.mockResolvedValue({
+      owner: { userId: '1', username: 'owner' },
+      users: [SERVICE],
+    });
+
+    await runAccess(['remove', '--service', 'ci']);
+    await runAccess(['list']);
+
+    expect(mocks.revokeApiAccessUser).toHaveBeenCalledWith({
+      params: { userId: 'service:ci' },
+    });
+    expect(String(logSpy.mock.calls[0]![0])).toMatch(
+      /member\s.*service\s.*ci\s.*service:ci/,
+    );
+  });
+
+  it('refuses --service beside another target', async () => {
+    await expect(
+      runAccess(['add', 'member', '--service', 'ci']),
+    ).rejects.toThrow('process.exit:1');
+    expect(mocks.issueServiceToken).not.toHaveBeenCalled();
   });
 });

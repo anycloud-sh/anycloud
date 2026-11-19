@@ -23,7 +23,12 @@ export function assertImageAccessible(
     throw new InvalidAnycloudConfigError(
       failureReason === ImageInspectionFailureReason.GhcrTokenExchangeFailed
         ? `Can't access image "${image}". To sign in again, run \`anycloud login\` (\`anycloud login <api-url>\` on a hosted API), and verify that the token can read this GHCR package.`
-        : `Can't access image "${image}". For a private GHCR image, run \`anycloud login\` (\`anycloud login <api-url>\` on a hosted API); other private registries aren't supported.`,
+        : privateImageMessage(image),
     );
   }
+}
+
+/** A private image the registry refused without a GitHub sign-in to pull with. */
+export function privateImageMessage(image: string): string {
+  return `Can't access image "${image}". For a private GHCR image, run \`anycloud login\` (\`anycloud login <api-url>\` on a hosted API): a GitHub App sign-in or a service token pulls only public images. Other private registries aren't supported.`;
 }

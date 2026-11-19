@@ -4,12 +4,15 @@ import type { User } from '../entities.js';
 import { log } from '../logger.js';
 import { getDB, type DB } from './db.js';
 import type { OwnershipScope } from './ownership-filter.js';
+import { hashApiToken, newApiToken } from './api-tokens.js';
 
 const POLICY_ID = 1;
 
 export interface ApiAccessPolicy {
   ownerUser: string;
   ownerUserId: string | null;
+  /** GitHub Apps whose user tokens the exchange accepts. */
+  githubAppIds: number[];
   createdAt: number;
   updatedAt: number;
 }
@@ -29,6 +32,17 @@ const serviceAccountUserIdSql = (name: string) =>
 
 export function isServiceAccountUserId(userId: string): boolean {
   return userId.startsWith(SERVICE_ACCOUNT_USER_PREFIX);
+}
+
+/** An owner-issued service token's principal ID; its name is lowercase. */
+const SERVICE_USER_PREFIX = 'service:';
+
+export function serviceUserId(name: string): string {
+  return `${SERVICE_USER_PREFIX}${name}`;
+}
+
+export function isServiceUserId(userId: string): boolean {
+  return userId.startsWith(SERVICE_USER_PREFIX);
 }
 
 /** SQL for whether Deployment `alias` is unmanaged and its name registered. */
@@ -54,6 +68,7 @@ const REGISTERED_DEPLOYMENT_JOIN = `LEFT JOIN deployments d
 interface ApiAccessPolicyRow {
   owner_user: string;
   owner_user_id: string | null;
+  github_app_ids: string;
   created_at: number;
   updated_at: number;
 }
@@ -67,6 +82,7 @@ function rowToPolicy(row: ApiAccessPolicyRow): ApiAccessPolicy {
   return {
     ownerUser: row.owner_user,
     ownerUserId: row.owner_user_id,
+    githubAppIds: JSON.parse(row.github_app_ids) as number[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -86,7 +102,7 @@ export async function getApiAccessPolicy(
   // queued writes; its writers are awaited transactions.
   const rows = await db.read((reader) =>
     reader.query<ApiAccessPolicyRow>(
-      `SELECT owner_user, owner_user_id, created_at, updated_at
+      `SELECT owner_user, owner_user_id, github_app_ids, created_at, updated_at
          FROM api_access_policy
         WHERE id = ?`,
       [POLICY_ID],
@@ -95,9 +111,14 @@ export async function getApiAccessPolicy(
   return rows[0] ? rowToPolicy(rows[0]) : null;
 }
 
+/**
+ * Binds the policy to the startup's owner. `githubAppIds`, from the release
+ * values, seeds a new policy only: the owner replaces the list afterwards.
+ */
 export async function upsertApiAccessOwner(
   ownerUser: string,
   ownerUserId: string,
+  githubAppIds: readonly number[] = [],
   db: DB = getDB(),
 ): Promise<void> {
   const username = ownerUser.trim();
@@ -109,7 +130,7 @@ export async function upsertApiAccessOwner(
   const now = Date.now();
   await db.transaction((tx) => {
     const existing = tx.query<ApiAccessPolicyRow>(
-      `SELECT owner_user, owner_user_id, created_at, updated_at
+      `SELECT owner_user, owner_user_id, github_app_ids, created_at, updated_at
          FROM api_access_policy
         WHERE id = ?`,
       [POLICY_ID],
@@ -150,12 +171,24 @@ export async function upsertApiAccessOwner(
     } else {
       tx.query(
         `INSERT INTO api_access_policy (
-           id, owner_user, owner_user_id, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?)`,
-        [POLICY_ID, username, userId, now, now],
+           id, owner_user, owner_user_id, github_app_ids, created_at,
+           updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [POLICY_ID, username, userId, JSON.stringify(githubAppIds), now, now],
       );
     }
   });
+}
+
+/** Replaces the GitHub Apps whose user tokens the exchange accepts. */
+export async function setApiGithubApps(
+  githubAppIds: readonly number[],
+  db: DB = getDB(),
+): Promise<void> {
+  await db.query(
+    'UPDATE api_access_policy SET github_app_ids = ?, updated_at = ? WHERE id = ?',
+    [JSON.stringify(githubAppIds), Date.now(), POLICY_ID],
+  );
 }
 
 export async function listApiAccessUsers(
@@ -193,6 +226,51 @@ export async function registerApiServiceAccount(
     );
     return { ...rowToUser(row!), deploymentId: holder?.id ?? null };
   });
+}
+
+/** A new service's token, or null when the name already has one. */
+export async function issueServiceToken(
+  name: string,
+  db: DB = getDB(),
+): Promise<string | null> {
+  const { token, hash } = newApiToken();
+  const rows = await db.query(
+    `INSERT INTO api_access_users (user_id, username, token_hash)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id) DO NOTHING
+     RETURNING user_id`,
+    [serviceUserId(name), name, hash],
+  );
+  return rows.length ? token : null;
+}
+
+/** Replaces a service's token, or returns null when there is no such service. */
+export async function rotateServiceToken(
+  name: string,
+  db: DB = getDB(),
+): Promise<string | null> {
+  const { token, hash } = newApiToken();
+  const rows = await db.query(
+    `UPDATE api_access_users SET token_hash = ?
+      WHERE user_id = ?
+      RETURNING user_id`,
+    [hash, serviceUserId(name)],
+  );
+  return rows.length ? token : null;
+}
+
+/** The service a token belongs to; its row is its admission. */
+export async function findServiceTokenUser(
+  token: string,
+  db: DB = getDB(),
+): Promise<ApiAccessUser | null> {
+  const [row] = await db.read((reader) =>
+    reader.query<ApiAccessUserRow>(
+      `SELECT user_id, username FROM api_access_users WHERE token_hash = ?`,
+      [hashApiToken(token)],
+    ),
+  );
+  return row ? rowToUser(row) : null;
 }
 
 /** A registration whose name a live, unmanaged Deployment holds. */
@@ -249,7 +327,11 @@ export async function removeApiAccessUser(
       `SELECT ${REGISTERED_USER_COLUMNS}
          FROM api_access_users a ${REGISTERED_DEPLOYMENT_JOIN}
         WHERE a.user_id = ${serviceAccount ? serviceAccountUserIdSql(`trim(substr(?, ${SERVICE_ACCOUNT_USER_PREFIX.length + 1}))`) : '?'}`,
-      [serviceAccount ? userId : normalizeUserId(userId)],
+      [
+        serviceAccount || isServiceUserId(userId)
+          ? userId
+          : normalizeUserId(userId),
+      ],
     );
     if (!row) return null;
     tx.query('DELETE FROM api_tokens WHERE user_id = ?', [row.userId]);

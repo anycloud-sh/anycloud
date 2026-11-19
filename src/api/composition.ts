@@ -203,8 +203,11 @@ import {
   getApiAccessPolicy,
   listApiAccessUsers,
   registerApiServiceAccount,
+  issueServiceToken,
   removeApiAccessUser,
   resolveOwnershipScope,
+  rotateServiceToken,
+  setApiGithubApps,
   upsertApiAccessUser,
 } from './services/repositories/api-access-policy.js';
 import {
@@ -292,10 +295,14 @@ function apiAccessDependencies(): ApiAccessDomainDependencies {
       upsertUser: upsertApiAccessUser,
       registerServiceAccount: registerApiServiceAccount,
       removeUser: removeApiAccessUser,
+      issueServiceToken,
+      rotateServiceToken,
+      setGithubApps: setApiGithubApps,
     },
     reconcileDeployment: (id) => getDefaultDeploymentControl().schedule(id),
     resolveGithubUser: Github.resolveUser,
     authenticateGithub: Github.authenticate,
+    githubIssuingApp: Github.issuingApp,
     tokens: { exchange: exchangeApiToken, rotate: rotateApiToken },
   };
 }

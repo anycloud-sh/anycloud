@@ -137,6 +137,34 @@ The access commands always operate on the active API shown by
 `anycloud api status`, and only apply to a hosted API — on a local API they
 report that sharing is unavailable.
 
+## Service tokens
+
+A program that isn't a person, such as a CI system or a listener on a VM, gets
+its own token from the owner instead of borrowing someone's:
+
+```bash
+anycloud api access add --service ci
+anycloud api access list
+anycloud api token rotate --service ci
+anycloud api access remove --service ci
+```
+
+`add --service` prints the token once; the API stores only its SHA-256, so a
+lost token is replaced with `rotate --service`, which refuses the old one on
+its next request. The program sets the token as `ANYCLOUD_API_TOKEN` beside
+`API_URL`, or sends it as `Authorization: Bearer <token>`. Only the owner
+issues, rotates and removes service tokens.
+
+A service is a full peer, like a member, and appears under its name where
+listings name a creator. A service named like a GitHub member with access is
+refused, but adding a member later whose login matches a service isn't, and
+service and registered Deployment names aren't checked against each other. It
+has no GitHub sign-in, so it submits public images only, and Service URLs
+answer `GITHUB_SIGN_IN_REQUIRED`. A restored backup brings back every service
+token it held, including ones rotated or removed since: after a restore the
+owner rotates every service token and removes again any service removed since
+the backup, which `api access list` shows.
+
 ## Clients inside the cluster
 
 A program that runs as a Deployment on the hosted API's own cluster, such as an
@@ -192,9 +220,10 @@ anycloud list
 
 No invitation token or organization check is involved. The GitHub account used
 by `anycloud login` must be the same account that was added. Login exchanges
-that sign-in for the teammate's own API token; the hosted API accepts nothing
-else. See [API tokens](/reference/cli/api-utilities#api-tokens) for CI and for
-rotating a token.
+that sign-in for the teammate's own API token; the hosted API accepts no other
+GitHub token but a listed GitHub App's sign-in. See
+[API tokens](/reference/cli/api-utilities#api-tokens) for those, for CI and
+for rotating a token.
 
 ## What is shared
 
@@ -357,8 +386,9 @@ installer that created the cluster, or a fresh one, can restore; either is
 refused while the cloud still shows the lost management VM, so two APIs never
 write the same bucket. See
 [Recover after losing the management VM](/reference/cli/cluster#recover-after-losing-the-management-vm).
-After a restore, every member runs `anycloud api token rotate`: the backup
-brings back the API tokens it held. Restoring the backup taken by
+After a restore, every member runs `anycloud api token rotate`, and the owner
+rotates every service token and removes again any service removed since the
+backup: the backup brings back the API tokens it held. Restoring the backup taken by
 `api upgrade` also drops what the new API recorded. A pool Job claimed after
 the backup is queued again and runs from its last checkpoint; one claimed
 before it that was still running or has since finished ends failed with its

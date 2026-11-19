@@ -36,6 +36,8 @@ export interface SystemReleaseValues {
     id: string;
     ownerUsername: string;
     ownerUserId: string;
+    /** GitHub Apps whose user tokens the API's exchange accepts. */
+    githubAppIds: number[];
     apiUrl: string;
   };
   /**
@@ -101,6 +103,7 @@ export interface SystemReleaseIntentInput {
   apiVersion: string;
   ownerUsername: string;
   ownerUserId: string;
+  githubAppIds: number[];
   apiUrl: string;
   /** The API image's own digest-pinned chart (`oci://…@sha256:…`). */
   chart: string;
@@ -167,6 +170,7 @@ export function systemReleaseValues(
       id: input.installationId,
       ownerUsername: input.ownerUsername,
       ownerUserId: input.ownerUserId,
+      githubAppIds: input.githubAppIds,
       apiUrl: input.apiUrl,
     },
     cluster: input.cluster,

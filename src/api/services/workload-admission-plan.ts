@@ -56,6 +56,7 @@ import { inspectImage } from '../../shared/image-registry.js';
 import { GHCR_TOKEN_USERNAME } from '../../shared/image.js';
 import { buildServeIngressSpec } from './network.js';
 import { serveUrl } from './serve.js';
+import { privateImageMessage } from './image-manifest.js';
 
 const DISK_SIZE_GB_BYTES = 1_000_000_000;
 const requestShapeValidatedTargetsBrand: unique symbol = Symbol(
@@ -169,7 +170,7 @@ function imageAccessMessage(
       'To sign in again, run `anycloud login` (`anycloud login <api-url>` on a hosted API), and verify the token has read access to this GHCR package.'
     );
   }
-  return `Can't access image "${image}". For a private GHCR image, run \`anycloud login\` (\`anycloud login <api-url>\` on a hosted API); other private registries aren't supported.`;
+  return privateImageMessage(image);
 }
 
 function outputStorageIdentityKey({

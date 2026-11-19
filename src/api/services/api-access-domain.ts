@@ -2,6 +2,7 @@ import type {
   ApiAccessMember,
   ApiAccessUsersResponse,
   GrantApiAccessInput,
+  ServiceTokenIssued,
 } from '../../shared/api-contract/api-access-schemas.js';
 import { GithubSignInRequiredError } from '../../shared/errors.js';
 import {
@@ -12,6 +13,8 @@ import type { GithubSignIn, User } from './entities.js';
 import { log } from './logger.js';
 import {
   isServiceAccountUserId,
+  isServiceUserId,
+  serviceUserId,
   type ApiAccessPolicy,
   type ApiAccessUser as StoredApiAccessUser,
 } from './repositories/api-access-policy.js';
@@ -43,7 +46,7 @@ export class InvalidGithubUserIdError extends Error {
   }
 }
 
-/** The exchange takes only the token `anycloud login` gets from GitHub. */
+/** The exchange takes only `anycloud login`'s token or a listed GitHub App's. */
 class ApiTokenExchangeRefusedError extends Error {
   constructor(reason: string) {
     super(
@@ -65,9 +68,27 @@ export class ApiAccessManagedDeploymentError extends Error {
 export class ApiAccessNameTakenError extends Error {
   constructor(name: string) {
     super(
-      `"${name}" is a GitHub login with access to this API; rename the Deployment so listings can't confuse the two.`,
+      `"${name}" is a GitHub login with access to this API; choose another name so listings can't confuse the two.`,
     );
     this.name = 'ApiAccessNameTakenError';
+  }
+}
+
+export class ApiAccessServiceExistsError extends Error {
+  constructor(name: string) {
+    super(
+      `Service "${name}" already has a token; replace it with \`anycloud api token rotate --service ${name}\`.`,
+    );
+    this.name = 'ApiAccessServiceExistsError';
+  }
+}
+
+export class ApiAccessServiceNotFoundError extends Error {
+  constructor(name: string) {
+    super(
+      `No service "${name}" has access; issue its token with \`anycloud api access add --service ${name}\`.`,
+    );
+    this.name = 'ApiAccessServiceNotFoundError';
   }
 }
 
@@ -99,6 +120,23 @@ export interface ApiAccessDomain {
     userId: string,
     signal?: AbortSignal,
   ): Promise<StoredApiAccessUser | null>;
+  /** Issues a service token, printed once: the API keeps only its hash. */
+  issueServiceToken(
+    actor: User,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<ServiceTokenIssued>;
+  rotateServiceToken(
+    actor: User,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<string>;
+  /** Replaces the GitHub Apps whose user tokens the exchange accepts. */
+  setGithubApps(
+    actor: User,
+    githubAppIds: number[],
+    signal?: AbortSignal,
+  ): Promise<number[]>;
   exchangeToken(githubToken: string, signal?: AbortSignal): Promise<string>;
   rotateToken(actor: User, signal?: AbortSignal): Promise<string>;
 }
@@ -112,6 +150,9 @@ export interface ApiAccessDomainDependencies {
       deploymentName: string,
     ): Promise<RegisteredUser | { managedDeploymentId: string }>;
     removeUser(userId: string): Promise<RegisteredUser | null>;
+    issueServiceToken(name: string): Promise<string | null>;
+    rotateServiceToken(name: string): Promise<string | null>;
+    setGithubApps(githubAppIds: number[]): Promise<void>;
   };
   /** Rolls a live Deployment whose token mount a registration changed. */
   reconcileDeployment(deploymentId: string): void;
@@ -123,6 +164,10 @@ export interface ApiAccessDomainDependencies {
     accessToken: string,
     signal?: AbortSignal,
   ): Promise<GithubSignIn>;
+  githubIssuingApp(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<{ id: number; slug: string } | null>;
   tokens: {
     exchange(owner: ApiTokenOwner): Promise<string>;
     rotate(userId: string): Promise<string>;
@@ -133,9 +178,29 @@ export interface ApiAccessDomainDependencies {
 type RegisteredUser = StoredApiAccessUser & { deploymentId: string | null };
 
 function member(user: RegisteredUser): ApiAccessMember {
-  return isServiceAccountUserId(user.userId)
-    ? { kind: 'serviceaccount', ...user }
-    : { kind: 'github', userId: user.userId, username: user.username };
+  if (isServiceAccountUserId(user.userId)) {
+    return { kind: 'serviceaccount', ...user };
+  }
+  const kind = isServiceUserId(user.userId) ? 'service' : 'github';
+  return { kind, userId: user.userId, username: user.username };
+}
+
+/** Listings name a creator by its name, as they do a GitHub login. */
+async function assertNameFree(
+  dependencies: ApiAccessDomainDependencies,
+  policy: ApiAccessPolicy,
+  name: string,
+): Promise<void> {
+  const logins = (await dependencies.policy.listUsers())
+    .filter((user) => member(user).kind === 'github')
+    .map((user) => user.username);
+  if (
+    [policy.ownerUser, ...logins].some(
+      (login) => login.toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    throw new ApiAccessNameTakenError(name);
+  }
 }
 
 function githubUserId(raw: string): string {
@@ -185,18 +250,7 @@ export function createApiAccessDomain(
       signal?.throwIfAborted();
       const policy = await requireOwner(dependencies, actor);
       if ('serviceAccount' in input) {
-        // Listings name a creator by this name, as they do a GitHub login.
-        const name = input.serviceAccount.toLowerCase();
-        const logins = (await dependencies.policy.listUsers())
-          .filter((user) => !isServiceAccountUserId(user.userId))
-          .map((user) => user.username);
-        if (
-          [policy.ownerUser, ...logins].some(
-            (login) => login.toLowerCase() === name,
-          )
-        ) {
-          throw new ApiAccessNameTakenError(input.serviceAccount);
-        }
+        await assertNameFree(dependencies, policy, input.serviceAccount);
         const registered = await dependencies.policy.registerServiceAccount(
           input.serviceAccount,
         );
@@ -234,9 +288,10 @@ export function createApiAccessDomain(
     async revoke(actor, rawUserId, signal) {
       signal?.throwIfAborted();
       const policy = await requireOwner(dependencies, actor);
-      const userId = isServiceAccountUserId(rawUserId)
-        ? rawUserId
-        : githubUserId(rawUserId);
+      const userId =
+        isServiceAccountUserId(rawUserId) || isServiceUserId(rawUserId)
+          ? rawUserId
+          : githubUserId(rawUserId);
       if (userId === policy.ownerUserId) {
         throw new ApiAccessOwnerCannotBeRemovedError();
       }
@@ -248,32 +303,92 @@ export function createApiAccessDomain(
       return removed;
     },
 
+    async issueServiceToken(actor, name, signal) {
+      signal?.throwIfAborted();
+      const policy = await requireOwner(dependencies, actor);
+      await assertNameFree(dependencies, policy, name);
+      const token = await dependencies.policy.issueServiceToken(name);
+      if (!token) throw new ApiAccessServiceExistsError(name);
+      log.info('Service token issued', { id: 'system', service: name });
+      return {
+        kind: 'service',
+        userId: serviceUserId(name),
+        username: name,
+        token,
+      };
+    },
+
+    async rotateServiceToken(actor, name, signal) {
+      signal?.throwIfAborted();
+      await requireOwner(dependencies, actor);
+      const token = await dependencies.policy.rotateServiceToken(name);
+      if (!token) throw new ApiAccessServiceNotFoundError(name);
+      log.info('Service token rotated', { id: 'system', service: name });
+      return token;
+    },
+
+    async setGithubApps(actor, githubAppIds, signal) {
+      signal?.throwIfAborted();
+      await requireOwner(dependencies, actor);
+      await dependencies.policy.setGithubApps(githubAppIds);
+      log.info('GitHub Apps set', { id: 'system', githubAppIds });
+      return githubAppIds;
+    },
+
     async exchangeToken(githubToken, signal) {
-      await requireHostedPolicy(dependencies);
-      // Only an OAuth app token can be anycloud's; skip GitHub for the rest.
-      if (!githubToken.startsWith('gho_')) {
+      const policy = await requireHostedPolicy(dependencies);
+      // Only an OAuth or a GitHub App sign-in can be a person's; skip GitHub
+      // for the rest.
+      const appSignIn = githubToken.startsWith('ghu_');
+      if (!appSignIn && !githubToken.startsWith('gho_')) {
         throw new ApiTokenExchangeRefusedError(
-          'This API exchanges only a GitHub OAuth sign-in, not a personal access token or a CI token.',
+          'This API exchanges only a GitHub OAuth or GitHub App sign-in, not a personal access token or a CI token.',
         );
       }
-      const signIn = await dependencies
-        .authenticateGithub(githubToken, signal)
-        .catch((error: unknown) => {
+      const github = <T>(call: Promise<T>) =>
+        call.catch((error: unknown) => {
           throw GithubSignInRequiredError.fromGithub(error);
         });
+      if (appSignIn) {
+        if (policy.githubAppIds.length === 0) {
+          throw new ApiTokenExchangeRefusedError(
+            'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --sign-in-apps <id>`.',
+          );
+        }
+        const app = await github(
+          dependencies.githubIssuingApp(githubToken, signal),
+        );
+        if (!app) {
+          throw new ApiTokenExchangeRefusedError(
+            'This GitHub App sign-in reaches no installation of its GitHub App, so the API cannot tell which App it is from.',
+          );
+        }
+        if (!policy.githubAppIds.includes(app.id)) {
+          throw new ApiTokenExchangeRefusedError(
+            `This sign-in is from GitHub App ${app.slug} (id ${app.id}), which this API does not accept.`,
+          );
+        }
+      }
+      const signIn = await github(
+        dependencies.authenticateGithub(githubToken, signal),
+      );
       if (
-        signIn.scopes.length !== GITHUB_LOGIN_SCOPES.length ||
-        !GITHUB_LOGIN_SCOPES.every((scope) => signIn.scopes.includes(scope))
+        !appSignIn &&
+        (signIn.scopes.length !== GITHUB_LOGIN_SCOPES.length ||
+          !GITHUB_LOGIN_SCOPES.every((scope) => signIn.scopes.includes(scope)))
       ) {
         throw new ApiTokenExchangeRefusedError(
           `This GitHub sign-in has the scopes ${signIn.scopes.join(', ') || 'none'}; it is not from \`anycloud login\`.`,
         );
       }
       signal?.throwIfAborted();
+      // An App's user token is never kept and clears a kept sign-in, so
+      // nothing later acts with an App's permissions; what needs a kept
+      // sign-in refuses its caller until `anycloud login` again.
       const token = await dependencies.tokens.exchange({
         userId: signIn.id,
         username: signIn.username,
-        githubToken,
+        githubToken: appSignIn ? null : githubToken,
       });
       log.info('API token exchanged', { id: 'system', userId: signIn.id });
       return token;

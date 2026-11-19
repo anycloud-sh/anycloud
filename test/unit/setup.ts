@@ -39,8 +39,9 @@ if (expect.getState().testPath?.startsWith(unitDirectory)) {
 }
 
 // Mock GitHub authentication globally for all tests to prevent real GitHub API
-// calls. Only `authenticate` is stubbed; real named exports (e.g. the error
-// mappers) are preserved so they remain unit-testable.
+// calls. Only `authenticate`, `issuingApp` and `resolveUser` are stubbed; real
+// named exports (e.g. the error mappers) are preserved so they remain
+// unit-testable.
 vi.mock('../../src/api/services/gateways/github', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -57,6 +58,7 @@ vi.mock('../../src/api/services/gateways/github', async (importOriginal) => {
           scopes: ['read:org', 'read:packages'],
         }),
       ),
+      issuingApp: vi.fn(async (_token: string) => null),
       resolveUser: vi.fn(async (_token: string, username: string) => ({
         id: '2',
         username,
