@@ -109,10 +109,12 @@ The active API selection is not changed. When a stopped active local API has a s
 `api upgrade` starts it again on that port.
 
 `--github-apps <id,...>` replaces the GitHub Apps, by App ID, whose user
-tokens a hosted API exchanges (see [API tokens](#api-tokens)), and upgrades
-nothing. Only the API's owner may run it, and only against an API already on
-this CLI's release; an older one exits with status 2 and asks you to upgrade
-first. `cluster create --github-apps` sets the first list.
+tokens a hosted API exchanges (see [API tokens](#api-tokens)); only the API's
+owner may set them. On an API already on this CLI's release it sets the list
+at once. On an older one it upgrades first, waits until the new release
+serves, and then sets the list; when the upgrade fails, it sets nothing and
+exits with status 1. It doesn't combine with `--image`. `cluster create
+--github-apps` sets the first list.
 
 ### Give someone access
 

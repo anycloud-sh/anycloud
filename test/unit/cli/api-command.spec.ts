@@ -1138,24 +1138,81 @@ describe('api command', () => {
     });
   });
 
-  it('api upgrade --github-apps on an older API upgrades nothing and says to upgrade first', async () => {
-    useHostedActive();
-    mocks.systemReleaseStatus.mockResolvedValue({
+  describe('api upgrade --github-apps on an older API', () => {
+    const older = {
       servedVersion: '0.0.1',
       schemaVersion: '0.0.1',
       upgrade: null,
       rollout: null,
+    };
+    const upgraded = (state: string, lastError: string | null = null) => ({
+      servedVersion: state === 'failed' ? '0.0.1' : packageJson.version,
+      schemaVersion: packageJson.version,
+      upgrade: {
+        number: 1,
+        apiVersion: packageJson.version,
+        apiImage: 'img',
+        state,
+        lastError,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      rollout: null,
     });
-    await expect(
-      runApi(['upgrade', '--github-apps', '5622376']),
-    ).rejects.toThrow('process.exit:2');
-    expect(mocks.printError).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `--github-apps needs the API on anycloud ${packageJson.version}; it serves 0.0.1. Run \`anycloud api upgrade\` first`,
-      ),
-    );
-    expect(mocks.setGithubApps).not.toHaveBeenCalled();
-    expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
+    beforeEach(() => {
+      useHostedActive();
+      mocks.systemReleaseRequest.mockResolvedValue({
+        unchanged: false,
+        upgrade: {
+          number: 1,
+          apiVersion: packageJson.version,
+          apiImage: 'img',
+          state: 'starting',
+          lastError: null,
+        },
+      });
+      mocks.setGithubApps.mockResolvedValue({ githubAppIds: [5622376] });
+    });
+
+    it('upgrades it, waits out its restart until the new release serves, then sets the list', async () => {
+      mocks.systemReleaseStatus
+        .mockResolvedValueOnce(older)
+        .mockRejectedValueOnce(
+          new ORPCError('SERVICE_UNAVAILABLE', { status: 503 }),
+        )
+        .mockResolvedValueOnce(upgraded('running'));
+      await runApi(['upgrade', '--github-apps', '5622376', '--json']);
+      expect(mocks.systemReleaseRequest).toHaveBeenCalledWith({
+        image: `${packageJson.apiImage}:${packageJson.version}`,
+      });
+      expect(mocks.systemReleaseStatus).toHaveBeenCalledTimes(3);
+      expect(mocks.setGithubApps).toHaveBeenCalledWith({
+        githubAppIds: [5622376],
+      });
+      expect(
+        mocks.systemReleaseStatus.mock.invocationCallOrder[2],
+      ).toBeLessThan(mocks.setGithubApps.mock.invocationCallOrder[0]!);
+      expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toMatchObject({
+        outcome: 'started',
+        api: { previousVersion: '0.0.1', version: packageJson.version },
+        githubAppIds: [5622376],
+      });
+    });
+
+    it('sets nothing when the upgrade fails, and says so', async () => {
+      mocks.systemReleaseStatus
+        .mockResolvedValueOnce(older)
+        .mockResolvedValueOnce(upgraded('failed', 'ready check timed out'));
+      await expect(
+        runApi(['upgrade', '--github-apps', '5622376']),
+      ).rejects.toThrow('process.exit:1');
+      expect(mocks.setGithubApps).not.toHaveBeenCalled();
+      expect(mocks.printError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Upgrade 1 failed (ready check timed out), so the GitHub App list was not set',
+        ),
+      );
+    });
   });
 
   it('api upgrade refuses --image against an API without the release surface', async () => {

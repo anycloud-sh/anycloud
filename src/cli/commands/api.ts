@@ -324,7 +324,7 @@ function createApiUpgradeCommand(): Command {
     )
     .option(
       '--github-apps <ids>',
-      "Hosted API on this CLI's release, owner only: replace the comma-separated GitHub App ids whose user tokens it exchanges, and upgrade nothing",
+      "Hosted API, owner only: replace the comma-separated GitHub App ids whose user tokens it exchanges, once it serves this CLI's release (an older one is upgraded first)",
       (list: string) => {
         try {
           return parseGithubAppIds(list);
@@ -438,32 +438,10 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         const releaseStatus = await probeSystemRelease(hostedRelease);
         if (releaseStatus) {
           const served = releaseStatus.servedVersion;
-          // Only this release's API keeps an App list; an older one is
-          // upgraded first, by a run without the flag.
-          if (options.githubApps) {
-            if (options.image || served !== currentVersion) {
-              throw new UsageError(
-                `--github-apps needs the API on anycloud ${currentVersion}; it serves ${served}. Run \`anycloud api upgrade\` first, then this again once \`anycloud api status\` shows ${currentVersion}.`,
-              );
-            }
-            const { githubAppIds } = await hostedClient.apiAccess.setGithubApps(
-              { githubAppIds: options.githubApps },
+          if (options.githubApps && options.image) {
+            throw new UsageError(
+              "--github-apps sets the list on this CLI's release; leave out --image.",
             );
-            finish(
-              {
-                outcome: 'unchanged',
-                api: {
-                  url: activeTarget.url,
-                  previousVersion: served,
-                  version: served,
-                },
-                upgrade: null,
-                k3s: null,
-                githubAppIds,
-              },
-              `Hosted API ${activeTarget.url} exchanges user tokens of GitHub Apps ${githubAppIds.join(', ') || '(none)'}.`,
-            );
-            return;
           }
           let k3sResult: ApiUpgradeResult['k3s'] = null;
           const hostedResult = (
@@ -476,8 +454,53 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
             upgrade,
             k3s: k3sResult,
           });
-          if (!options.image && served === currentVersion) {
+          // Only this release's API keeps an App list: set it at once on one
+          // that serves it, and after the upgrade on an older one.
+          const finishHosted = async (
+            result: ApiUpgradeResult,
+            message: string,
+          ) => {
+            if (!options.githubApps) return finish(result, message);
+            if (served !== currentVersion) {
+              printInfo(message);
+              const settled = await runUntilInterrupted(
+                'api upgrade --github-apps',
+                (signal) =>
+                  watchUntil(
+                    () =>
+                      probeSystemRelease(hostedRelease).catch(
+                        (error: unknown) => {
+                          if (isApiRestart(error)) return null;
+                          throw error;
+                        },
+                      ),
+                    {
+                      intervalSeconds: DEFAULT_WATCH_INTERVAL_SECONDS,
+                      signal,
+                      done: (status) =>
+                        status?.servedVersion === currentVersion ||
+                        status?.upgrade?.state === WorkloadState.Failed,
+                      onRead: () => {},
+                    },
+                  ),
+              );
+              if (settled!.servedVersion !== currentVersion) {
+                const { number, lastError } = settled!.upgrade!;
+                throw new Error(
+                  `Upgrade ${number} failed (${lastError}), so the GitHub App list was not set. See \`anycloud api status\`.`,
+                );
+              }
+            }
+            const { githubAppIds } = await hostedClient.apiAccess.setGithubApps(
+              { githubAppIds: options.githubApps },
+            );
             finish(
+              { ...result, githubAppIds },
+              `${message} It exchanges user tokens of GitHub Apps ${githubAppIds.join(', ') || '(none)'}.`,
+            );
+          };
+          if (!options.image && served === currentVersion) {
+            await finishHosted(
               hostedResult('unchanged', served),
               `Hosted API ${activeTarget.url} already matches anycloud ${currentVersion}.`,
             );
@@ -533,7 +556,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
           }
           // Plain-line verdicts: a spinner prints nothing in a non-TTY run.
           if (result.unchanged) {
-            finish(
+            await finishHosted(
               hostedResult('unchanged', served),
               `Hosted API ${activeTarget.url} already runs ${image}; nothing to do (unchanged).`,
             );
@@ -541,16 +564,17 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
           }
           // An API older than this CLI accepts the upgrade without naming it.
           if (!result.upgrade) {
-            finish(
+            await finishHosted(
               hostedResult('accepted', null),
               `Hosted API ${activeTarget.url} accepted the upgrade to ${image}.`,
             );
+            if (options.githubApps) return;
             printInfo(
               `It keeps running while it is replaced. Run "anycloud api status" until it no longer reports version ${releaseStatus.servedVersion}.`,
             );
             return;
           }
-          finish(
+          await finishHosted(
             hostedResult(
               'started',
               result.upgrade.apiVersion,
@@ -558,6 +582,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
             ),
             `Hosted API upgrade ${result.upgrade.number} started: ${releaseStatus.servedVersion} → ${result.upgrade.apiVersion}.`,
           );
+          if (options.githubApps) return;
           printInfo(
             'It backed its database up and keeps running while it is replaced. Run "anycloud api status --watch" to follow the upgrade.',
           );
