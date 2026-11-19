@@ -816,6 +816,7 @@ erDiagram
   api_access_policy {
     int id PK "single row"
     text owner_user_id
+    text github_app_ids "JSON App ids"
   }
   api_access_users {
     text user_id PK
@@ -825,6 +826,7 @@ erDiagram
   api_tokens {
     text user_id PK
     text token_hash UK
+    text github_ciphertext "null for an App sign-in"
   }
   api_ownership_backfill_targets {
     int vm_id PK, FK
@@ -972,13 +974,15 @@ Each table, with its purpose, its writer and the invariants it carries:
 - **`quota_operations`** and **`quota_operation_targets`**: history of quota
   increase submissions. New submissions are retired, so nothing writes them.
 - **`api_access_policy`** and **`api_access_users`**: the hosted API's single
-  owner identity and its explicit allowlist of GitHub accounts, registered
-  Deployment names and owner-issued services, each service with the SHA-256
-  of its token. `api-access-policy.ts` writes them.
+  owner identity, the GitHub Apps whose user tokens it exchanges, and its
+  explicit allowlist of GitHub accounts, registered Deployment names and
+  owner-issued services, each service with the SHA-256 of its token.
+  `api-access-policy.ts` writes them.
 - **`api_tokens`**: a hosted API's own bearer, one per admitted GitHub account
   (the owner included), looked up by the token's SHA-256 and kept encrypted
-  with the account's GitHub sign-in. `api-tokens.ts` writes it;
-  `api-access-policy.ts` deletes a member's row on removal.
+  with the account's newest OAuth sign-in, none for an App-only account.
+  `api-tokens.ts` writes it; `api-access-policy.ts` deletes a member's row on
+  removal.
 - **`api_ownership_backfill_targets`**: the resumable queue that labels legacy
   provider resources with their owning API, one row per VM.
   `api-ownership-store.ts` writes it.

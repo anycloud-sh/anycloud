@@ -44,7 +44,7 @@ describe('the API chart’s self-delete values (RFC 0049 C26 (e))', () => {
     expect(api.slice(start, api.indexOf('{{- end }}', start))).toContain(
       '- --hosted-api-github-apps\n            - {{ join "," . | quote }}',
     );
-    expect(chart('values.yaml')).toMatch(/^  githubAppIds: \[\]$/m);
+    expect(chart('values.yaml')).toMatch(/^ {2}githubAppIds: \[\]$/m);
   });
 
   it('names the digest-pinned release image to the API container', () => {
