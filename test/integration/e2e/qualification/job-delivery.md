@@ -20,6 +20,7 @@ The family owns lifecycle decisions, waits, evidence and finalization.
 | `spot-eviction`            | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-spot-eviction --vitest`         |
 | `gpu-spot-eviction`        | Azure                   | `bash test/integration/e2e.sh azure-gpu-spot-eviction --vitest`        |
 | `gpu-probe-rerun`          | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-gpu-probe-rerun --vitest`       |
+| `gpu-health-fault`         | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-gpu-health-fault --vitest`      |
 | `runtime-secrets`          | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-runtime-secrets --vitest`       |
 | `restricted-credential`    | AWS, Azure              | `bash test/integration/e2e.sh <target>-restricted-credential --vitest` |
 | `host-docker`              | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-host-docker --vitest`           |

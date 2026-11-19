@@ -2841,6 +2841,10 @@ function contractSpecMetadata(context) {
         `${target}-gpu-probe-rerun.spec.ts`,
         { kind: 'gpu-probe-rerun', target },
       ]),
+      ...['aws', 'azure', 'gcp', 'lambda'].map((target) => [
+        `${target}-gpu-health-fault.spec.ts`,
+        { kind: 'gpu-health-fault', target },
+      ]),
       [
         'aws-restricted-credential.spec.ts',
         { kind: 'restricted-credential', target: 'aws' },

@@ -1316,6 +1316,13 @@ function harness(
         calls.push('native-delete');
         model(fixture).fault = true;
       },
+      injectGpuXid: async (fixture, pci, code) => {
+        calls.push(`inject-gpu-xid:${fixture.ref.id}`);
+        return {
+          line: `<3>NVRM: Xid (PCI:${pci}): ${code}, pid=0, name=test, GPU has fallen off the bus.`,
+          journalConfirmed: true,
+        };
+      },
       writeHostCheckpoint: async () => {
         calls.push('write-host-checkpoint');
       },

@@ -82,6 +82,11 @@ import {
   privateGitMarkers,
   privateGitPassed,
 } from '../probes/private-git.js';
+import {
+  gpuHealthFaultCommand,
+  gpuHealthFaultLine,
+  gpuHealthFaultNeedle,
+} from '../probes/gpu-health-fault.js';
 import type { LocalApiRestarter } from './local-api-restart.js';
 import { prepareJobTransfers } from './job-transfers.js';
 import type { PublicCloudVmHostPresenceProbeFactory } from './public-cloud-vm-host-presence.js';
@@ -1413,6 +1418,25 @@ export class PublicCloudJobTransport implements CloudJobTransport {
     if (!recovery)
       throw new Error('Job has no native in-place recovery capability');
     return recovery.stop(attempt, identity);
+  }
+  async injectGpuXid(
+    fixture: CloudJobFixture,
+    pci: string,
+    code: number,
+  ): ReturnType<CloudJobTransport['injectGpuXid']> {
+    this.#require(fixture);
+    const result = await this.#dependencies.remote.run(
+      fixture.ref.id,
+      'vm',
+      gpuHealthFaultCommand(pci, code),
+      { timeoutMs: 30_000 },
+    );
+    return {
+      line: gpuHealthFaultLine(pci, code),
+      journalConfirmed:
+        result.exitCode === 0 &&
+        result.stdout.includes(gpuHealthFaultNeedle(pci, code)),
+    };
   }
   deleteHost(
     ...[fixture, attempt, identity]: Parameters<CloudJobTransport['deleteHost']>

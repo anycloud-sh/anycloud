@@ -33,6 +33,7 @@ export const JOB_MEMBERS: Readonly<Record<string, readonly string[]>> = {
   'spot-eviction': ['aws', 'azure', 'gcp'],
   'gpu-spot-eviction': ['azure'],
   'gpu-probe-rerun': ['aws', 'azure', 'gcp', 'lambda'],
+  'gpu-health-fault': ['aws', 'azure', 'gcp', 'lambda'],
   'runtime-secrets': ['aws', 'azure', 'gcp', 'lambda'],
   // RFC 0047: the GCP (S8) member joins with its own restricted
   // identity; a Lambda API key has no permission model.
@@ -296,6 +297,30 @@ export function jobMemberProfile(
       recursiveTransfers: false,
       requiredExtensions: ['gpu-probe-rerun'],
       expectedTerminalState: WorkloadState.Errored,
+    });
+  }
+  if (member.kind === 'gpu-health-fault') {
+    const capability = registration.gpuHealthFault;
+    if (!capability)
+      throw new Error('Job target lacks GPU health fault coverage');
+    return freezeProfile({
+      member,
+      computeProvider: registration.provider,
+      vmTypes: [capability.vmType],
+      computeRegion: capability.region,
+      computeRegions: capability.regions,
+      diskSizeGb: undefined,
+      spot: false,
+      image: CHECK_IMAGE,
+      credentialMode: 'bootstrap',
+      reservationInventory: registration.compute.reservationInventory,
+      storageProvider: 'none',
+      storageRegion: '',
+      storageFollowsCompute: false,
+      crossCloudStorageCredential: undefined,
+      recursiveTransfers: false,
+      requiredExtensions: ['gpu-health-fault'],
+      expectedTerminalState: WorkloadState.Terminated,
     });
   }
   if (member.kind === 'mace-full-pull') {
@@ -839,6 +864,15 @@ export function jobStageBudget(
   if (member.kind === 'gpu-probe-rerun')
     return {
       runningMs: 1_800_000,
+      cleanupMs: 2_700_000,
+      storageMs: 60_000,
+      completionMs: 1_200_000,
+    };
+  // A healthy read, the injected fault, an unhealthy read, then the fixed
+  // two-minute report-only window the member itself waits out.
+  if (member.kind === 'gpu-health-fault')
+    return {
+      runningMs: 1_200_000,
       cleanupMs: 2_700_000,
       storageMs: 60_000,
       completionMs: 1_200_000,

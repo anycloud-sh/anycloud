@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "member": "azure-gpu-health-fault",
+  "candidate": "e2e.sh azure-gpu-health-fault --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "closed-member",
+      "requirement": "A closed kind/target selects the fixed registered capability and profile; specs cannot inject lifecycle callbacks, placement or evidence.",
+      "candidateEvidence": "contracts/job-policy.ts and targets/job-profiles.ts; closed-spec ESLint and ordinary Vitest discovery controls."
+    },
+    {
+      "id": "original-identity-and-send",
+      "requirement": "Cleanup intent and a fresh complete inventory fence precede each send. Original controller, credential, explicit and resolved placement, provisional transitions and every validated attempt prefix survive missing replies or later failures.",
+      "candidateEvidence": "test/integration/e2e/internal/job-attempt-ledger.ts; test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/transports/public-cloud-job.ts: JobAttemptLedger, JobNativeCleanup, public-cloud-job adapter and original-controller Workload mutation hook; strict inventory/provisional/lost-reply regressions."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; cleanup uses its original identity, independent cancellation scope and remaining deadline.",
+      "candidateEvidence": "test/integration/e2e/internal/job-native-cleanup.ts; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; JobNativeCleanup and independent native readers; cancellation, partial-history and failed automatic-cleanup regressions."
+    },
+    {
+      "id": "opaque-finalizer",
+      "requirement": "Only the family finalizer consumes exact run/reference/generation-bound active and required extension evidence once, then releases children and shared resources before its sole completion result. Terminal-only, copied, mismatched, missing, early or reused records reject.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-records.ts: begin/progress/extension/terminal/claim; test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; evidence ownership and finalizer controls."
+    },
+    {
+      "id": "original-credential-and-private-commands",
+      "requirement": "Register imported API credential intent before mutation, bind its original controller and provider identity, sanitize actual child environments and suppress secret-producing output before recording artifacts. Complete API absence readback precedes credential release.",
+      "candidateEvidence": "test/integration/e2e/internal/transports/public-cloud-job.ts: JobAuthorization bootstrap owner and JobPrivateCommands; isolatedJobEnvironment, JobCloudSession and ApiClient readback; original-controller, deadline, schema and redaction controls."
+    },
+    {
+      "id": "healthy-gpu-baseline",
+      "requirement": "An unpinned long-sleep `Standard_NC4as_T4_v3` GPU Job's status must read its host `healthy` with exactly one listed GPU before any fault is injected.",
+      "candidateEvidence": "test/integration/e2e/internal/targets/public-cloud-job.ts: gpu-health-fault command; test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember."
+    },
+    {
+      "id": "injected-xid-confirmed-in-journal",
+      "requirement": "A driver-formed `NVRM: Xid (PCI:<addr>): 79, ... GPU has fallen off the bus.` line is written to the host's `/dev/kmsg` over the product's own SSH route, as root or `sudo -n` (the same branch `GPU_HEALTH_COMMAND` reads the journal with), and independently confirmed in that boot's kernel journal before the harness waits on the product's own read.",
+      "candidateEvidence": "test/integration/e2e/internal/probes/gpu-health-fault.ts: gpuHealthFaultCommand, gpuHealthFaultLine, gpuHealthFaultNeedle; src/api/services/host-runtime/gpu-health.ts: GPU_HEALTH_COMMAND; test/unit/e2e-gpu-health-fault-probe.spec.ts."
+    },
+    {
+      "id": "unhealthy-read-with-reset-and-human-line",
+      "requirement": "After the fault, status reads the host `unhealthy` with Xid 79 `resetNeeded` on the original VM, and the human `anycloud status` line names the GPU and the Xid needing a reset.",
+      "candidateEvidence": "src/api/services/host-runtime/gpu-health.ts: parseGpuHealth, UNHEALTHY_XIDS; src/cli/renderers/gpu-health-line.ts: gpuLines; test/integration/e2e/internal/probes/gpu-health-fault.ts: gpuHealthFaultHumanLine; test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember."
+    },
+    {
+      "id": "report-only-window",
+      "requirement": "For two minutes after the unhealthy read, the Job keeps running on the same native VM, still reading `unhealthy`, with no Retrying event: GPU health is report-only and never triggers a restart.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember report-only wait; test/integration/e2e/internal/wait.ts: WaitTimeoutError."
+    },
+    {
+      "id": "ordinary-termination",
+      "requirement": "After the report-only window the Job terminates ordinarily (not through the recovery/retry path), with no Retrying event anywhere in the run after the Job's first Running event, and the family finalizer records its Terminated completion and native absence.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #gpuHealthFaultMember, #finalize."
+    }
+  ]
+}

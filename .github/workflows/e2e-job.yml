@@ -63,6 +63,10 @@ jobs:
           - azure-gpu-probe-rerun
           - gcp-gpu-probe-rerun
           - lambda-gpu-probe-rerun
+          - aws-gpu-health-fault
+          - azure-gpu-health-fault
+          - gcp-gpu-health-fault
+          - lambda-gpu-health-fault
           - aws-restricted-credential
           - azure-restricted-credential
           - aws-host-docker
@@ -71,6 +75,17 @@ jobs:
           - azure-runtime-secrets
           - gcp-runtime-secrets
           - lambda-runtime-secrets
+    concurrency:
+      # The GCP project's GPU quota is 1 across all regions
+      # (GPUS_ALL_REGIONS=1): the matrix's
+      # max-parallel would otherwise let gcp-gpu-probe-rerun and
+      # gcp-gpu-health-fault hold a GCP GPU VM at once, and the loser's quota
+      # retry would fail gcp-gpu-probe-rerun's "no other retry" assertion.
+      # Serialize just those two across refs; every other member keeps its
+      # own group, so it is never queued behind an unrelated member.
+      group: ${{ (matrix.test == 'gcp-gpu-probe-rerun' || matrix.test == 'gcp-gpu-health-fault') && 'e2e-gpu-quota-gcp' || format('e2e-job-{0}-{1}', matrix.test, github.run_id) }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
