@@ -25,6 +25,12 @@ import {
 } from './containerd-transfer.js';
 import { PULL_TOTAL_TIMEOUT_MS } from '../config.js';
 import {
+  RESOURCE_DISK_LINKS,
+  RESOURCE_DISK_PROBE,
+  RESOURCE_DISK_STORE_MOUNT_FILTER,
+  resourceDiskStoreInstallCommand,
+} from './resource-disk-store.js';
+import {
   pullNeedsRegistryAuth,
   resolveWorkloadImage,
 } from './container-image.js';
@@ -287,15 +293,42 @@ start_docker() {
   return 1
 }`;
 
+/** Bounds the wait for cloud-init's mounts module, which runs just after bootcmd. */
+const RESOURCE_DISK_MOUNT_WAIT_SECONDS = 60;
+
+/**
+ * On a host with an Azure resource disk, the image stores move there
+ * (resource-disk-store.ts) before either daemon starts, so the pull lands
+ * where the Job runs. Fails when the disk is never mounted: initializeVM's
+ * own move would then hide a pull, so none runs.
+ */
+const RESOURCE_DISK_STORES = `resource_disk_stores() {
+  for _ in $(seq ${RESOURCE_DISK_MOUNT_WAIT_SECONDS * 2}); do
+    probe=$( ${RESOURCE_DISK_PROBE.replace(/\n/g, '\n    ')}
+    )
+    [ -n "$probe" ] && break
+    found=
+    for link in ${RESOURCE_DISK_LINKS}; do [ -e "$link" ] && found=1; done
+    [ -n "$found" ] || return 0
+    sleep 0.5
+  done
+  [ -n "$probe" ] || { echo "resource disk not mounted after ${RESOURCE_DISK_MOUNT_WAIT_SECONDS} s"; return 1; }
+  STORE_MOUNT=$(echo "$probe" | ${RESOURCE_DISK_STORE_MOUNT_FILTER})
+  [ -n "$STORE_MOUNT" ] || return 0
+  (
+${resourceDiskStoreInstallCommand('$STORE_MOUNT')}
+  )
+}`;
+
 /**
  * The preparation a CPU VM Job host runs from its user data while the API
- * waits for SSH: Docker (JOB_HOST_DOCKER), then a pull of a public image
- * through containerd's transfer service, which unpacks layers in parallel,
- * or, if that fails, an ordinary `docker pull`. `docker` and `pull` in
+ * waits for SSH: Docker (JOB_HOST_DOCKER) on the image stores'
+ * disk (RESOURCE_DISK_STORES), then a pull of a public image through
+ * containerd's transfer service, which unpacks layers in parallel, or, if
+ * that fails, an ordinary `docker pull`. `docker` and `pull` in
  * JOB_HOST_PREPARE_DIR hold each step's exit status, and `method` the pull's.
- * A host with an Azure resource disk skips the pull: initializeVM moves the
- * image stores there, which would hide it. The pull is synced to disk here,
- * off the Job's path; a container's first create would otherwise wait for it.
+ * The pull is synced to disk here, off the Job's path; a container's first
+ * create would otherwise wait for it.
  */
 function jobHostPrepareScript({
   prePullImage,
@@ -309,9 +342,11 @@ mkdir -p "$dir"
 ${JOB_HOST_DOCKER}
 ${installIptables(mirror)}
 ${installUnpigz(mirror)}
+${RESOURCE_DISK_STORES}
 export -f fetch_deb install_unpigz
 install_docker >"$dir/docker-install.log" 2>&1 & docker=$!
 install_iptables >"$dir/iptables.log" 2>&1 & iptables=$!
+resource_disk_stores >"$dir/stores.log" 2>&1 & stores=$!
 # Best effort: Docker unpacks gzip layers with unpigz when it's on PATH, else
 # with Go's one-thread gzip. It lands before the pull, and initializeVM's own
 # install then finds it.
@@ -320,17 +355,16 @@ timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz >"$dir/unpigz.log" 2>&
 wait "$docker"; d=$?
 wait "$iptables"; i=$?
 wait "$unpigz"
+wait "$stores"; b=$?
+echo $b > "$dir/stores"
 [ "$d" = 0 ] && [ "$i" = 0 ] && start_docker 2>>"$dir/docker-install.log"
 s=$?
 # A failure's evidence, for waitForJobHostDocker to log before the VM goes.
-[ "$s" = 0 ] || { echo "install_docker=$d install_iptables=$i"; systemctl status docker --no-pager; journalctl -u docker --no-pager -n 40; } > "$dir/failure.log" 2>&1
+[ "$s" = 0 ] || { echo "install_docker=$d install_iptables=$i resource_disk_stores=$b"; systemctl status docker --no-pager; journalctl -u docker --no-pager -n 40; } > "$dir/failure.log" 2>&1
 echo $s > "$dir/docker"
 ${
   prePullImage
-    ? `[ "$(cat "$dir/docker")" = 0 ] || exit 0
-for link in /dev/disk/cloud/azure_resource-part1 /dev/disk/azure/resource-part1; do
-  [ -e "$link" ] && exit 0
-done
+    ? `[ "$(cat "$dir/docker")" = 0 ] && [ "$b" = 0 ] || exit 0
 echo ${shellEscape(prePullImage)} > "$dir/image"
 cat > "$dir/transfer-pull.sh" << 'TRANSFER_EOF'
 ${CONTAINERD_TRANSFER_PULL_COMMAND.trimEnd()}
@@ -411,14 +445,26 @@ export async function waitForJobHostDocker(
         // initializeVM then installs or starts Docker over SSH, which needs
         // iptables when the user data didn't get it.
         `[ "$status" = 0 ] || { ${installIptables(null).replace(/\n/g, '\n  ')}\n  install_iptables >/dev/null 2>&1; }`,
-        'echo "$status"',
+        `stores=$(cat ${dir}/stores 2>/dev/null || echo 0)`,
+        'echo "$status $stores"',
         // A failed prepare's evidence follows the status line.
         `case "$status" in 0) ;; *) tail -c 4000 ${dir}/failure.log ${dir}/docker-install.log ${dir}/iptables.log 2>/dev/null || true ;; esac`,
+        `[ "$stores" = 0 ] || tail -c 4000 ${dir}/stores.log 2>/dev/null || true`,
       ].join('\n'),
       (JOB_HOST_DOCKER_WAIT_SECONDS + 30) * 1000,
     );
-    const [status = '', ...evidence] = stdout.trim().split('\n');
+    const [line = '', ...evidence] = stdout.trim().split('\n');
+    const [status = '', stores = '0'] = line.split(' ');
     if (status === 'none') return;
+    if (stores !== '0') {
+      // RESOURCE_DISK_STORES failed, so the user data pulled nothing.
+      log.warn('Job host image stores not moved by user data', {
+        id: workloadId,
+        ip: vmIp,
+        stores,
+        evidence: evidence.join('\n'),
+      });
+    }
     if (status === '0') {
       log.info('Job host Docker prepared by user data', {
         id: workloadId,

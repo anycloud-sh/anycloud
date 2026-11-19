@@ -230,9 +230,10 @@ export const JOB_TARGET_PROFILES: Readonly<
     ghcrProbe: { vmType: 'Standard_NC4as_T4_v3', region: 'westus2' },
     // No prober: each Azure Job has its own VNet, and every one is
     // 10.0.0.0/16, so a peer's probe of 10.0.0.4 would reach itself. The
-    // per-Job VNet and NSG isolate it instead.
+    // per-Job VNet and NSG isolate it instead. A type with a resource disk,
+    // as backmesh's Azure runners have, which the image stores move to.
     hostDocker: {
-      vmType: 'Standard_D4s_v5',
+      vmType: 'Standard_D4ds_v5',
       region: 'westus2',
       peer: false,
     },

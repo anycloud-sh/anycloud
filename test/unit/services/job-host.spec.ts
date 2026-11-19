@@ -334,6 +334,7 @@ const TOOLS = [
   'mkdir',
   'mktemp',
   'mv',
+  'readlink',
   'rm',
   'sed',
   'seq',
@@ -462,6 +463,9 @@ function prepare(
     ctr = 0,
     pull = 0,
     transferTimesOut = false,
+    resourceDisk = undefined as
+      | { mounted: boolean; kib: number; rootKib: number }
+      | undefined,
   } = {},
 ) {
   const realTimeout = execFileSync('bash', ['-c', 'command -v timeout'], {
@@ -472,7 +476,9 @@ function prepare(
 exec ${realTimeout} "$@"`,
     dockerd: '',
     iptables: '',
-    systemctl: '',
+    systemctl: '[ "$1" = is-active ] && exit 3; exit 0',
+    findmnt: resourceDisk?.mounted ? 'echo /mnt' : '',
+    df: `echo Filesystem; case "$2" in /) echo "root ${resourceDisk?.rootKib}" ;; *) echo "disk ${resourceDisk?.kib}" ;; esac`,
     journalctl: '',
     sync: '',
     sleep: '',
@@ -485,13 +491,30 @@ exec ${realTimeout} "$@"`,
 esac`,
   });
   const dir = join(vm.root, 'prepare');
+  const at = (path: string) => join(vm.root, path);
+  mkdirSync(at('etc/systemd/system'), { recursive: true });
+  if (resourceDisk) {
+    mkdirSync(at('dev/disk/cloud'), { recursive: true });
+    writeFileSync(at('dev/disk/cloud/azure_resource-part1'), '');
+  }
   const { script } = parse(generateJobHostUserData(keys, host(image)));
-  vm.run(script.replaceAll('/run/anycloud/prepare', dir));
+  vm.run(
+    script
+      .replaceAll('/run/anycloud/prepare', dir)
+      .replaceAll('/dev/disk/', `${at('dev/disk')}/`)
+      .replaceAll('/etc/systemd/', `${at('etc/systemd')}/`),
+  );
   const read = (name: string) =>
     existsSync(join(dir, name))
       ? readFileSync(join(dir, name), 'utf8').trim()
       : null;
-  return { read, calls: vm.calls() };
+  const storeUnit = at('etc/systemd/system/anycloud-image-store.service');
+  return {
+    read,
+    calls: vm.calls(),
+    storeUnit: existsSync(storeUnit) ? readFileSync(storeUnit, 'utf8') : null,
+    exists: (path: string) => existsSync(at(path)),
+  };
 }
 
 describe('the Job host preparation', () => {
@@ -533,6 +556,51 @@ describe('the Job host preparation', () => {
     expect(read('docker')).not.toBe('0');
     expect(calls).toContain('systemctl disable --now docker');
     expect(read('pull')).toBeNull();
+    expect(calls).not.toMatch(/^(ctr |docker pull)/m);
+  });
+
+  it("moves the image stores to Azure's resource disk before Docker starts, and pre-pulls there", () => {
+    const { read, calls, storeUnit, exists } = prepare(IMAGE, {
+      resourceDisk: { mounted: true, kib: 157_286_400, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toContain('RequiresMountsFor=/mnt\n');
+    // Docker 29's images live in containerd's store, which the pull fills.
+    for (const store of ['docker', 'containerd']) {
+      expect(storeUnit).toContain(
+        `mount --bind /mnt/anycloud/${store} /var/lib/${store}`,
+      );
+      expect(
+        exists(
+          `etc/systemd/system/${store}.service.d/anycloud-image-store.conf`,
+        ),
+      ).toBe(true);
+    }
+    expect(calls).toContain(
+      'systemctl start anycloud-image-store.service\nsystemctl daemon-reload\nsystemctl enable --now docker',
+    );
+    expect(read('docker')).toBe('0');
+    expect(read('pull')).toBe('0');
+  });
+
+  it('pre-pulls on the OS disk beside a resource disk smaller than it', () => {
+    const { read, calls, storeUnit } = prepare(IMAGE, {
+      resourceDisk: { mounted: true, kib: 8_388_608, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toBeNull();
+    expect(calls).not.toContain('anycloud-image-store');
+    expect(read('pull')).toBe('0');
+  });
+
+  it('starts Docker but pulls nothing when the resource disk is never mounted', () => {
+    // initializeVM's own store move would hide the pull.
+    const { read, calls, storeUnit } = prepare(IMAGE, {
+      resourceDisk: { mounted: false, kib: 0, rootKib: 30_408_704 },
+    });
+    expect(storeUnit).toBeNull();
+    expect(read('docker')).toBe('0');
+    expect(calls).toContain('systemctl enable --now docker');
+    expect(read('image')).toBeNull();
+    expect(read('stores')).toBe('1');
     expect(calls).not.toMatch(/^(ctr |docker pull)/m);
   });
 
@@ -724,6 +792,21 @@ describe('waitForJobHostDocker', () => {
     const { evidence } = warn.mock.calls[0]![1] as { evidence: string };
     expect(evidence).toContain('install_docker=22 install_iptables=0');
     expect(evidence).toContain('returned error: 503');
+  });
+
+  it("logs a failed resource-disk store move's evidence", async () => {
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const host = onHost({
+      docker: '0\n',
+      stores: '1\n',
+      'stores.log': 'Job for anycloud-image-store.service failed.\n',
+    });
+    await waitForJobHostDocker(host.exec, 'job-a', '10.0.0.1');
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![1]).toMatchObject({
+      stores: '1',
+      evidence: expect.stringContaining('anycloud-image-store.service failed'),
+    });
   });
 
   it('is best-effort', async () => {
