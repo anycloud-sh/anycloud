@@ -63,6 +63,23 @@ export function normalizeUserId(userId: string): string {
   return BigInt(normalized).toString();
 }
 
+/**
+ * The chart passes the list as JSON: Helm reads value numbers as floats, and
+ * only `toJson` prints an App id such as 5622376 whole.
+ */
+function githubAppIdsFromJson(json: string): number[] {
+  const ids: unknown = JSON.parse(json);
+  if (
+    !Array.isArray(ids) ||
+    !ids.every((id) => Number.isSafeInteger(id) && (id as number) > 0)
+  ) {
+    throw new Error(
+      `${HOSTED_API_GITHUB_APPS_ARG} takes a JSON array of GitHub App ids, not ${json}`,
+    );
+  }
+  return ids as number[];
+}
+
 export function hostedApiOwnerFromArgv(
   argv: string[],
 ): HostedApiOwner | undefined {
@@ -83,6 +100,6 @@ export function hostedApiOwnerFromArgv(
   return {
     ownerUserId: normalizeUserId(argumentValue(argv, HOSTED_API_OWNER_ID_ARG)!),
     username,
-    githubAppIds: githubApps ? parseGithubAppIds(githubApps) : [],
+    githubAppIds: githubApps ? githubAppIdsFromJson(githubApps) : [],
   };
 }

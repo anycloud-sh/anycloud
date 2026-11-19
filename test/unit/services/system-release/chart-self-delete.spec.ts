@@ -42,7 +42,7 @@ describe('the API chart’s self-delete values (RFC 0049 C26 (e))', () => {
     const start = api.indexOf('{{- with .Values.installation.githubAppIds }}');
     expect(start).toBeGreaterThan(api.indexOf('- --hosted-api-owner-id'));
     expect(api.slice(start, api.indexOf('{{- end }}', start))).toContain(
-      '- --hosted-api-github-apps\n            - {{ join "," . | quote }}',
+      '- --hosted-api-github-apps\n            - {{ toJson . | quote }}',
     );
     expect(chart('values.yaml')).toMatch(/^ {2}githubAppIds: \[\]$/m);
   });

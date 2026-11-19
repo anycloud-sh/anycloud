@@ -164,6 +164,7 @@ export async function proveHostedChartRepair(input: {
       apiVersion: version,
       ownerUsername: 'e2e',
       ownerUserId: '1',
+      githubAppIds: [],
       apiUrl: `http://${SYSTEM_RELEASE_HELM_CHART_NAME}.${SYSTEM_RELEASE_NAMESPACE}`,
       chart: ownChart,
       helmJobImage: SYSTEM_RELEASE_HELM_JOB_IMAGE,

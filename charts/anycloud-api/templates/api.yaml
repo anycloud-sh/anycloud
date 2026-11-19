@@ -98,7 +98,7 @@ spec:
             - {{ .Values.installation.ownerUserId | quote }}
             {{- with .Values.installation.githubAppIds }}
             - --hosted-api-github-apps
-            - {{ join "," . | quote }}
+            - {{ toJson . | quote }}
             {{- end }}
           env:
             - name: ANYCLOUD_DIR
