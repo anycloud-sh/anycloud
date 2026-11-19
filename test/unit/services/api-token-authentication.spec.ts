@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { authenticateApiToken } from '../../../src/api/services/api-authentication';
+import {
+  authenticateApiToken,
+  githubOwner,
+} from '../../../src/api/services/api-authentication';
 import { getDB } from '../../../src/api/services/repositories/db';
 import {
   removeApiAccessUser,
@@ -42,6 +45,15 @@ describe('hosted API token authentication', () => {
       username: 'member',
       token: 'gho_member',
     });
+  });
+
+  it("refuses a GitHub App sign-in's caller what needs a kept sign-in, naming why", async () => {
+    const token = await exchangeApiToken({ ...MEMBER, githubToken: null });
+    const actor = await authenticateApiToken(token, undefined);
+    expect(actor).toEqual({ id: '2', username: 'member', token: null });
+    await expect(githubOwner(actor, 'Clusters need')).rejects.toThrow(
+      'Clusters need GitHub sign-in, which a GitHub App sign-in or a service token does not keep. Run `anycloud login`, then retry.',
+    );
   });
 
   it('refuses a GitHub token and names the login that replaces it', async () => {

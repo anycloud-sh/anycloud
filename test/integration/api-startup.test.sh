@@ -259,7 +259,7 @@ signed_out_relay() {
     IS_TEST=true ANYCLOUD_GITHUB_URL="http://127.0.0.1:$(cat "$FAKE_GITHUB_PORT_FILE")" without_github "$@"
 }
 RELAY='Ask the user to open https://github.com/login/device?user_code=FAKE-0001 and enter the code FAKE-0001'
-expect_output signed_out_relay 1 "{\"actionRequired\":{\"code\":\"GITHUB_SIGN_IN_REQUIRED\",\"message\":\"A Service's public URL needs GitHub sign-in. $RELAY" -- \
+expect_output signed_out_relay 1 "{\"actionRequired\":{\"code\":\"GITHUB_SIGN_IN_REQUIRED\",\"message\":\"A Service's public URL needs GitHub sign-in, which a GitHub App sign-in or a service token does not keep. $RELAY" -- \
     service --credentials api-startup-aws --vm-type m3.medium busybox:1.36 -- true
 # Create runs through the cloud's own CLI, not the API. It must never reach
 # a real cloud from CI. The dummy token stops it at GitHub, before the seed;

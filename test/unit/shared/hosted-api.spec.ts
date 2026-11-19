@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import {
   hostedApiOwnerFromArgv,
+  parseGithubAppIds,
   isHostedApiWorkload,
   isHostedApiImage,
 } from '../../../src/shared/hosted-api';
@@ -47,7 +48,37 @@ describe('hosted API helpers', () => {
         '--hosted-api-owner',
         'octocat',
       ]),
-    ).toEqual({ ownerUserId: '583231', username: 'octocat' });
+    ).toEqual({
+      ownerUserId: '583231',
+      username: 'octocat',
+      githubAppIds: [],
+    });
+  });
+
+  it('parses the GitHub Apps whose user tokens the API exchanges', () => {
+    const owner = [
+      '--hosted-api-owner',
+      'octocat',
+      '--hosted-api-owner-id',
+      '1',
+    ];
+    expect(
+      hostedApiOwnerFromArgv([
+        ...owner,
+        '--hosted-api-sign-in-apps',
+        '[5622376,7]',
+      ]),
+    ).toMatchObject({ githubAppIds: [5622376, 7] });
+    expect(hostedApiOwnerFromArgv(owner)).toMatchObject({ githubAppIds: [] });
+    expect(() =>
+      hostedApiOwnerFromArgv([...owner, '--hosted-api-sign-in-apps', '[1.5]']),
+    ).toThrow('JSON array of GitHub App ids');
+  });
+
+  it('reads `none` as an empty App list', () => {
+    expect(parseGithubAppIds('none')).toEqual([]);
+    expect(parseGithubAppIds('5622376,7')).toEqual([5622376, 7]);
+    expect(() => parseGithubAppIds('backmesh')).toThrow('GitHub App ids');
   });
 
   it('rejects username-only hosted commands', () => {

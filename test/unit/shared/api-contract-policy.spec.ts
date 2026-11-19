@@ -89,6 +89,7 @@ const expectedContractEndpoints = {
   'apiAccess.revoke': ['DELETE', '/api-access/users/{userId}'],
   'apiAccess.issueServiceToken': ['POST', '/api-access/services'],
   'apiAccess.rotateServiceToken': ['POST', '/api-access/services/{name}/token'],
+  'apiAccess.setGithubApps': ['PUT', '/api-access/github-apps'],
   'apiAccess.exchangeToken': ['POST', '/api-token'],
   'apiAccess.rotateToken': ['POST', '/api-token/rotate'],
   'database.query': ['POST', '/database/queries'],
@@ -243,6 +244,7 @@ const expectedCommandRetrySemantics = {
   'apiAccess.issueServiceToken':
     'conflict — recovery: apiAccess.rotateServiceToken; a replay finds the name holding a token (409), and the token is printed only once',
   'apiAccess.rotateServiceToken': 'duplicate', // a replay rotates again; the caller keeps the last token returned
+  'apiAccess.setGithubApps': 'idempotent', // a replay stores the same list
   'apiAccess.exchangeToken': 'idempotent', // returns the same token until it is rotated
   'apiAccess.rotateToken': 'duplicate', // a replay rotates again; the CLI stores the last token returned
   'database.query': 'idempotent', // read-only POST (replay declared safe); swept in by method

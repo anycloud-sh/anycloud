@@ -135,6 +135,7 @@ function harness(
     checkpointBucket: null,
     githubToken: 'gh-token',
     owner: { id: '4242', username: 'owner' },
+    githubAppIds: [],
     version: '0.1.74',
     hostedApi: vi.fn(async () => {
       const failure = connects.shift();
@@ -449,6 +450,15 @@ describe('cluster create through the seed', () => {
     expect(JSON.stringify(rest)).toBe(
       JSON.stringify(plain.deployed[0]!.releaseValues),
     );
+  });
+
+  it('lists the GitHub Apps whose user tokens the API exchanges in its values', async () => {
+    const { deployed, dependencies, input } = harness();
+    await runSeedCreate({ ...input, githubAppIds: [5622376] }, dependencies);
+    expect(deployed[0]!.releaseValues.installation).toMatchObject({
+      ownerUserId: '4242',
+      githubAppIds: [5622376],
+    });
   });
 
   it('turns on the e2e access hand-off in both the chart values and the startup script, together', async () => {

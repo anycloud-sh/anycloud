@@ -395,6 +395,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     await upsertApiAccessOwner(
       hostedApiOwner.username,
       hostedApiOwner.ownerUserId,
+      hostedApiOwner.githubAppIds,
     );
   }
 

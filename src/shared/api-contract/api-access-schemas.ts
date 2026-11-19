@@ -62,6 +62,11 @@ export const apiTokenResponseSchema = z
   .object({ token: z.string().startsWith('acapi_') })
   .strict();
 
+/** The GitHub Apps whose user tokens a hosted API exchanges. */
+export const githubAppsSchema = z
+  .object({ githubAppIds: z.array(z.number().int().positive()) })
+  .strict();
+
 export const issueServiceTokenInputSchema = z
   .object({ name: serviceNameSchema })
   .strict();

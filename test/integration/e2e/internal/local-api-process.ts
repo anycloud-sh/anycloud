@@ -16,7 +16,7 @@ import { ManagedProcess } from './managed-process.js';
 import type { ProcessRunner } from './process.js';
 import type { TargetHttpClient } from './transports/http.js';
 import { writeLocalApiToken } from '../../helpers/local-api-token.js';
-import { FakeGithub, githubToken } from './fake-github.js';
+import { FakeGithub, githubToken, SIGN_IN_APP_ID } from './fake-github.js';
 
 export const unscopedCliEnvironment = {
   CLAUDECODE: undefined,
@@ -192,6 +192,8 @@ export class LocalApiProcess {
         owner.username,
         '--hosted-api-owner-id',
         owner.id,
+        '--hosted-api-sign-in-apps',
+        JSON.stringify([SIGN_IN_APP_ID]),
       );
     await this.#process.startWithProbe({
       executable: process.execPath,

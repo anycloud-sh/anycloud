@@ -21,6 +21,17 @@ export function githubToken(
   return renewal === undefined ? `gho_${login}` : `gho_${login}.${renewal}`;
 }
 
+/** The GitHub App whose user tokens hosted fixtures list for sign-in. */
+export const SIGN_IN_APP_ID = 5622376;
+
+/**
+ * A GitHub App's user token for `login`, reaching one installation of App
+ * `appId`; App 0's token reaches none.
+ */
+export function appUserToken(login: string, appId: number): string {
+  return `ghu_${login}@${appId}`;
+}
+
 /** Ids the hosted fixtures name as owners; anyone else gets a stable hash. */
 const KNOWN_IDS: Readonly<Record<string, string>> = {
   'anycloud-test': '1',
@@ -32,7 +43,11 @@ function accountId(login: string): string {
   return KNOWN_IDS[login] ?? String(1000 + (parseInt(digest, 16) % 1_000_000));
 }
 
-function account(token: string): { login: string; scopes: string } | null {
+function account(
+  token: string,
+): { login: string; scopes: string | null; appId?: number } | null {
+  const app = /^ghu_([a-z0-9-]+)@(\d+)$/u.exec(token);
+  if (app) return { login: app[1], scopes: null, appId: Number(app[2]) };
   const match = /^(gho|ghp)_([a-z0-9-]+)(?:~([a-z:,]+)|\.\d+)?$/u.exec(token);
   if (!match) return null;
   const [, prefix, login, scopes] = match;
@@ -45,8 +60,9 @@ function account(token: string): { login: string; scopes: string } | null {
 
 /**
  * The GitHub REST routes a hosted API calls: `GET /user` for the caller, with
- * the `X-OAuth-Scopes` header GitHub sends for OAuth and classic tokens, and
- * `GET /users/{login}` for `api access add`. The CLI's device flow, pointed
+ * the `X-OAuth-Scopes` header GitHub sends for OAuth and classic tokens (not
+ * for an App's user token), `GET /user/installations`, which lists only the
+ * issuing App's installations, and `GET /users/{login}` for `api access add`. The CLI's device flow, pointed
  * here by `ANYCLOUD_GITHUB_URL`, gets a code that is never approved.
  */
 export class FakeGithub {
@@ -110,8 +126,22 @@ export class FakeGithub {
             login: caller.login,
             company: null,
           },
-          { 'x-oauth-scopes': caller.scopes },
+          caller.scopes === null ? {} : { 'x-oauth-scopes': caller.scopes },
         );
+        return;
+      }
+      if (path === '/user/installations') {
+        if (caller.appId === undefined) {
+          send(403, {
+            message:
+              'You must authenticate with an access token authorized to a GitHub App in order to list installations',
+          });
+          return;
+        }
+        const installations = caller.appId
+          ? [{ id: 1, app_id: caller.appId, app_slug: `app-${caller.appId}` }]
+          : [];
+        send(200, { total_count: installations.length, installations });
         return;
       }
       const named = /^\/users\/([a-z0-9-]+)$/u.exec(path)?.[1];

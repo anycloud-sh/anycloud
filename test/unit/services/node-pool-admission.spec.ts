@@ -108,6 +108,17 @@ describe('node pool admission', () => {
     expect(check(inspection(ImageVerdict.Unauthorized))).toThrow(
       'For a private GHCR image, run `anycloud login`',
     );
+    // A GitHub App sign-in keeps no GitHub token, so its pull is refused here.
+    expect(
+      check(
+        inspection(
+          ImageVerdict.Unauthorized,
+          ImageInspectionFailureReason.GhcrSignInRequired,
+        ),
+      ),
+    ).toThrow(
+      'a GitHub App sign-in or a service token pulls only public images',
+    );
     expect(
       check(
         inspection(

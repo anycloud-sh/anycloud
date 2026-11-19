@@ -96,6 +96,8 @@ export interface SeedCreateInput {
   checkpointBucket: string | null;
   githubToken: string;
   owner: { id: string; username: string };
+  /** GitHub Apps whose user tokens the hosted API's exchange accepts. */
+  githubAppIds: number[];
   version: string;
   /** The hosted API's client at its hostname; fails until the API answers. */
   hostedApi(apiUrl: string): Promise<ApiClient>;
@@ -243,6 +245,7 @@ export async function runSeedCreate(
       apiVersion: input.version,
       ownerUsername: input.owner.username,
       ownerUserId: input.owner.id,
+      githubAppIds: input.githubAppIds,
       apiUrl: clusterApiUrl(clusterId),
       chart,
       helmJobImage: SYSTEM_RELEASE_HELM_JOB_IMAGE,

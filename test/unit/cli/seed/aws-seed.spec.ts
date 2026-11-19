@@ -685,6 +685,7 @@ describe('cluster create on AWS through the aws CLI', () => {
         checkpointBucket: null,
         githubToken: 'gh-token',
         owner: { id: '4242', username: 'owner' },
+        githubAppIds: [],
         version: '0.1.74',
         hostedApi: async () => api as never,
         progress: () => {},

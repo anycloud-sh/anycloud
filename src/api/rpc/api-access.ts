@@ -131,6 +131,25 @@ export const apiAccessRouter = {
       ),
     }),
   ),
+  setGithubApps: authenticated.apiAccess.setGithubApps.handler(
+    async ({ context, input, signal, errors }) => ({
+      githubAppIds: await mapDeclaredErrors(
+        () =>
+          context.domains.apiAccess.setGithubApps(
+            context.actor,
+            input.githubAppIds,
+            signal,
+          ),
+        [
+          notHosted(errors),
+          declaredAs(
+            ApiAccessOwnerRequiredError,
+            errors.API_ACCESS_OWNER_REQUIRED,
+          ),
+        ],
+      ),
+    }),
+  ),
   exchangeToken: exchange.apiAccess.exchangeToken.handler(({ context }) => ({
     token: context.apiToken,
   })),

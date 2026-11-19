@@ -6,6 +6,7 @@ import {
   apiAccessUserIdSchema,
   apiAccessUsersResponseSchema,
   apiTokenResponseSchema,
+  githubAppsSchema,
   grantApiAccessInputSchema,
   issueServiceTokenInputSchema,
   serviceNameSchema,
@@ -136,6 +137,17 @@ const rotateServiceToken = authenticated
     },
   });
 
+const setGithubApps = authenticated
+  .command({
+    method: 'PUT',
+    path: '/api-access/github-apps',
+    operationId: 'setGithubApps',
+    summary: 'Replace the GitHub Apps whose user tokens this API exchanges',
+  })
+  .input(githubAppsSchema)
+  .output(githubAppsSchema)
+  .errors({ ...notHostedError, ...ownerRequiredError });
+
 /** The bearer is a GitHub sign-in; served within the release window. */
 const exchangeToken = authenticated
   .command(
@@ -169,6 +181,7 @@ export const apiAccessContract = {
   revoke,
   issueServiceToken,
   rotateServiceToken,
+  setGithubApps,
   exchangeToken,
   rotateToken,
 };

@@ -1198,6 +1198,8 @@ export function createClustersDomain(
       apiVersion: installation.apiVersion,
       ownerUsername: owner.username,
       ownerUserId: owner.id,
+      // `cluster create --sign-in-apps` lists Apps; an API-made cluster none.
+      githubAppIds: [],
       apiUrl: clusterApiUrl(installation.id),
       chart,
       helmJobImage: installation.helmJobImage,
@@ -1348,6 +1350,8 @@ export function createClustersDomain(
       apiVersion: intent.apiVersion,
       ownerUsername: owner.username,
       ownerUserId: owner.id,
+      // `cluster create --sign-in-apps` lists Apps; an API-made cluster none.
+      githubAppIds: [],
       apiUrl: clusterApiUrl(installation.id),
       chart,
       helmJobImage: installation.helmJobImage,

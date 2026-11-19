@@ -20,6 +20,7 @@ anycloud cluster create <name> \
   [--zone <zone>] \
   [--vm-type <type>] \
   [--checkpoint-bucket <name>] \
+  [--sign-in-apps <id,...>] \
   [--json]
 ```
 
@@ -100,6 +101,13 @@ ID, which stays managed when create is given it back); one holding a backup make
 [restore](#recover-after-losing-the-management-vm). Without the flag, create
 makes an Anycloud-managed bucket named after the cluster ID, with object
 versioning; `delete` keeps it unless you pass `--delete-buckets`.
+
+**`--sign-in-apps`** lists the GitHub Apps, by App ID, whose user tokens the
+API exchanges for its own API tokens, as it does an `anycloud login` sign-in;
+see [API tokens](/reference/cli/api-utilities#api-tokens). The list rides
+in the release values and seeds the API's database on its first start; its
+owner replaces it with
+[`api upgrade --sign-in-apps`](/reference/cli/api-utilities#upgrade-the-api).
 
 ### Cloud rights
 
@@ -418,8 +426,8 @@ holds one JSON document: the result, or the failure
 where `code` is the API's error code (`CLUSTER_EXISTS`, `CLUSTER_BUSY`,
 `NODE_POOL_REFERENCED`, `SYSTEM_RELEASE_REFUSED`, …) or one of the CLI's:
 `INVALID_ARGUMENT` (a missing or invalid flag), `API_UNREACHABLE` (no answer
-from the API, or it is restarting), `LOCAL_API_STILL_STARTING` or
-`UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
+from the API, or it is restarting), `LOCAL_API_STILL_STARTING`,
+`HOSTED_API_STILL_STARTING` or `UNEXPECTED`. Progress lines go to stderr. When the command needs a GitHub
 sign-in, the document is instead the
 [`actionRequired` relay](/reference/cli/api-utilities#anycloud-login) with the device
 code, and the exit status is `2`: approve the code and run it again.
@@ -429,7 +437,7 @@ code, and the exit status is `2`: approve the code and run it again.
 | `0`   | Done, or accepted where the command returns before the work finishes                                      |
 | `1`   | Refused with an API error code, or the operation ended `failed`                                           |
 | `2`   | Not run: a usage error, an unreachable API, or a GitHub sign-in it needs (`actionRequired`); run it again |
-| `4`   | A `--wait` timed out, or the new local API was still starting                                             |
+| `4`   | A `--wait` timed out, or the new local or hosted API was still starting                                   |
 | `130` | Interrupted with Ctrl-C; no document is printed                                                           |
 
 `cluster delete` is not on this contract yet: `--json` prints the result above,
