@@ -385,6 +385,7 @@ describe('management VM boot script', () => {
       apiVersion: '0.1.74',
       ownerUsername: 'owner',
       ownerUserId: '42',
+      githubAppIds: [],
       apiUrl: `https://${CLUSTER}.anycloud.sh`,
       chart: `oci://ghcr.io/anycloud-sh/api-k8-chart@sha256:${'c'.repeat(64)}`,
       helmJobImage: SYSTEM_RELEASE_HELM_JOB_IMAGE,
