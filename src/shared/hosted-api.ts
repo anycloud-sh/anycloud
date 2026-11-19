@@ -6,10 +6,24 @@ export const GITHUB_LOGIN_SCOPES = ['read:org', 'read:packages'] as const;
 
 const HOSTED_API_OWNER_ARG = '--hosted-api-owner';
 const HOSTED_API_OWNER_ID_ARG = '--hosted-api-owner-id';
+const HOSTED_API_GITHUB_APPS_ARG = '--hosted-api-github-apps';
 
 export interface HostedApiOwner {
   ownerUserId: string;
   username: string;
+  /** GitHub Apps whose user tokens the exchange accepts. */
+  githubAppIds: number[];
+}
+
+/** A comma-separated list of GitHub App ids, as `cluster create --github-apps` takes it. */
+export function parseGithubAppIds(list: string): number[] {
+  const ids = list.split(',').map((id) => id.trim());
+  if (!ids.every((id) => /^[1-9]\d*$/.test(id))) {
+    throw new Error(
+      `GitHub App ids are positive integers separated by commas, not "${list}"`,
+    );
+  }
+  return ids.map(Number);
 }
 
 export function isHostedApiImage(image: string | null): boolean {
@@ -65,8 +79,10 @@ export function hostedApiOwnerFromArgv(
   if (!username) {
     throw new Error(`${HOSTED_API_OWNER_ARG} requires a GitHub username`);
   }
+  const githubApps = argumentValue(argv, HOSTED_API_GITHUB_APPS_ARG);
   return {
     ownerUserId: normalizeUserId(argumentValue(argv, HOSTED_API_OWNER_ID_ARG)!),
     username,
+    githubAppIds: githubApps ? parseGithubAppIds(githubApps) : [],
   };
 }

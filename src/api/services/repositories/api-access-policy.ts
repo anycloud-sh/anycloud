@@ -11,6 +11,8 @@ const POLICY_ID = 1;
 export interface ApiAccessPolicy {
   ownerUser: string;
   ownerUserId: string | null;
+  /** GitHub Apps whose user tokens the exchange accepts. */
+  githubAppIds: number[];
   createdAt: number;
   updatedAt: number;
 }
@@ -66,6 +68,7 @@ const REGISTERED_DEPLOYMENT_JOIN = `LEFT JOIN deployments d
 interface ApiAccessPolicyRow {
   owner_user: string;
   owner_user_id: string | null;
+  github_app_ids: string;
   created_at: number;
   updated_at: number;
 }
@@ -79,6 +82,7 @@ function rowToPolicy(row: ApiAccessPolicyRow): ApiAccessPolicy {
   return {
     ownerUser: row.owner_user,
     ownerUserId: row.owner_user_id,
+    githubAppIds: JSON.parse(row.github_app_ids) as number[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -98,7 +102,7 @@ export async function getApiAccessPolicy(
   // queued writes; its writers are awaited transactions.
   const rows = await db.read((reader) =>
     reader.query<ApiAccessPolicyRow>(
-      `SELECT owner_user, owner_user_id, created_at, updated_at
+      `SELECT owner_user, owner_user_id, github_app_ids, created_at, updated_at
          FROM api_access_policy
         WHERE id = ?`,
       [POLICY_ID],
@@ -107,9 +111,14 @@ export async function getApiAccessPolicy(
   return rows[0] ? rowToPolicy(rows[0]) : null;
 }
 
+/**
+ * Binds the policy to the startup's owner. `githubAppIds`, from the release
+ * values, seeds a new policy only: the owner replaces the list afterwards.
+ */
 export async function upsertApiAccessOwner(
   ownerUser: string,
   ownerUserId: string,
+  githubAppIds: readonly number[] = [],
   db: DB = getDB(),
 ): Promise<void> {
   const username = ownerUser.trim();
@@ -121,7 +130,7 @@ export async function upsertApiAccessOwner(
   const now = Date.now();
   await db.transaction((tx) => {
     const existing = tx.query<ApiAccessPolicyRow>(
-      `SELECT owner_user, owner_user_id, created_at, updated_at
+      `SELECT owner_user, owner_user_id, github_app_ids, created_at, updated_at
          FROM api_access_policy
         WHERE id = ?`,
       [POLICY_ID],
@@ -162,12 +171,24 @@ export async function upsertApiAccessOwner(
     } else {
       tx.query(
         `INSERT INTO api_access_policy (
-           id, owner_user, owner_user_id, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?)`,
-        [POLICY_ID, username, userId, now, now],
+           id, owner_user, owner_user_id, github_app_ids, created_at,
+           updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [POLICY_ID, username, userId, JSON.stringify(githubAppIds), now, now],
       );
     }
   });
+}
+
+/** Replaces the GitHub Apps whose user tokens the exchange accepts. */
+export async function setApiGithubApps(
+  githubAppIds: readonly number[],
+  db: DB = getDB(),
+): Promise<void> {
+  await db.query(
+    'UPDATE api_access_policy SET github_app_ids = ?, updated_at = ? WHERE id = ?',
+    [JSON.stringify(githubAppIds), Date.now(), POLICY_ID],
+  );
 }
 
 export async function listApiAccessUsers(

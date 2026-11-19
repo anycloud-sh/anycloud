@@ -29,6 +29,7 @@ const input: SystemReleaseIntentInput = {
   apiVersion: '0.1.64',
   ownerUsername: 'owner',
   ownerUserId: '42',
+  githubAppIds: [5622376],
   apiUrl: 'http://203.0.113.9:30080',
   chart: `oci://ghcr.io/anycloud-sh/api-k8-chart@sha256:${'c'.repeat(64)}`,
   helmJobImage: SYSTEM_RELEASE_HELM_JOB_IMAGE,
@@ -70,6 +71,12 @@ describe('system release intent', () => {
     expect(JSON.parse(chart.spec.valuesContent)).toEqual(
       systemReleaseValues(input),
     );
+  });
+
+  it('carries the GitHub Apps whose user tokens the API exchanges', () => {
+    expect(systemReleaseValues(input).installation.githubAppIds).toEqual([
+      5622376,
+    ]);
   });
 
   it('refuses a tag-only image or chart and a non-positive revision', () => {

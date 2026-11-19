@@ -96,6 +96,10 @@ spec:
             - {{ .Values.installation.ownerUsername | quote }}
             - --hosted-api-owner-id
             - {{ .Values.installation.ownerUserId | quote }}
+            {{- with .Values.installation.githubAppIds }}
+            - --hosted-api-github-apps
+            - {{ join "," . | quote }}
+            {{- end }}
           env:
             - name: ANYCLOUD_DIR
               value: /mnt/checkpoint

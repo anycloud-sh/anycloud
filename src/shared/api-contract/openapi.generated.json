@@ -10741,6 +10741,185 @@
   },
   "openapi": "3.1.1",
   "paths": {
+    "/api-access/github-apps": {
+      "put": {
+        "operationId": "setGithubApps",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AnyCloudClientVersion"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "githubAppIds": {
+                    "items": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "githubAppIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "githubAppIds": {
+                      "items": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "githubAppIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "API_ACCESS_NOT_HOSTED": "#/components/schemas/ApiAccessNotHostedApiError",
+                      "CLIENT_VERSION_MISMATCH": "#/components/schemas/ClientVersionMismatchApiError"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiAccessNotHostedApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ClientVersionMismatchApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UndefinedApiError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "400"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "UNAUTHORIZED": "#/components/schemas/UnauthorizedApiError"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/UnauthorizedApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UndefinedApiError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "401"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "API_ACCESS_OWNER_REQUIRED": "#/components/schemas/ApiAccessOwnerRequiredApiError",
+                      "FORBIDDEN": "#/components/schemas/ForbiddenApiError",
+                      "GITHUB_SIGN_IN_REQUIRED": "#/components/schemas/GithubSignInRequiredApiError"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiAccessOwnerRequiredApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ForbiddenApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GithubSignInRequiredApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UndefinedApiError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "403"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "API_RESTARTING": "#/components/schemas/ApiRestartingApiError",
+                      "AUTHENTICATION_UNAVAILABLE": "#/components/schemas/AuthenticationUnavailableApiError"
+                    },
+                    "propertyName": "code"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiRestartingApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AuthenticationUnavailableApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UndefinedApiError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "503"
+          }
+        },
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "summary": "Replace the GitHub Apps whose user tokens this API exchanges",
+        "tags": [
+          "API Access"
+        ]
+      }
+    },
     "/api-access/services": {
       "post": {
         "operationId": "issueServiceToken",

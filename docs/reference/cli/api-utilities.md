@@ -13,7 +13,7 @@ Manage the active API target:
 anycloud api list|ls [--json]
 anycloud api use [target]
 anycloud api status|describe [--watch [--interval <seconds>]] [--json]
-anycloud api upgrade|update [--image <reference>] [--force] [--json]
+anycloud api upgrade|update [--image <reference>] [--force] [--github-apps <id,...>] [--json]
 anycloud api start [options]
 anycloud api stop
 anycloud api logs [-f]
@@ -108,6 +108,12 @@ replacement can't launch stays one VM short until it can.
 The active API selection is not changed. When a stopped active local API has a saved loopback URL with a custom port,
 `api upgrade` starts it again on that port.
 
+`--github-apps <id,...>` replaces the GitHub Apps, by App ID, whose user
+tokens a hosted API exchanges (see [API tokens](#api-tokens)), and upgrades
+nothing. Only the API's owner may run it, and only against an API already on
+this CLI's release; an older one exits with status 2 and asks you to upgrade
+first. `cluster create --github-apps` sets the first list.
+
 ### Give someone access
 
 The owner of a hosted API can share it with more GitHub accounts:
@@ -177,6 +183,13 @@ from gets the same token, so `anycloud api token` prints it for CI:
 anycloud api token
 anycloud api token rotate
 ```
+
+A hosted API also exchanges a user token (`ghu_`) of a GitHub App its owner
+listed with `cluster create --github-apps` or `api upgrade --github-apps`, from
+a tool that signs you in through that App. One from another App, or one that
+reaches none of the App's installations, is refused. The API never keeps an App's sign-in, so private
+GHCR images, Services and clusters need an `anycloud login <api-url>` sign-in
+as well.
 
 In CI or an agent, set `ANYCLOUD_API_TOKEN` to the token together with
 `API_URL`. The CLI and the Python SDK ignore `ANYCLOUD_API_TOKEN` unless

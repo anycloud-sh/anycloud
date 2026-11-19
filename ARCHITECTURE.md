@@ -1462,10 +1462,18 @@ trusts read the current signing key. A hosted API admits only the opaque
 API tokens it issues (`acapi_` plus 32 random bytes), one per admitted GitHub
 account, never a GitHub token. `anycloud login <api>` (or the CLI's first
 command to it) exchanges a GitHub sign-in at `POST /v1/api-token`. The exchange
-skips GitHub unless the token starts with `gho_`, requires GitHub to list
-exactly `read:org` and `read:packages` for it, and checks the access policy. It
-then stores the sign-in encrypted, for private GHCR pulls, Service hostnames
-and clusters, and returns the account's existing token or mints the first. The
+skips GitHub unless the token starts with `gho_` (an OAuth sign-in) or `ghu_`
+(a GitHub App's user token). For `gho_` it requires GitHub to list exactly
+`read:org` and `read:packages`. For `ghu_` it reads the issuing App from
+`GET /user/installations`, which lists only that App's installations the
+person reaches, and requires its ID in the access policy's App list. `cluster
+create --github-apps` seeds that list through the release values on the
+API's first start, and the owner replaces it with `api upgrade --github-apps`;
+a token that reaches no installation names no App and is refused. It takes the account from `GET /user` and checks
+the access policy. It then stores an OAuth sign-in encrypted, for private GHCR
+pulls, Service hostnames and clusters, but never an App's: an App-only account
+has none, so those features refuse it with `GITHUB_SIGN_IN_REQUIRED` or the
+image error. It returns the account's existing token or mints the first. The
 exchange and `POST /v1/api-token/rotate` are the only routes that return a
 token; both are logged without it. Rotation replaces the hash and ciphertext in
 one statement, `api access remove` deletes the member's row, and a stale token

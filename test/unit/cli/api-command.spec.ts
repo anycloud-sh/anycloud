@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
   activeVmHostedApi: vi.fn(),
   systemReleaseStatus: vi.fn(),
   systemReleaseRequest: vi.fn(),
+  setGithubApps: vi.fn(),
   systemReleaseDrain: vi.fn(async () => ({ jobs: [] })),
   systemReleaseKubernetes: vi.fn(),
   clustersList: vi.fn(),
@@ -163,6 +164,7 @@ vi.mock('../../../src/shared/services/api-client/rpc.js', async (actual) => ({
       grant: mocks.grantApiAccessUser,
       list: mocks.listApiAccessUsers,
       revoke: mocks.revokeApiAccessUser,
+      setGithubApps: mocks.setGithubApps,
     },
   }),
 }));
@@ -1114,6 +1116,46 @@ describe('api command', () => {
         `"anycloud api status" until it no longer reports version ${packageJson.version}`,
       ),
     );
+  });
+
+  it('api upgrade --github-apps sets the App list on an API already on this release', async () => {
+    useHostedActive();
+    mocks.systemReleaseStatus.mockResolvedValue({
+      servedVersion: packageJson.version,
+      schemaVersion: packageJson.version,
+      upgrade: null,
+      rollout: null,
+    });
+    mocks.setGithubApps.mockResolvedValue({ githubAppIds: [5622376] });
+    await runApi(['upgrade', '--github-apps', '5622376', '--json']);
+    expect(mocks.setGithubApps).toHaveBeenCalledWith({
+      githubAppIds: [5622376],
+    });
+    expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
+    expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toMatchObject({
+      outcome: 'unchanged',
+      githubAppIds: [5622376],
+    });
+  });
+
+  it('api upgrade --github-apps on an older API upgrades nothing and says to upgrade first', async () => {
+    useHostedActive();
+    mocks.systemReleaseStatus.mockResolvedValue({
+      servedVersion: '0.0.1',
+      schemaVersion: '0.0.1',
+      upgrade: null,
+      rollout: null,
+    });
+    await expect(
+      runApi(['upgrade', '--github-apps', '5622376']),
+    ).rejects.toThrow('process.exit:2');
+    expect(mocks.printError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `--github-apps needs the API on anycloud ${packageJson.version}; it serves 0.0.1. Run \`anycloud api upgrade\` first`,
+      ),
+    );
+    expect(mocks.setGithubApps).not.toHaveBeenCalled();
+    expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
   });
 
   it('api upgrade refuses --image against an API without the release surface', async () => {

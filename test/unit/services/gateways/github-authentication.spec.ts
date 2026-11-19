@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getAuthenticated: vi.fn(),
   getByUsername: vi.fn(),
+  listInstallationsForAuthenticatedUser: vi.fn(),
   octokit: vi.fn(),
 }));
 
@@ -12,6 +13,10 @@ vi.mock('@octokit/rest', () => ({
       users: {
         getAuthenticated: mocks.getAuthenticated,
         getByUsername: mocks.getByUsername,
+      },
+      apps: {
+        listInstallationsForAuthenticatedUser:
+          mocks.listInstallationsForAuthenticatedUser,
       },
     };
   }),
@@ -69,6 +74,34 @@ describe('GitHub authentication', () => {
     );
     await expect(Github.authenticate('gho_token')).rejects.toThrow(
       'Bad credentials',
+    );
+  });
+
+  it("names the App a user token's installations belong to", async () => {
+    // The shape GET /user/installations returned for a backmesh App user
+    // token (run 44471531094): only the issuing App's installations.
+    mocks.listInstallationsForAuthenticatedUser.mockResolvedValueOnce({
+      data: {
+        total_count: 2,
+        installations: [
+          { id: 1, app_id: 5622376, app_slug: 'backmesh' },
+          { id: 2, app_id: 5622376, app_slug: 'backmesh' },
+        ],
+      },
+    });
+    await expect(Github.issuingApp('ghu_token')).resolves.toEqual({
+      id: 5622376,
+      slug: 'backmesh',
+    });
+    mocks.listInstallationsForAuthenticatedUser.mockResolvedValueOnce({
+      data: { total_count: 0, installations: [] },
+    });
+    await expect(Github.issuingApp('ghu_token')).resolves.toBeNull();
+    mocks.listInstallationsForAuthenticatedUser.mockRejectedValueOnce(
+      requestError(503, 'outage'),
+    );
+    await expect(Github.issuingApp('ghu_token')).rejects.toBeInstanceOf(
+      GithubUnavailableError,
     );
   });
 

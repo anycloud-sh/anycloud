@@ -76,10 +76,13 @@ import { ORPCError } from '@orpc/client';
 import {
   LIFECYCLE_EXIT_HELP,
   NOT_RUN_EXIT_CODE,
+  UsageError,
   exitWithLifecycleError,
   lifecycleError,
   withLifecycleUsageExit,
 } from '../utils/lifecycle-result.js';
+import { parseGithubAppIds } from '../../shared/hosted-api.js';
+import { errorMessage } from '../../shared/log-diagnostics.js';
 import type {
   KubernetesStep,
   SystemReleaseStatus,
@@ -279,6 +282,7 @@ async function probeSystemRelease(
 interface ApiUpgradeOptions {
   image?: string;
   force?: boolean;
+  githubApps?: number[];
   json?: boolean;
 }
 
@@ -299,6 +303,8 @@ export interface ApiUpgradeResult {
    * the step). The K3s binary upgrade (b2) adds the server's versions.
    */
   k3s: { configuration: 'changed' | 'current' } | null;
+  /** The App list `--github-apps` set. */
+  githubAppIds?: number[];
 }
 
 function createApiUpgradeCommand(): Command {
@@ -316,6 +322,17 @@ function createApiUpgradeCommand(): Command {
       '--force',
       'Stop the pool Jobs the upgrade waits for instead of waiting; each retries on the new release',
     )
+    .option(
+      '--github-apps <ids>',
+      "Hosted API on this CLI's release, owner only: replace the comma-separated GitHub App ids whose user tokens it exchanges, and upgrade nothing",
+      (list: string) => {
+        try {
+          return parseGithubAppIds(list);
+        } catch (error) {
+          throw new InvalidArgumentError(errorMessage(error));
+        }
+      },
+    )
     .option('--json', 'Emit the upgrade result, or the error, as JSON')
     .addHelpText(
       'after',
@@ -323,6 +340,7 @@ function createApiUpgradeCommand(): Command {
 Examples:
   $ anycloud api upgrade
   $ anycloud api upgrade --image ghcr.io/anycloud-sh/api:<version>@sha256:<digest>
+  $ anycloud api upgrade --github-apps 5622376
 
 With the local API active, it is started or restarted on this CLI's release. If the
 active API is a Helm-managed API on a cluster (anycloud cluster create), it is
@@ -362,6 +380,11 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         // A hosted API is upgraded through its own API alone: the local API,
         // and Docker, are not touched.
         if (activeIsLocal) {
+          if (options.githubApps) {
+            throw new UsageError(
+              '--github-apps applies only to a hosted API; a local API exchanges no tokens.',
+            );
+          }
           const localBefore = await reconcileLocalApi(currentVersion, {
             startIfStopped: true,
             ...(activeTarget.source !== 'default' &&
@@ -407,15 +430,41 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
           return;
         }
 
-        const hostedRelease = (
-          await apiClient({
-            apiUrl: activeTarget.url,
-            missingExitCode: NOT_RUN_EXIT_CODE,
-          })
-        ).systemRelease;
+        const hostedClient = await apiClient({
+          apiUrl: activeTarget.url,
+          missingExitCode: NOT_RUN_EXIT_CODE,
+        });
+        const hostedRelease = hostedClient.systemRelease;
         const releaseStatus = await probeSystemRelease(hostedRelease);
         if (releaseStatus) {
           const served = releaseStatus.servedVersion;
+          // Only this release's API keeps an App list; an older one is
+          // upgraded first, by a run without the flag.
+          if (options.githubApps) {
+            if (options.image || served !== currentVersion) {
+              throw new UsageError(
+                `--github-apps needs the API on anycloud ${currentVersion}; it serves ${served}. Run \`anycloud api upgrade\` first, then this again once \`anycloud api status\` shows ${currentVersion}.`,
+              );
+            }
+            const { githubAppIds } = await hostedClient.apiAccess.setGithubApps(
+              { githubAppIds: options.githubApps },
+            );
+            finish(
+              {
+                outcome: 'unchanged',
+                api: {
+                  url: activeTarget.url,
+                  previousVersion: served,
+                  version: served,
+                },
+                upgrade: null,
+                k3s: null,
+                githubAppIds,
+              },
+              `Hosted API ${activeTarget.url} exchanges user tokens of GitHub Apps ${githubAppIds.join(', ') || '(none)'}.`,
+            );
+            return;
+          }
           let k3sResult: ApiUpgradeResult['k3s'] = null;
           const hostedResult = (
             outcome: ApiUpgradeResult['outcome'],

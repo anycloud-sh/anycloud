@@ -297,7 +297,7 @@ export class GithubSignInRequiredError extends Error {
   /** A feature that needs a sign-in, such as "Clusters need". */
   static needs(subject: string): GithubSignInRequiredError {
     return new GithubSignInRequiredError(
-      `${subject} GitHub sign-in. ${SIGN_IN_INSTRUCTION}`,
+      `${subject} GitHub sign-in, which a GitHub App sign-in or a service token does not keep. ${SIGN_IN_INSTRUCTION}`,
     );
   }
 

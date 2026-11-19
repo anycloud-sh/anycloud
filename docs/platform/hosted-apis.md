@@ -220,9 +220,10 @@ anycloud list
 
 No invitation token or organization check is involved. The GitHub account used
 by `anycloud login` must be the same account that was added. Login exchanges
-that sign-in for the teammate's own API token; the hosted API accepts nothing
-else. See [API tokens](/reference/cli/api-utilities#api-tokens) for CI and for
-rotating a token.
+that sign-in for the teammate's own API token; the hosted API accepts no other
+GitHub token but a listed GitHub App's sign-in. See
+[API tokens](/reference/cli/api-utilities#api-tokens) for those, for CI and
+for rotating a token.
 
 ## What is shared
 

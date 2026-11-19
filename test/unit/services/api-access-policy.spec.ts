@@ -9,6 +9,7 @@ import {
   listApiAccessUsers,
   removeApiAccessUser,
   resolveOwnershipScope,
+  setApiGithubApps,
   upsertApiAccessUser,
   upsertApiAccessOwner,
 } from '../../../src/api/services/repositories/api-access-policy';
@@ -29,7 +30,7 @@ describe('api access policy', () => {
   });
 
   it('stores and reads the durable API owner identity', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
     await expect(getApiAccessPolicy(db)).resolves.toMatchObject({
       ownerUser: 'octocat',
@@ -37,8 +38,24 @@ describe('api access policy', () => {
     });
   });
 
+  it('seeds the GitHub Apps on the first start only; the owner replaces them', async () => {
+    await upsertApiAccessOwner('octocat', '583231', [5622376, 7], db);
+    await expect(getApiAccessPolicy(db)).resolves.toMatchObject({
+      githubAppIds: [5622376, 7],
+    });
+    // A restart keeps what the database holds, whatever the release values say.
+    await upsertApiAccessOwner('octocat', '583231', [], db);
+    await expect(getApiAccessPolicy(db)).resolves.toMatchObject({
+      githubAppIds: [5622376, 7],
+    });
+    await setApiGithubApps([42], db);
+    await expect(getApiAccessPolicy(db)).resolves.toMatchObject({
+      githubAppIds: [42],
+    });
+  });
+
   it('allows the owner by immutable user id', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
     await expect(
       assertApiAccess({ id: '583231', username: 'octocat' }, db),
@@ -46,7 +63,7 @@ describe('api access policy', () => {
   });
 
   it('keeps access and refreshes the username after a rename', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
     await expect(
       assertApiAccess({ id: '583231', username: 'renamed-octocat' }, db),
@@ -58,7 +75,7 @@ describe('api access policy', () => {
   });
 
   it('denies a different id even when the username matches', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
     await expect(
       assertApiAccess({ id: '999999', username: 'octocat' }, db),
@@ -66,7 +83,7 @@ describe('api access policy', () => {
   });
 
   it('allows an explicitly added user by immutable id', async () => {
-    await upsertApiAccessOwner('owner', '100', db);
+    await upsertApiAccessOwner('owner', '100', [], db);
     await upsertApiAccessUser({ userId: '200', username: 'member' }, db);
 
     await expect(
@@ -75,7 +92,7 @@ describe('api access policy', () => {
   });
 
   it('refreshes an allowed user username after a rename', async () => {
-    await upsertApiAccessOwner('owner', '100', db);
+    await upsertApiAccessOwner('owner', '100', [], db);
     await upsertApiAccessUser({ userId: '200', username: 'old-member' }, db);
 
     await assertApiAccess({ id: '200', username: 'renamed-member' }, db);
@@ -86,7 +103,7 @@ describe('api access policy', () => {
   });
 
   it('does not transfer access when a username is reassigned', async () => {
-    await upsertApiAccessOwner('owner', '100', db);
+    await upsertApiAccessOwner('owner', '100', [], db);
     await upsertApiAccessUser({ userId: '200', username: 'member' }, db);
 
     await expect(
@@ -107,7 +124,7 @@ describe('api access policy', () => {
   });
 
   it('denies an allowlist entry dropped outside the CLI on the next request', async () => {
-    await upsertApiAccessOwner('owner', '100', db);
+    await upsertApiAccessOwner('owner', '100', [], db);
     await upsertApiAccessUser({ userId: '200', username: 'member' }, db);
     await db.query(`DELETE FROM api_access_users WHERE user_id = '200'`);
 
@@ -138,9 +155,9 @@ describe('api access policy', () => {
   });
 
   it('refuses to replace a bound owner id', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
-    await expect(upsertApiAccessOwner('octocat', '42', db)).rejects.toThrow(
+    await expect(upsertApiAccessOwner('octocat', '42', [], db)).rejects.toThrow(
       'already bound',
     );
   });
@@ -158,7 +175,7 @@ describe('api access policy', () => {
     // Refusing here would crash the boot of the database this feature exists
     // for — one whose owner renamed before upgrading.
     await expect(
-      upsertApiAccessOwner('renamed-octocat', '583231', db),
+      upsertApiAccessOwner('renamed-octocat', '583231', [], db),
     ).resolves.toBeUndefined();
     await expect(getApiAccessPolicy(db)).resolves.toMatchObject({
       ownerUser: 'renamed-octocat',
@@ -170,9 +187,9 @@ describe('api access policy', () => {
   });
 
   it('still refuses to rebind a policy already bound to another id', async () => {
-    await upsertApiAccessOwner('octocat', '583231', db);
+    await upsertApiAccessOwner('octocat', '583231', [], db);
 
-    await expect(upsertApiAccessOwner('octocat', '42', db)).rejects.toThrow(
+    await expect(upsertApiAccessOwner('octocat', '42', [], db)).rejects.toThrow(
       'already bound',
     );
   });

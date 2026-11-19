@@ -20,6 +20,7 @@ anycloud cluster create <name> \
   [--zone <zone>] \
   [--vm-type <type>] \
   [--checkpoint-bucket <name>] \
+  [--github-apps <id,...>] \
   [--json]
 ```
 
@@ -100,6 +101,13 @@ ID, which stays managed when create is given it back); one holding a backup make
 [restore](#recover-after-losing-the-management-vm). Without the flag, create
 makes an Anycloud-managed bucket named after the cluster ID, with object
 versioning; `delete` keeps it unless you pass `--delete-buckets`.
+
+**`--github-apps`** lists the GitHub Apps, by App ID, whose user tokens the
+API exchanges for its own API tokens, as it does an `anycloud login` sign-in;
+see [API tokens](/reference/cli/api-utilities#api-tokens). The list rides
+in the release values and seeds the API's database on its first start; its
+owner replaces it with
+[`api upgrade --github-apps`](/reference/cli/api-utilities#upgrade-the-api).
 
 ### Cloud rights
 

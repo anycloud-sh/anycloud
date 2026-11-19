@@ -9,6 +9,7 @@ import Github from '../../../src/api/services/gateways/github';
 import { GITHUB_LOGIN_SCOPES as LOGIN_SCOPES } from '../../../src/shared/hosted-api';
 import { createApiClient } from '../../../src/shared/services/api-client/rpc.js';
 import { log } from '../../../src/api/services/logger';
+import { authenticateApiToken } from '../../../src/api/services/api-authentication';
 import { getWorkloadApiUrl } from '../../../src/api/config';
 import { getDeploymentStore } from '../../../src/api/services/persistence';
 import { makeContainerSpec } from '../helpers/fixtures';
@@ -479,4 +480,144 @@ describe('hosted API tokens', () => {
     expect(replacement).not.toBe(token);
     await expect(exchangedToken()).resolves.toBe(replacement);
   });
+});
+
+describe('GitHub App sign-ins', () => {
+  // The backmesh App's id, as GET /user/installations reported it (run 44471531094).
+  const APP = { id: 5622376, slug: 'backmesh' };
+
+  function exchange(bearer: string): Promise<Response> {
+    return callApi('https://example.com/v1/api-token', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bearer}` },
+    });
+  }
+
+  beforeEach(async () => {
+    await getDB().query('DELETE FROM api_tokens');
+    await getDB().query('DELETE FROM api_access_users');
+    await getDB().query('DELETE FROM api_access_policy');
+    await upsertApiAccessOwner('owner', '1', [APP.id]);
+    vi.mocked(Github.authenticate).mockReset();
+    // GitHub reports no OAuth scopes for an App's user token.
+    vi.mocked(Github.authenticate).mockResolvedValue({
+      id: '1',
+      username: 'owner',
+      scopes: [],
+    });
+    vi.mocked(Github.issuingApp).mockReset();
+    vi.mocked(Github.issuingApp).mockResolvedValue(APP);
+  });
+
+  it("exchanges a listed App's user token and keeps no GitHub sign-in", async () => {
+    const response = await exchange('ghu_app_sign_in');
+    expect(response.status).toBe(200);
+    const { token } = (await response.json()) as { token: string };
+    expect(token).toMatch(/^acapi_/u);
+    expect(Github.issuingApp).toHaveBeenCalledWith(
+      'ghu_app_sign_in',
+      expect.anything(),
+    );
+    expect(
+      await getDB().query('SELECT user_id, github_ciphertext FROM api_tokens'),
+    ).toEqual([{ user_id: '1', github_ciphertext: null }]);
+    // Requests with the API token carry no GitHub sign-in to GHCR, DNS or clusters.
+    await expect(authenticateApiToken(token, undefined)).resolves.toEqual({
+      id: '1',
+      username: 'owner',
+      token: null,
+    });
+  });
+
+  it('keeps an OAuth sign-in kept earlier when the account signs in through an App', async () => {
+    vi.mocked(Github.authenticate).mockResolvedValueOnce({
+      id: '1',
+      username: 'owner',
+      scopes: LOGIN_SCOPES,
+    });
+    expect((await exchange('gho_owner_sign_in')).status).toBe(200);
+    expect((await exchange('ghu_app_sign_in')).status).toBe(200);
+    const [row] = await getDB().query<{ github_ciphertext: string }>(
+      'SELECT github_ciphertext FROM api_tokens',
+    );
+    const { decryptSecret } = await import(
+      '../../../src/api/services/secret-crypto'
+    );
+    await expect(decryptSecret(row.github_ciphertext)).resolves.toBe(
+      'gho_owner_sign_in',
+    );
+  });
+
+  it('refuses a user token from an App the API does not list, naming it', async () => {
+    vi.mocked(Github.issuingApp).mockResolvedValue({ id: 99, slug: 'other' });
+    const response = await exchange('ghu_other_app');
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain(
+      'GitHub App other (id 99), which this API does not accept',
+    );
+    expect(await getDB().query('SELECT user_id FROM api_tokens')).toEqual([]);
+  });
+
+  it('refuses a user token that reaches no installation of its App', async () => {
+    vi.mocked(Github.issuingApp).mockResolvedValue(null);
+    const response = await exchange('ghu_no_installation');
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain(
+      'reaches no installation of its GitHub App',
+    );
+    expect(await getDB().query('SELECT user_id FROM api_tokens')).toEqual([]);
+  });
+
+  it('refuses App user tokens on an API that lists no App, naming how to list one', async () => {
+    await getDB().query('DELETE FROM api_access_policy');
+    await upsertApiAccessOwner('owner', '1');
+    const response = await exchange('ghu_app_sign_in');
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain(
+      'This API accepts no GitHub App sign-in; its owner lists one with `anycloud api upgrade --github-apps <id>`.',
+    );
+  });
+
+  it("accepts a listed App's user token once an existing API's owner lists it", async () => {
+    await getDB().query('DELETE FROM api_access_policy');
+    // An API created before App sign-ins: its policy lists none.
+    await upsertApiAccessOwner('owner', '1');
+    expect((await exchange('ghu_app_sign_in')).status).toBe(401);
+
+    const set = (bearer: string) =>
+      callApi('https://example.com/v1/api-access/github-apps', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ githubAppIds: [APP.id] }),
+      });
+    vi.mocked(Github.authenticate).mockResolvedValueOnce({
+      id: '2',
+      username: 'member',
+      scopes: LOGIN_SCOPES,
+    });
+    expect((await set('member-token')).status).toBe(403);
+    vi.mocked(Github.authenticate).mockResolvedValueOnce({
+      id: '1',
+      username: 'owner',
+      scopes: LOGIN_SCOPES,
+    });
+    const response = await set('owner-token');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ githubAppIds: [APP.id] });
+
+    expect((await exchange('ghu_app_sign_in')).status).toBe(200);
+  });
+
+  it.each(['ghp_personal', 'github_pat_fine_grained', 'ghs_installation'])(
+    'refuses %s without asking GitHub',
+    async (bearer) => {
+      const response = await exchange(bearer);
+      expect(response.status).toBe(401);
+      expect(Github.authenticate).not.toHaveBeenCalled();
+      expect(Github.issuingApp).not.toHaveBeenCalled();
+    },
+  );
 });

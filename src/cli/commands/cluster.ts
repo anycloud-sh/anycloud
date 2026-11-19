@@ -1,4 +1,6 @@
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
+import { parseGithubAppIds } from '../../shared/hosted-api.js';
+import { errorMessage } from '../../shared/log-diagnostics.js';
 import { createDeleteCommand } from './cluster-delete.js';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { runSeedCreate, SeedCreateError } from '../seed/create.js';
@@ -67,6 +69,7 @@ interface CreateOptions extends JsonOptions {
   zone?: string;
   vmType?: string;
   checkpointBucket?: string;
+  githubApps?: number[];
 }
 
 const DEFAULT_DESTROY_TIMEOUT_SECONDS = 900;
@@ -251,6 +254,17 @@ function createCreateCommand(): Command {
       '--checkpoint-bucket <name>',
       "Existing bucket you own for the hosted API state (database backups), in the cloud CLI's account; without it Anycloud creates and manages one named after the cluster",
     )
+    .option(
+      '--github-apps <ids>',
+      'Comma-separated GitHub App ids whose user tokens the API exchanges for its own, like an `anycloud login` sign-in',
+      (list: string) => {
+        try {
+          return parseGithubAppIds(list);
+        } catch (error) {
+          throw new InvalidArgumentError(errorMessage(error));
+        }
+      },
+    )
     .option('--json', 'Emit the cluster, or the error, as JSON')
     .addHelpText(
       'after',
@@ -292,6 +306,7 @@ Examples:
           checkpointBucket: options.checkpointBucket ?? null,
           githubToken,
           owner: await gitHubUser(githubToken),
+          githubAppIds: options.githubApps ?? [],
           version: packageJson.version,
           hostedApi: (apiUrl) => apiClient({ apiUrl }),
           progress: (message) =>

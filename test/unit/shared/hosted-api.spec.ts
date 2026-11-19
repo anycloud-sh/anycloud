@@ -47,7 +47,35 @@ describe('hosted API helpers', () => {
         '--hosted-api-owner',
         'octocat',
       ]),
-    ).toEqual({ ownerUserId: '583231', username: 'octocat' });
+    ).toEqual({
+      ownerUserId: '583231',
+      username: 'octocat',
+      githubAppIds: [],
+    });
+  });
+
+  it('parses the GitHub Apps whose user tokens the API exchanges', () => {
+    const owner = [
+      '--hosted-api-owner',
+      'octocat',
+      '--hosted-api-owner-id',
+      '1',
+    ];
+    expect(
+      hostedApiOwnerFromArgv([
+        ...owner,
+        '--hosted-api-github-apps',
+        '5622376,7',
+      ]),
+    ).toMatchObject({ githubAppIds: [5622376, 7] });
+    expect(hostedApiOwnerFromArgv(owner)).toMatchObject({ githubAppIds: [] });
+    expect(() =>
+      hostedApiOwnerFromArgv([
+        ...owner,
+        '--hosted-api-github-apps',
+        'backmesh',
+      ]),
+    ).toThrow('GitHub App ids');
   });
 
   it('rejects username-only hosted commands', () => {
