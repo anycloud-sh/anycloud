@@ -315,7 +315,7 @@ describe('production oRPC OpenAPI document', () => {
     );
 
     expect(operations).toHaveLength(countContractProcedures(apiContract));
-    expect(operations).toHaveLength(73);
+    expect(operations).toHaveLength(74);
     expect(operationIds.every(Boolean)).toBe(true);
     expect(new Set(operationIds).size).toBe(operationIds.length);
     expect(
@@ -352,7 +352,7 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.servers).toEqual([
       { url: 'http://localhost:8080/v1', description: 'Local API' },
     ]);
-    expect(Object.keys(document.paths ?? {})).toHaveLength(52);
+    expect(Object.keys(document.paths ?? {})).toHaveLength(53);
     expect(document.paths).toMatchObject({
       '/workloads': {
         get: expect.any(Object),
@@ -483,7 +483,7 @@ describe('production oRPC OpenAPI document', () => {
       }
     }
 
-    expect(operations).toHaveLength(66 + WORKLOAD_OPERATION_IDS.size);
+    expect(operations).toHaveLength(67 + WORKLOAD_OPERATION_IDS.size);
   });
 
   // Replicas skip the client version check, and the API and replicas

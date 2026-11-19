@@ -667,6 +667,7 @@ describe('kubernetes clusters domain', () => {
       id: cluster.id,
       ownerUsername: 'owner',
       ownerUserId: '4242',
+      githubAppIds: [],
       apiUrl: `https://${cluster.id}.anycloud.sh`,
     });
     expect(values.ingress).toEqual({

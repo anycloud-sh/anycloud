@@ -6,6 +6,7 @@ import {
   apiAccessUserIdSchema,
   apiAccessUsersResponseSchema,
   apiTokenResponseSchema,
+  githubAppsSchema,
   grantApiAccessInputSchema,
   issueServiceTokenInputSchema,
   serviceNameSchema,
@@ -135,10 +136,6 @@ const rotateServiceToken = authenticated
       message: 'No service has this name',
     },
   });
-
-const githubAppsSchema = z
-  .object({ githubAppIds: z.array(z.number().int().positive()) })
-  .strict();
 
 const setGithubApps = authenticated
   .command({

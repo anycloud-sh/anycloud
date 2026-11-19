@@ -3678,6 +3678,24 @@
         ],
         "type": "object"
       },
+      "GithubApps": {
+        "additionalProperties": false,
+        "properties": {
+          "githubAppIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "githubAppIds"
+        ],
+        "type": "object"
+      },
       "GithubSignInRequiredApiError": {
         "additionalProperties": false,
         "properties": {
@@ -10753,22 +10771,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "githubAppIds": {
-                    "items": {
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "githubAppIds"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/GithubApps"
               }
             }
           },
@@ -10779,22 +10782,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "githubAppIds": {
-                      "items": {
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "githubAppIds"
-                  ],
-                  "type": "object"
+                  "$ref": "#/components/schemas/GithubApps"
                 }
               }
             },
