@@ -970,18 +970,14 @@ trusts read the current signing key.
 
 That issuer is the trust root of every role connection: whoever serves a key
 at the hostname can mint tokens the trusting clouds accept, which is why the
-DNS Worker never gives a released API hostname to another account (#2236).
-The clouds read it differently, as measured in the C26 issuer-trust spike
-([41957954716](https://github.com/anycloud-sh/anycloud/actions/runs/41957954716),
-one-minute polls; RFC 0049, C26 (e)). All three accepted a new key on its
-first use. After a key left the JWKS, or while the issuer answered 503, AWS
+DNS Worker never gives a released API hostname to another account. The clouds
+read it differently, as an issuer-trust spike measured with one-minute polls.
+All three accepted a new key on its first use. After a key left the JWKS, or while the issuer answered 503, AWS
 refused it within 60 s and Azure at once, but GCP still accepted it at the
 last poll, 59 minutes later. So on AWS and Azure a role connection exchanges
 only while the issuer serves its keys, and on GCP removing a signing key is
 not a prompt revocation: removing the trust's impersonation binding is,
-refused after 101 s and 71 s in #2193's spikes
-([first](https://github.com/anycloud-sh/anycloud/issues/2193#issuecomment-6601362686),
-[lane E](https://github.com/anycloud-sh/anycloud/issues/2193#issuecomment-6611678499)).
+refused after 101 s and 71 s in two earlier spikes.
 Credentials already issued outlive any of these: up to 12 hours on AWS (1-hour
 compute sessions, 12-hour Bucket tokens) and 1 hour on GCP; on Azure the API's
 token lasts about 24 hours, and Bucket SAS tokens, signed with the storage
