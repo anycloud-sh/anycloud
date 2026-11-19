@@ -5,6 +5,24 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.79
+
+### anycloud is open source under Apache-2.0
+
+anycloud, including the CLI, the API image and the Python SDK (previously MIT), is now licensed under the Apache License 2.0. Release tarballs, the Homebrew formula and the API image include its LICENSE and NOTICE.
+
+### On-demand VMs restart after the cloud stops them
+
+When a cloud stops an on-demand persistent VM or Job's VM, for example for GCP host maintenance, anycloud now starts it again in place with its disk and new IP. Persistent VMs keep retrying while the zone lacks capacity.
+
+### Hosted APIs accept GitHub App sign-ins
+
+A hosted API exchanges user tokens of GitHub Apps its owner lists with `anycloud cluster create --sign-in-apps <ids>` or `anycloud api upgrade --sign-in-apps <ids>`. Private GHCR images, Services, clusters and `api access add` still need `anycloud login`.
+
+### Service tokens for hosted APIs
+
+The owner of a hosted API can issue a token for a program, such as CI, with `anycloud api access add --service <name>`, replace it with `anycloud api token rotate --service <name>` and revoke it with `anycloud api access remove --service <name>`.
+
 ## 0.1.78
 
 ### Faster `anycloud list --credentials` on large histories
