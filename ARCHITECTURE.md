@@ -966,21 +966,38 @@ ownership, and provider-support contract.
 ServiceAccount issuer publicly: K3s signs tokens as `https://<cluster-id>.anycloud.sh`,
 and the API answers `/.well-known/openid-configuration` and `/openid/v1/jwks`
 from its own Kubernetes API on every request, so the clouds a role connection
-trusts read the current signing key. A hosted API admits only the opaque
-API tokens it issues (`acapi_` plus 32 random bytes), one per admitted GitHub
-account, never a GitHub token. `anycloud login <api>` (or the CLI's first
-command to it) exchanges a GitHub sign-in at `POST /v1/api-token`. The exchange
-skips GitHub unless the token starts with `gho_`, requires GitHub to list
-exactly `read:org` and `read:packages` for it, and checks the access policy. It
-then stores the sign-in encrypted, for private GHCR pulls, Service hostnames
-and clusters, and returns the account's existing token or mints the first. The
-exchange and `POST /v1/api-token/rotate` are the only routes that return a
-token; both are logged without it. Rotation replaces the hash and ciphertext in
-one statement, `api access remove` deletes the member's row, and a stale token
-is refused with the command that fetches the current one. Each request looks
-the token up by its SHA-256, checks the access policy again, records use at
-most hourly, and never calls GitHub. A hosted API refuses to start with
-`IS_TEST`, which stubs GitHub identities.
+trusts read the current signing key.
+
+That issuer is the trust root of every role connection: whoever serves a key
+at the hostname can mint tokens the trusting clouds accept, which is why the
+DNS Worker never gives a released API hostname to another account. The clouds
+read it differently, as an issuer-trust spike measured with one-minute polls.
+All three accepted a new key on its first use. After a key left the JWKS, or while the issuer answered 503, AWS
+refused it within 60 s and Azure at once, but GCP still accepted it at the
+last poll, 59 minutes later. So on AWS and Azure a role connection exchanges
+only while the issuer serves its keys, and on GCP removing a signing key is
+not a prompt revocation: removing the trust's impersonation binding is,
+refused after 101 s and 71 s in two earlier spikes.
+Credentials already issued outlive any of these: up to 12 hours on AWS (1-hour
+compute sessions, 12-hour Bucket tokens) and 1 hour on GCP; on Azure the API's
+token lasts about 24 hours, and Bucket SAS tokens, signed with the storage
+account key, last 36 hours whatever happens to the trust.
+
+A hosted API admits only the opaque API tokens it issues (`acapi_` plus 32
+random bytes), one per admitted GitHub account, never a GitHub token.
+`anycloud login <api>` (or the CLI's first command to it) exchanges a GitHub
+sign-in at `POST /v1/api-token`. The exchange skips GitHub unless the token
+starts with `gho_`, requires GitHub to list exactly `read:org` and
+`read:packages` for it, and checks the access policy. It then stores the sign-in
+encrypted, for private GHCR pulls, Service hostnames and clusters, and returns
+the account's existing token or mints the first. The exchange and
+`POST /v1/api-token/rotate` are the only routes that return a token; both are
+logged without it. Rotation replaces the hash and ciphertext in one statement,
+`api access remove` deletes the member's row, and a stale token is refused with
+the command that fetches the current one. Each request looks the token up by its
+SHA-256, checks the access policy again, records use at most hourly, and never
+calls GitHub. A hosted API refuses to start with `IS_TEST`, which stubs GitHub
+identities.
 
 The CLI keeps API tokens per API URL in `$ANYCLOUD_DIR/api-tokens.json` (mode
 `0600`). A hosted target's bearer is `ANYCLOUD_API_TOKEN` when `API_URL` names
