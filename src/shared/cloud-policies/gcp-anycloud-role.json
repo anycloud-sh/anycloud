@@ -24,6 +24,8 @@
     "compute.instances.setTags",
     "compute.instances.start",
     "compute.machineTypes.get",
+    "compute.networks.create",
+    "compute.networks.get",
     "compute.networks.updatePolicy",
     "compute.subnetworks.use",
     "compute.subnetworks.useExternalIp",

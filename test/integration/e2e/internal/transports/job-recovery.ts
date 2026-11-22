@@ -330,6 +330,67 @@ export class JobRecoveryTransport {
     return (await this.#gcpDisk(attempt, deadlineAt)).identity;
   }
 
+  /** The name of the VPC (AWS) or network (GCP) the live original VM is in. */
+  async network(
+    attempt: JobNativeAttempt,
+    deadlineAt: number,
+  ): Promise<string> {
+    if (
+      attempt.cloudProvider !== this.#session.credential.cloudProvider ||
+      attempt.endedAt !== null
+    )
+      throw new Error(
+        'Network observation requires its live original provider attempt',
+      );
+    await this.#session.initialize(deadlineAt);
+    if (this.#session.credential.cloudProvider === CloudType.AWS) {
+      // Pins the live original VM in this account before reading its VPC.
+      await this.#awsIdentity(attempt, deadlineAt);
+      const read = async (args: string[]) =>
+        privateJobJson(
+          await this.#session.aws(args, attempt.region, deadlineAt),
+        ) as any;
+      const vpcId = (
+        await read([
+          'ec2',
+          'describe-instances',
+          '--instance-ids',
+          attempt.cloudId,
+        ])
+      )?.Reservations?.[0]?.Instances?.[0]?.VpcId;
+      if (typeof vpcId !== 'string' || !/^vpc-[a-f0-9]+$/u.test(vpcId))
+        throw new Error('Network observation found no VPC');
+      const vpc = (await read(['ec2', 'describe-vpcs', '--vpc-ids', vpcId]))
+        ?.Vpcs?.[0];
+      const name =
+        vpc?.VpcId === vpcId
+          ? vpc.Tags?.find((tag: any) => tag.Key === 'Name')?.Value
+          : undefined;
+      return typeof name === 'string' ? name : `${vpcId} (unnamed)`;
+    }
+    const vm = privateJobJson(
+      await this.#session.gcp(
+        [
+          'compute',
+          'instances',
+          'describe',
+          attempt.cloudId,
+          `--zone=${this.#gcpZone(attempt)}`,
+          '--format=json(networkInterfaces)',
+        ],
+        deadlineAt,
+      ),
+    );
+    const network =
+      isRecord(vm) && Array.isArray(vm.networkInterfaces)
+        ? (vm.networkInterfaces[0] as Record<string, unknown> | undefined)
+            ?.network
+        : undefined;
+    if (typeof network !== 'string')
+      throw new Error('Network observation found no network interface');
+    return network.slice(network.lastIndexOf('/') + 1);
+  }
+
   async diskTier(
     attempt: JobNativeAttempt,
     deadlineAt: number,

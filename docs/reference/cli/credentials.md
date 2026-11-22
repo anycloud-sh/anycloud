@@ -481,7 +481,8 @@ refuses it.
 ### AWS permissions
 
 `AnycloudAccess` is everything Anycloud does with an AWS key: launch, recover
-and terminate VMs, create and delete Buckets, mint the short-lived token each
+and terminate VMs, create the [VPC VM Jobs run in](/platform/jobs#vm-job-network),
+create and delete Buckets, mint the short-lived token each
 VM syncs a Bucket with, and read regions, quotas and costs. It grants no IAM
 action except creating the Spot service-linked role: AWS creates
 `AWSServiceRoleForEC2Spot` automatically only for a console request, and asks
@@ -514,12 +515,16 @@ An administrator can narrow it further:
     "Sid": "ComputeReads",
     "Effect": "Allow",
     "Action": [
+      "ec2:DescribeAvailabilityZones",
       "ec2:DescribeImages",
       "ec2:DescribeInstances",
+      "ec2:DescribeInternetGateways",
       "ec2:DescribeNetworkInterfaces",
       "ec2:DescribeRegions",
+      "ec2:DescribeRouteTables",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeSpotInstanceRequests",
+      "ec2:DescribeSubnets",
       "ec2:DescribeVolumes",
       "ec2:DescribeVpcs"
     ],
@@ -539,7 +544,12 @@ An administrator can narrow it further:
       "ec2:RevokeSecurityGroupIngress",
       "ec2:DeleteSecurityGroup",
       "ec2:DeleteNetworkInterface",
-      "ec2:DeleteVolume"
+      "ec2:DeleteVolume",
+      "ec2:CreateVpc",
+      "ec2:CreateSubnet",
+      "ec2:CreateInternetGateway",
+      "ec2:AttachInternetGateway",
+      "ec2:CreateRoute"
     ],
     "Resource": "*",
     "Condition": {
@@ -602,7 +612,8 @@ To create it, replace `<subscription-id>` in `AssignableScopes`, then run
 
 The `Anycloud` custom role is everything Anycloud does with a GCP
 service-account key: launch, recover and delete VMs and their firewall rules,
-create and delete Buckets, and read costs from a Cloud Billing BigQuery export.
+create the [network VM Jobs run in](/platform/jobs#vm-job-network), create and
+delete Buckets, and read costs from a Cloud Billing BigQuery export.
 Anycloud attaches no service account to its VMs, so the role grants no
 `iam.serviceAccounts.actAs`. Each VM syncs a Bucket with an access token
 downscoped from the key to that one Bucket. That needs no further permission,

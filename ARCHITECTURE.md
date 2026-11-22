@@ -402,14 +402,14 @@ and with nesting `/dev/kvm`, each joined to its host group, in place of
 AppArmor profiles, but the socket makes it root-equivalent on its VM: it can
 read what the host holds for that Job, such as its runtime Secrets file and
 bucket credentials. The trust boundary is the VM, which runs only that Job;
-admission accepts the option only for a Job. A Job's VM takes only SSH from its network: AWS's
-shared group and Azure's NSG admit nothing else, each Azure Job has its own
-VNet, and on GCP every VM Job's VM carries the `anycloud-job-host` tag, whose
-standing deny below the Job's own rules (priority 1001) outranks broad network
-allows such as the default network's `default-allow-internal`; Services and
-dev boxes keep their network's internal traffic. A cluster's management VM on
-GCP denies that tag at priority 900, so a Job reaches it only through its
-public address. A `--host-docker` Job's host also drops new connections
+admission accepts the option only for a Job. A VM Job's VM sits in a network Anycloud owns
+and takes only SSH from it (RFC 0053): on AWS the `anycloud-jobs` VPC per
+region, found by tag and made once per account and region in the API process,
+with a public subnet per zone and the VPC's own `anycloud-vm` group; on GCP the
+auto-mode `anycloud-jobs` network, whose only rules admit SSH; on Azure the
+VNet every workload already gets. None has a route to a customer network, and
+failing to make one fails the Job instead of using the default network.
+Services and dev boxes stay in the default network. A `--host-docker` Job's host also drops new connections
 arriving on its default-route interface to containers (a `DOCKER-USER` rule
 set at each container start).
 

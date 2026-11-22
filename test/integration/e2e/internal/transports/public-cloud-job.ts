@@ -435,9 +435,11 @@ export class PublicCloudJobTransport implements CloudJobTransport {
             'gpu-spot-eviction',
           ].includes(extension),
         ) ||
-        // Native reads of a region-listed VM and a gp3 root.
+        // Native reads of a region-listed VM, a gp3 root and the network
+        // a host-docker listener and its prober share.
         profile.computeRegions !== undefined ||
-        profile.diskIops !== undefined
+        profile.diskIops !== undefined ||
+        profile.hostDockerPeer
       ) {
         if (original.provider !== nativeCredential.cloudProvider)
           throw new Error(
@@ -1403,6 +1405,14 @@ export class PublicCloudJobTransport implements CloudJobTransport {
         'Disk-tier observation lost its original Job, case or native owner',
       );
     return group.recovery.diskTier(attempt, Date.now() + 60_000);
+  }
+  network(
+    ...[fixture, attempt]: Parameters<CloudJobTransport['network']>
+  ): ReturnType<CloudJobTransport['network']> {
+    const recovery = this.#require(fixture).recovery;
+    if (attempt.ref !== fixture.ref || !recovery)
+      throw new Error('Network observation lost its original Job or reader');
+    return recovery.network(attempt, Date.now() + 60_000);
   }
   stop(
     ...[fixture, attempt, identity]: Parameters<CloudJobTransport['stop']>

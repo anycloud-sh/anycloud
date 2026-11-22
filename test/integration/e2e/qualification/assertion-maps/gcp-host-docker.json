@@ -35,6 +35,11 @@
       "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember; test/integration/e2e/internal/targets/host-docker-probe.ts: listener check and HOST_DOCKER_PEER_PROBE; test/integration/e2e/internal/job-attempt-ledger.ts: private_ip; targets/job-profiles.ts: hostDocker.peer."
     },
     {
+      "id": "jobs-network",
+      "requirement": "RFC 0053: the listener's VM is in anycloud's own Jobs network (the `anycloud-jobs` VPC by its Name tag on AWS, the `anycloud-jobs` network on GCP), not the account's default one, so the prober in the same network is its only peer and it has no route to the account's other VMs.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #hostDockerMember network invariant; test/integration/e2e/internal/transports/job-recovery.ts: network; job-<id>-host-docker artifact's network field."
+    },
+    {
       "id": "independent-cleanup",
       "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence are required before release; only one family completion follows.",
       "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; test/integration/e2e/internal/job-native-cleanup.ts."

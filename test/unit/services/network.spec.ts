@@ -29,9 +29,9 @@ describe('ingress specs', () => {
 
   it('shares only public SSH', () => {
     expect(isSharedJobIngress(buildJobIngressSpec())).toBe(true);
-    // A VM Job's spec refuses its network's peers and still shares SSH.
-    expect(buildJobIngressSpec()).not.toHaveProperty('refusesNetworkPeers');
-    expect(buildJobIngressSpec([], true).refusesNetworkPeers).toBe(true);
+    // A VM Job's spec asks for the Jobs network and still shares SSH.
+    expect(buildJobIngressSpec()).not.toHaveProperty('jobNetwork');
+    expect(buildJobIngressSpec([], true).jobNetwork).toBe(true);
     expect(isSharedJobIngress(buildJobIngressSpec([], true))).toBe(true);
     expect(isSharedJobIngress(buildJobIngressSpec(['10.0.0.0/8']))).toBe(false);
     expect(isSharedJobIngress(buildServeIngressSpec())).toBe(false);

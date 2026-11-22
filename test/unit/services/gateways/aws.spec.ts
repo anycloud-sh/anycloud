@@ -3717,7 +3717,10 @@ describe('AWS GPU image support', () => {
 
       expect(DescribeInstancesCommand).toHaveBeenNthCalledWith(1, {
         Filters: [
-          { Name: 'client-token', Values: ['test-workload-0'] },
+          {
+            Name: 'client-token',
+            Values: ['test-workload-0', 'test-workload-0.*'],
+          },
           {
             Name: 'instance-state-name',
             Values: [

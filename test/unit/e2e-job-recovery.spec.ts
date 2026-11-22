@@ -103,6 +103,15 @@ function fixture(
         Reservations: [{ OwnerId: state.owner, Instances: [vm.aws] }],
         ...(state.pagination ? { NextToken: 'more' } : {}),
       });
+    if (exe === 'aws' && args[1] === 'describe-vpcs')
+      return JSON.stringify({
+        Vpcs: [
+          {
+            VpcId: args[3],
+            Tags: [{ Key: 'Name', Value: 'anycloud-jobs' }],
+          },
+        ],
+      });
     if (exe === 'aws' && args[1] === 'stop-instances')
       return JSON.stringify({
         StoppingInstances: [
@@ -206,6 +215,26 @@ describe('Job exact native recovery protocol', () => {
       provisionedThroughput: 1000,
     });
   });
+
+  test.each(['aws', 'gcp'] as const)(
+    "0053/I1 reads the %s VM's VPC or network by name",
+    async (provider) => {
+      const w = fixture(provider);
+      (w.vm.aws as Record<string, unknown>).VpcId = 'vpc-0abc';
+      (w.vm.gcp as Record<string, unknown>).networkInterfaces = [
+        {
+          network:
+            'https://www.googleapis.com/compute/v1/projects/p/global/networks/anycloud-jobs',
+        },
+      ];
+      await expect(
+        w.transport.network(w.attempt, Date.now() + 60_000),
+      ).resolves.toBe('anycloud-jobs');
+      await expect(
+        w.transport.network({ ...w.attempt, endedAt: 10 }, Date.now() + 60_000),
+      ).rejects.toThrow('live original provider attempt');
+    },
+  );
 
   test.each([
     [

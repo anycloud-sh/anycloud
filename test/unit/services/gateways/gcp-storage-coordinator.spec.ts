@@ -21,6 +21,7 @@ vi.mock('@google-cloud/compute', () => ({
   ImagesClient: vi.fn(),
   DisksClient: vi.fn(),
   MachineTypesClient: vi.fn(),
+  NetworksClient: vi.fn(),
 }));
 
 vi.mock('@google-cloud/storage', () => ({

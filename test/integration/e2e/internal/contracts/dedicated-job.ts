@@ -1159,7 +1159,8 @@ export class DedicatedJobContract {
    * Docker, Compose, a bind mount and a KVM guest through the host. Where the
    * policy gives it one (AWS, GCP), a prober Job in the same region and
    * network, submitted once the listener runs, must find that port closed and
-   * SSH open. Each exits 0 only when its checks pass.
+   * SSH open, and the listener's VM must be in anycloud's Jobs network. Each
+   * exits 0 only when its checks pass.
    */
   async #hostDockerMember(
     profile: JobMemberProfile,
@@ -1217,7 +1218,19 @@ export class DedicatedJobContract {
     let probe:
       | { peer: string; progress: JobProgress; status: StatusResponse }
       | undefined;
+    let network: string | undefined;
     if (prober) {
+      // RFC 0053: a VM Job on AWS or GCP lands in anycloud's Jobs network,
+      // never the default one, so the prober below is its only peer there.
+      const attempt = listening.observation.attempts.find(
+        (row) => row.endedAt === null,
+      );
+      jobInvariant(attempt, 'host-docker listener has no live attempt');
+      network = await target.network(listener, attempt);
+      jobInvariant(
+        network === 'anycloud-jobs',
+        `the listener's VM is in ${network}, not anycloud's Jobs network`,
+      );
       const peer = privateIp(listening.observation, 'listener');
       await target.submit(prober, peer);
       const probing = await this.#cloudProgress(
@@ -1265,6 +1278,7 @@ export class DedicatedJobContract {
       listener: listener.ref.id,
       prober: prober?.ref.id ?? null,
       peer: probe?.peer ?? null,
+      network: network ?? null,
       vmType: profile.vmTypes[0],
       region: profile.computeRegion,
     });

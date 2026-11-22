@@ -16,6 +16,7 @@ vi.mock('@google-cloud/compute', () => ({
   ImagesClient: vi.fn(),
   DisksClient: vi.fn(),
   MachineTypesClient: vi.fn(),
+  NetworksClient: vi.fn(),
   protos: { google: { cloud: { compute: { v1: {} } } } },
 }));
 
