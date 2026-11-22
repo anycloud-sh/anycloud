@@ -74,11 +74,14 @@ vi.mock('../../../src/api/services/cloud-config', async (importOriginal) =>
 
 import {
   createMonitor,
+  requestWorkloadPoll,
   resetJobCompletionMonitorStateForTests,
   runWorkloadReconcileOnce,
   startBackgroundServices,
   stopBackgroundServices,
 } from '../../../src/api/services/monitor';
+import { createSecretsDomain } from '../../../src/api/services/secrets-domain';
+import * as vmHostStartup from '../../../src/api/services/workload-workflows/vm-host-startup';
 import {
   computeRetryWait,
   retryWindow,
@@ -89,7 +92,7 @@ import {
   hashCredential,
 } from '../../../src/api/services/cloud-config';
 import { TEST_LAMBDA_CRED } from '../helpers/fixtures';
-import { checkNetworkConnectivity } from '../../../src/shared/utils';
+import { checkNetworkConnectivity, tcpPing } from '../../../src/shared/utils';
 import { upsertCredential } from '../../../src/api/services/repositories/credential-secrets.js';
 import { getDB } from '../../../src/api/services/repositories/db.js';
 import { createWorkload } from '../../../src/api/services/repositories/workload-creation.js';
@@ -310,6 +313,58 @@ describe('Secret files on the Workload poll', () => {
     expect(DockerManager.prototype.writeSecretFiles).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'hf', values: { HF_TOKEN: 'v' } }),
     );
+  });
+
+  it('delivers a Secret saved while its Job started once it runs, before the next poll', async () => {
+    config.cipherKey = randomBytes(32).toString('hex');
+    const secrets = createSecretsDomain({
+      store: getCredentialSecretStore(),
+      requestPoll: requestWorkloadPoll,
+    });
+    await secrets.save({ name: 'hf', values: { HF_TOKEN: 'pending' } });
+    const credentialId = await upsertCredential(
+      getDB(),
+      hashCredential(TEST_LAMBDA_CRED),
+      await encryptCredential(TEST_LAMBDA_CRED),
+      CloudType.GCP,
+    );
+    await seedTestWorkload({
+      id: 'starting-job',
+      userId: 'test-user',
+      workloadType: WorkloadType.Job,
+      requestedComputeProvider: CloudType.GCP,
+      credentialId,
+      secretNames: ['hf'],
+      state: WorkloadState.Queued,
+    });
+    await provisionTestVm('starting-job', { cloudId: 'vm-1', ip: '192.0.2.9' });
+    await walkToState('starting-job', WorkloadState.Starting);
+    vi.mocked(tcpPing).mockResolvedValue(true);
+    vi.mocked(
+      DockerManager.prototype.readSecretFileRevisions,
+    ).mockResolvedValue(new Map([['hf', null]]));
+    // The container's job starts before the Job is recorded Running, and its
+    // owner saves the Secret then, as backmesh's listener does.
+    vi.mocked(vmHostStartup.deploy).mockImplementationOnce(async () => {
+      await secrets.save({ name: 'hf', values: { HF_TOKEN: 'ready' } });
+      await lifecycle().updateState('starting-job', WorkloadState.Running);
+    });
+
+    try {
+      // Discovery adopts the Starting Job and runs its pipeline; the next
+      // discovery and poll are 30 s away.
+      await startBackgroundServices();
+      await vi.waitFor(
+        () =>
+          expect(DockerManager.prototype.writeSecretFiles).toHaveBeenCalledWith(
+            expect.objectContaining({ values: { HF_TOKEN: 'ready' } }),
+          ),
+        { timeout: 5_000 },
+      );
+    } finally {
+      await stopBackgroundServices();
+      vi.mocked(tcpPing).mockResolvedValue(false);
+    }
   });
 });
 
