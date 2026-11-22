@@ -981,7 +981,7 @@ skips GitHub unless the token starts with `gho_` (an OAuth sign-in) or `ghu_`
 `read:org` and `read:packages`. For `ghu_` it reads the issuing App from
 `GET /user/installations`, which lists only that App's installations the
 person reaches, and requires its ID in the access policy's App list.
-`cluster create --sign-in-apps` seeds that list through the release values on
+`api create --sign-in-apps` seeds that list through the release values on
 the API's first start, and the owner replaces it with
 `api upgrade --sign-in-apps`; a token that reaches no installation names no
 App and is refused. It takes the account from `GET /user` and checks the
