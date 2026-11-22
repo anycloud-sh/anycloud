@@ -150,10 +150,10 @@ const without = (value: unknown, keys: readonly string[]) =>
     : value;
 
 /**
- * `workload status`, also as a `from_release` CLI before the upgrade prints
- * it: 0.1.80 still has the node pool and Deployment fields this tree removed.
+ * `workload status` as a `from_release` CLI prints it before the upgrade:
+ * 0.1.80 still has the node pool and Deployment fields this tree removed.
  */
-const workloadStatusSchema = z.preprocess(
+const releasedWorkloadStatusSchema = z.preprocess(
   (value) =>
     isRecord(value)
       ? {
@@ -569,7 +569,9 @@ export class HostedApiStage implements HostedStage {
   #workloadStatus(id: string) {
     return this.#read(
       cliArgs(WORKLOAD_STATUS, { json: true }, [id]),
-      workloadStatusSchema,
+      this.#cli === this.#o.cli
+        ? workloadStatusResponseSchema
+        : releasedWorkloadStatusSchema,
       'workload-status',
       /\bWorkload not found\b/u,
     );

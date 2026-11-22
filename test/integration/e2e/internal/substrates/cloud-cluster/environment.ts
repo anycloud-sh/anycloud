@@ -184,8 +184,8 @@ export interface CloudClusterEnvironmentOptions {
   /**
    * The management VM's cloud credential; AWS, GCP or Azure. The runner's
    * cloud CLI is signed in as it, and this tree's `api create` and
-   * `api delete` drive that CLI as the user's session (RFC 0049 C26 (e));
-   * only a released installer saves it.
+   * `api delete` (a `from_release` CLI's `cluster create` and `delete`)
+   * drive that CLI as the user's session (RFC 0049 C26 (e)).
    */
   readonly profile: VmProfile;
   readonly region: string;
@@ -245,10 +245,10 @@ const jwksSchema = z
  */
 const CLEANUP_SETTLE_MS = 300_000;
 /**
- * A cluster as a CLI prints it, unknown fields dropped: a `from_release`
- * CLI prints fields this tree removed (0.1.80's `activeNodePoolCount`).
+ * A cluster as a `from_release` CLI prints it, unknown fields dropped: it
+ * prints fields this tree removed (0.1.80's `activeNodePoolCount`).
  */
-const printedClusterSchema = z.object(clusterSummarySchema.shape);
+const releasedClusterSchema = z.object(clusterSummarySchema.shape);
 /** Create prints the cluster's id once it is recorded, before any cloud mutation. */
 const CREATED_ID = /\(ID: (?<id>[^)\s]+)\)/u;
 /** This tree's delete of a cluster the hosted API doesn't know: create failed before the API answered. */
@@ -289,10 +289,9 @@ function parseJson(result: CommandResult, operation: string): unknown {
 }
 
 /**
- * Real-cloud sibling of the local cluster: this tree's CLI bootstraps the
- * management VM in its own process (a `from_release` run, the released
- * installer), node pools join it through the hosted API and the production
- * join path, and every resource is swept natively afterwards.
+ * Real-cloud sibling of the local cluster: this tree's CLI (a `from_release`
+ * run's released CLI) bootstraps the management VM through the runner's
+ * cloud CLI session, and every resource is swept natively afterwards.
  */
 export class CloudClusterEnvironment {
   readonly #options: CloudClusterEnvironmentOptions;
@@ -308,8 +307,6 @@ export class CloudClusterEnvironment {
   #hostedUpgradeRequested = false;
   /** This run's installation id, known once `api create` returns it. */
   #installationId: string | undefined;
-  /** Bootstrap waited out its budget for creation to settle: cleanup does not wait again. */
-  #creationStuck = false;
   /** This tree's `api create` ran: its installation may need deleting. */
   #createStarted = false;
   /** The runner's cloud CLI session, signed in once per run. */
@@ -317,7 +314,6 @@ export class CloudClusterEnvironment {
   /** The e2e access kubeconfig, read from the checkpoint bucket after create. */
   #accessKubeConfig: string | undefined;
   #objectFile: Promise<string> | undefined;
-  #prepared = false;
 
   constructor(options: CloudClusterEnvironmentOptions) {
     this.#options = options;
@@ -506,9 +502,8 @@ export class CloudClusterEnvironment {
   /**
    * `anycloud api create`, the seed: it drives the runner's cloud CLI,
    * signed in as the cluster's credential, and returns once the hosted API
-   * answers; without `--checkpoint-bucket` the product manages the bucket. A
-   * released installer's create is polled to running instead. Destroy is
-   * registered before the request so a half-finished installation is still
+   * answers; without `--checkpoint-bucket` the product manages the bucket.
+   * Destroy is registered before the request so a half-finished installation is still
    * torn down through the product's own path.
    */
   async bootstrap(
@@ -539,14 +534,21 @@ export class CloudClusterEnvironment {
     cli: Pick<CliClient, 'run'>;
     /** The command for argv built from this tree's `api` surface. */
     argv: (args: string[]) => string[];
+    /** How a cluster it prints is read. */
+    cluster: z.ZodType<ClusterSummary>;
   } {
     const released = this.#options.fromRelease;
     if (!released || this.#hostedUpgradeRequested) {
-      return { cli: this.#options.cli, argv: (args) => args };
+      return {
+        cli: this.#options.cli,
+        argv: (args) => args,
+        cluster: clusterSummarySchema,
+      };
     }
     const group = releasedLifecycleGroup(released.version);
     return {
       cli: released.cli,
+      cluster: releasedClusterSchema,
       argv: ([command, ...rest]) =>
         command === 'api' ? [group, ...rest] : [command, ...rest],
     };
@@ -566,7 +568,7 @@ export class CloudClusterEnvironment {
       rm(access, { recursive: true, force: true }),
     );
     this.#accessKubeConfig = join(access, 'kubeconfig');
-    const { cli, argv } = this.#lifecycle();
+    const { cli, argv, cluster: printedClusterSchema } = this.#lifecycle();
     const result = await cli.run(
       argv(
         cliArgs(
@@ -606,7 +608,6 @@ export class CloudClusterEnvironment {
     this.#installationId =
       cluster?.id ?? CREATED_ID.exec(result.combined)?.groups?.id;
     if (this.#installationId) await this.#recordRun();
-    if (result.timedOut) this.#creationStuck = true;
     if (
       !cluster ||
       cluster.state !== WorkloadState.Running ||
@@ -691,18 +692,16 @@ export class CloudClusterEnvironment {
     env: Record<string, string>,
     label: string,
   ): Promise<readonly ClusterSummary[]> {
+    const { cli, cluster } = this.#lifecycle();
     // `cluster list --json` prints the array, not the API response.
-    return z.array(printedClusterSchema).parse(
+    return z.array(cluster).parse(
       parseJson(
         successful(
-          await this.#lifecycle().cli.run(
-            cliArgs(CLUSTER_LIST, { json: true }),
-            {
-              env,
-              timeoutMs: 60_000,
-              label,
-            },
-          ),
+          await cli.run(cliArgs(CLUSTER_LIST, { json: true }), {
+            env,
+            timeoutMs: 60_000,
+            label,
+          }),
           'cluster list',
         ),
         'cluster list',
@@ -1385,7 +1384,7 @@ export class CloudClusterEnvironment {
 
   /**
    * After a hosted-stage failure, while the cluster still runs, through the
-   * installer's own cluster connection: the hosted API's, Traefik's and the
+   * e2e access kubeconfig: the hosted API's, Traefik's and the
    * `helm-install-*` Pods' logs, current and previous, and the Helm Jobs and
    * HelmCharts. Each part has its own minute, so a hung log read keeps the
    * Helm state. It records why it couldn't, and never throws over the failure

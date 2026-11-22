@@ -468,27 +468,32 @@ describe('e2e-cluster-cloud hosted-API stage', () => {
     expect(calls[0].args).toEqual(['api', 'use', HOSTED_URL]);
   });
 
-  test("reads a 0.1.80 CLI's Service status, which still has the node pool and Deployment fields", async () => {
-    const released = JSON.parse(statusJson(ID.service, WorkloadState.Running));
-    const { hosted } = stage((args) =>
+  test("reads a 0.1.80 CLI's Service status past the node pool and Deployment fields, and only that CLI's", async () => {
+    const plain = JSON.parse(statusJson(ID.service, WorkloadState.Running));
+    const released = JSON.stringify({
+      ...plain,
+      attempt: null,
+      workload: {
+        ...plain.workload,
+        deploymentId: null,
+        nodePoolId: null,
+        submissionRevision: 0,
+        claimDeadlineAt: null,
+        claimed: false,
+      },
+    });
+    const answer = (args: readonly string[]) =>
       args[0] === 'status'
-        ? {
-            stdout: JSON.stringify({
-              ...released,
-              attempt: null,
-              workload: {
-                ...released.workload,
-                deploymentId: null,
-                nodePoolId: null,
-                submissionRevision: 0,
-                claimDeadlineAt: null,
-                claimed: false,
-              },
-            }),
-          }
-        : { combined: `ID: ${ID.service}` },
-    );
+        ? { stdout: released }
+        : { combined: `ID: ${ID.service}` };
+    const { hosted } = stage(answer, [], undefined, undefined, {
+      fromRelease: {
+        cli: { run: vi.fn(async (args) => commandResultForTest(answer(args))) },
+      },
+    });
     await expect(hosted.runService()).resolves.toBe(ID.service);
+    const own = stage(answer);
+    await expect(own.hosted.runService()).rejects.toThrow('invalid JSON');
   });
 
   test('runs a VM Service through the hosted API on the cluster credential, region and VM type', async () => {

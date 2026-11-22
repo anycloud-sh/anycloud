@@ -500,13 +500,30 @@ long-running processes on a [VM](/platform/vms) or as a
 
 The release's pre-upgrade hook repeats the check seconds before the new API
 starts. If a node pool, Deployment or node pool Service is created in between,
-the new API refuses to start and names it. Its database is unchanged and still
-belongs to the previous release, so go back to that release as after
-[losing the management VM](#back-up-and-restore): with the previous release's
-CLI, `cluster delete <name> --cloud <cloud> --region <region> --delete-vms`
-(this also deletes the API's workload VMs; the bucket stays), then
-`cluster create <name> --checkpoint-bucket <bucket>`. Remove what was named
-there, then upgrade again.
+the new API refuses to start and names it, and its database stays on the
+previous release. Go back to that release with the previous release's CLI,
+using the cluster's ID, since the API that resolves names doesn't answer:
+
+1. Stop the management VM, which keeps running: on AWS
+   `aws ec2 stop-instances --instance-ids <instance-id>` (the ID that
+   `anycloud cluster delete <cluster-id> --cloud aws --region <region>` names
+   in `MANAGEMENT_VM_RUNNING`), on GCP
+   `gcloud compute instances stop anycloud-cluster-<cluster-id> --zone <zone>`,
+   and on Azure
+   `az vm deallocate -g anycloud-<cluster-id> -n anycloud-cluster-<cluster-id>`.
+2. `anycloud cluster delete <cluster-id> --cloud <cloud> --region <region> --delete-vms`
+   deletes the management VM and every VM tagged
+   `anycloud_cluster=<cluster-id>`, the API's workload VMs included, and keeps
+   the bucket. Add `--checkpoint-bucket <bucket>` for a bucket you supplied,
+   and `--confirm <cluster-id>` without a terminal.
+3. `anycloud cluster create <name> --cloud <cloud> --region <region> --vm-type <type> --checkpoint-bucket <bucket>`
+   restores the last backup on the previous release (see
+   [Back up and restore](#back-up-and-restore)); the bucket is the cluster ID
+   unless you supplied one. That backup is the one taken when the upgrade was
+   requested, or an hourly one just after, so anything created later is lost,
+   including the record of what was named; step 2 deleted its VMs.
+4. Remove the node pools, Deployments and node pool Services the restored API
+   still has, then upgrade again.
 
 With the hosted API active, `api upgrade` asks it for this CLI's release
 (`POST /v1/system-release`) — any GitHub account the API admits, no Docker or
