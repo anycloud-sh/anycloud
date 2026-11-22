@@ -9,11 +9,11 @@ import { auditContainerSpecOwnership } from '../../../../src/api/services/reposi
 import type { MigrationDatabase } from '../../../../src/api/services/repositories/migration-database.js';
 
 /**
- * 0171 and 0172 remove Deployments and node pools: the guard refuses them
+ * 0172 and 0173 remove Deployments and node pools: the guard refuses them
  * while any is live, and once only history remains they drop it and keep
  * every VM-host Workload as it was.
  */
-describe('removing Deployments and node pools (0171, 0172)', () => {
+describe('removing Deployments and node pools (0172, 0173)', () => {
   let sqlite: BetterSqlite3.Database;
   let database: MigrationDatabase;
   const rows = (sql: string) =>
@@ -99,6 +99,9 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
         docker_command, deployment_id) VALUES ('job-live', 'u', 'job', 'running', 1, 'd', 'dep-1');
       INSERT INTO workloads (id, user_id, workload_type, state, started_at,
         docker_command, node_pool_id) VALUES ('svc-live', 'u', 'service', 'running', 1, 'd', 'pool-1');
+      INSERT INTO deployments (id, owner_user_id, name, node_pool_id, gpu_count,
+          managed, created_at, updated_at)
+        VALUES ('dep-2', 'owner', 'web', 'pool-1', 0, 0, 1, 1);
     `);
     const before = ['workloads', 'deployments', 'node_pools', 'vms'].map(
       (table) => rows(`SELECT * FROM ${table} ORDER BY rowid`),
@@ -109,7 +112,7 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
         'This release removes node pools, Kubernetes Deployments and node pool Services, and this database still has:',
         '  Job on a Deployment job-live',
         '  node pool Service svc-live',
-        '  Deployment model (dep-1)',
+        '  Deployment web (dep-2)',
         '  node pool gpu (pool-1)',
         'Nothing was changed.',
       ].join('\n'),
@@ -170,6 +173,24 @@ describe('removing Deployments and node pools (0171, 0172)', () => {
       writer.close();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('passes what outlives a deleted node pool: its managed Deployment and a Job that never ran', async () => {
+    // 0.1.80 deletes a pool once no user Deployment and no live or
+    // uncleaned pool Job holds it; an idle managed Deployment and an ended
+    // Job that never got an execution may stay behind, and nothing can
+    // remove them once the pool is gone.
+    sqlite.exec(`
+      UPDATE node_pools SET state = 'deleted';
+      UPDATE vms SET ended_at = 5 WHERE node_pool_id IS NOT NULL;
+      INSERT INTO workloads (id, user_id, workload_type, state, started_at,
+        docker_command, deployment_id) VALUES ('job-never-ran', 'u', 'job', 'terminated', 1, 'd', 'dep-1');
+    `);
+
+    await expect(
+      runMigrations(database, undefined, '1.2.3'),
+    ).resolves.not.toThrow();
+    expect(columns('deployments')).toEqual([]);
   });
 
   it('drops the removed history and keeps every VM-host Workload byte for byte', async () => {

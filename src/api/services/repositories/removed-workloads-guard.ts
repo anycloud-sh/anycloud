@@ -1,12 +1,13 @@
 import BetterSqlite3 from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { TERMINAL_STATES } from '../../../shared/workload.js';
 import type { MigrationDatabase } from './migration-database.js';
 
 /** The migrations that remove node pools, Deployments and node pool Services. */
 export const REMOVAL_MIGRATIONS: ReadonlySet<string> = new Set([
-  '0171_remove_deployments.sql',
-  '0172_remove_node_pools.sql',
+  '0172_remove_deployments.sql',
+  '0173_remove_node_pools.sql',
 ]);
 
 const columnsOf = (db: Pick<MigrationDatabase, 'query'>, table: string) =>
@@ -35,7 +36,8 @@ export function refuseRemovedWorkloads(
   // Only a Deployment on a node pool (0121 on) is live work: before 0106
   // `deployments` held the Workloads, and a Cluster's Deployments before 0122
   // are history 0122 removes behind its own guard.
-  const poolDeployments = columnsOf(db, 'deployments').has('node_pool_id');
+  const deploymentColumns = columnsOf(db, 'deployments');
+  const poolDeployments = deploymentColumns.has('node_pool_id');
   const workloadColumns = columnsOf(db, 'workloads');
   const targets = [
     ...(workloadColumns.has('node_pool_id')
@@ -48,6 +50,12 @@ export function refuseRemovedWorkloads(
       : []),
   ];
   if (targets.length > 0) {
+    // Live as node pool deletion counts it: not ended, or ended with an
+    // execution whose cleanup is unconfirmed. An ended Job that never ran
+    // outlives its deleted pool, and nothing could remove it after.
+    const uncleaned = workloadColumns.has('current_execution_id')
+      ? 'cleaned_at IS NULL AND current_execution_id IS NOT NULL'
+      : 'cleaned_at IS NULL';
     name(
       db.query(
         `SELECT CASE WHEN workload_type = 'service'
@@ -55,16 +63,21 @@ export function refuseRemovedWorkloads(
                 id, id AS name
          FROM workloads
          WHERE (${targets.join(' OR ')})
-           AND cleaned_at IS NULL
+           AND (state NOT IN (${TERMINAL_STATES.map(() => '?').join(', ')})
+             OR (${uncleaned}))
          ORDER BY id`,
+        [...TERMINAL_STATES],
       ),
     );
   }
   if (poolDeployments) {
+    // A managed Deployment runs pool Jobs and goes with its node pool.
     name(
       db.query(
         `SELECT 'Deployment' AS kind, id, name FROM deployments
-         WHERE deleted_at IS NULL AND node_pool_id IS NOT NULL ORDER BY id`,
+         WHERE deleted_at IS NULL AND node_pool_id IS NOT NULL
+           ${deploymentColumns.has('managed') ? 'AND managed = 0' : ''}
+         ORDER BY id`,
       ),
     );
   }
