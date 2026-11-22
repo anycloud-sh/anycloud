@@ -147,7 +147,7 @@ const GCP_SHARED_JOB_TAG = 'anycloud-shared-vm';
  * mode gives it a subnet in every region. A new network admits no ingress, so
  * a Job's VM reaches no other VM's internal address and takes only SSH.
  */
-export const GCP_JOBS_NETWORK = 'anycloud-jobs';
+const GCP_JOBS_NETWORK = 'anycloud-jobs';
 /**
  * The tag of VM Jobs launched into `default` before the Jobs network. Its
  * standing deny rules keep refusing those VMs their peers until they end, so

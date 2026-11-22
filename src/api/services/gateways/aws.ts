@@ -213,7 +213,7 @@ const AWS_SHARED_SG_NAMES = new Set<string>([
  * internet gateway and nothing else, so a Job's VM has no route to any other
  * network. Tagged `anycloud_jobs_network=ready` once its default route exists.
  */
-export const AWS_JOBS_NETWORK = 'anycloud-jobs';
+const AWS_JOBS_NETWORK = 'anycloud-jobs';
 const AWS_JOBS_VPC_CIDR = '10.1.0.0/16';
 const AWS_JOBS_READY_TAG = 'anycloud_jobs_network';
 /**
