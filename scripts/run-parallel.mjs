@@ -1,5 +1,6 @@
-// Runs each argument as a shell command at the same time. Each command's
-// output prints as one block when it exits, and the run fails if any failed.
+// Runs each argument as a shell command at the same time. Each command says
+// when it starts, its output prints as one block when it exits, and the run
+// fails if any failed.
 import { spawn } from 'node:child_process';
 
 const commands = process.argv.slice(2);
@@ -12,9 +13,12 @@ const codes = await Promise.all(
           shell: true,
           stdio: ['ignore', 'pipe', 'pipe'],
         });
+        process.stdout.write(`$ ${command} started\n`);
         let output = '';
-        child.stdout.on('data', (chunk) => (output += chunk));
-        child.stderr.on('data', (chunk) => (output += chunk));
+        for (const stream of [child.stdout, child.stderr]) {
+          stream.setEncoding('utf8');
+          stream.on('data', (chunk) => (output += chunk));
+        }
         child.on('close', (code) => {
           const seconds = Math.round((Date.now() - started) / 1000);
           process.stdout.write(

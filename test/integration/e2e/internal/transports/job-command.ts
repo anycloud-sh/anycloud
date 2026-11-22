@@ -2,7 +2,12 @@ import { setTimeout as pause } from 'node:timers/promises';
 
 import type { ProcessRunner } from '../process.js';
 import type { CommandResult } from '../types.js';
-import { MAX_WAIT_MS, Waiter, type WaitOptions } from '../wait.js';
+import {
+  MAX_WAIT_MS,
+  WaitDeadlineExceeded,
+  Waiter,
+  type WaitOptions,
+} from '../wait.js';
 
 const PROVIDER_ENVIRONMENT =
   /^(?:AWS_|AZURE_|ARM_|CLOUDSDK_|GCLOUD_|GOOGLE_|GCP_|LAMBDA_|MSI_|IDENTITY_|BOTO_|ANYCLOUD_CLOUD_PROVIDER$)/iu;
@@ -225,7 +230,13 @@ export class JobPrivateCommands {
   ): Promise<T> {
     const timeoutMs = jobOperationTimeout(deadlineAt, MAX_WAIT_MS);
     const { intervalMs = 2_000 } = options;
-    return new Waiter(this.#signal, sleep).for(label, probe, {
+    // The waiter's clock starts after this reads the deadline, so a probe can
+    // start past it; that probe ends the wait as its timeout.
+    const probeInTime = async (): Promise<T> => {
+      if (Date.now() >= deadlineAt) throw new WaitDeadlineExceeded();
+      return probe();
+    };
+    return new Waiter(this.#signal, sleep).for(label, probeInTime, {
       ...options,
       timeoutMs,
       intervalMs:
