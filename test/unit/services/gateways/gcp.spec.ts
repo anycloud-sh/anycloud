@@ -39,6 +39,7 @@ import {
   canMintScopedStorageToken,
   canListObjects,
   canManageCloudResources,
+  canObserveStoppedVms,
   type CandidateRegion,
 } from '../../../../src/api/services/gateways/cloud';
 import {
@@ -336,6 +337,26 @@ describe('GCP class', () => {
         'GCP service-account private key is not a valid PEM private key',
       );
       expect(listAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopped VM observation', () => {
+    it('reports a stop only once GCP settles it: STOPPING also precedes a delete', async () => {
+      const gcp = new GCP(completeCloudConfig(mockConfig));
+      const get = vi.fn();
+      gcp.instancesClient = fakeSdkClient<InstancesClient>({ get });
+      const compute = gcp.compute();
+      if (!canObserveStoppedVms(compute)) {
+        throw new Error('Expected stopped-VM observation');
+      }
+      const observe = async (status: string) => {
+        get.mockResolvedValueOnce([{ status }]);
+        return compute.observeStoppedVm('vm-1');
+      };
+
+      await expect(observe('STOPPING')).resolves.toBe(false);
+      await expect(observe('TERMINATED')).resolves.toBe(true);
+      await expect(observe('RUNNING')).resolves.toBe(false);
     });
   });
 

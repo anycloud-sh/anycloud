@@ -2857,7 +2857,7 @@ export class GCP {
 
   /**
    * Check if VM is in a stopped state
-   * Returns true if VM is stopped/stopping, false if still running or not found
+   * Returns true if VM is stopped, false if still running, stopping or not found
    * Retries to handle API propagation delays when VM is being preempted
    */
   private async verifyVMPreemption(cloudId: string): Promise<boolean> {
@@ -2869,13 +2869,13 @@ export class GCP {
     //   - Instance not found (deleted from console) → revival triggered ✓
     //     (use `anycloud terminate` to properly decommission without re-provisioning)
     // States checked:
-    //   STOPPING   - brief transition state while stopping
     //   TERMINATED - final state for both preemption and manual stop
     //   STOPPED    - included defensively; listed in GCP proto but TERMINATED is observed in practice
+    // STOPPING is not a stop yet: a delete passes through it too, and only a
+    // later observation tells a stop (TERMINATED) from a delete (not found).
     // See: https://cloud.google.com/compute/docs/instances/spot#preemption-process
     const isNotRunning = (status: string | null | undefined) =>
       status === GcpInstanceStatus.Stopped ||
-      status === GcpInstanceStatus.Stopping ||
       status === GcpInstanceStatus.Terminated;
 
     try {
