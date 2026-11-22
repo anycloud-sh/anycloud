@@ -260,10 +260,7 @@ API_URL. 'rotate' replaces it everywhere. A service's token comes from
       try {
         const url = getApiUrl();
         const token = await hostedApiBearer(url, () => getGitHubToken());
-        // Without an API token the bearer is a GitHub sign-in: never print it.
-        if (!token?.startsWith('acapi_')) {
-          throw new Error(`${url} issued no API token.`);
-        }
+        if (!token) throw new Error('No GitHub sign-in found.');
         console.log(token);
       } catch (err) {
         printError(`Failed to get the API token: ${(err as Error).message}`);
