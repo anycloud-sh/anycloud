@@ -11,7 +11,6 @@ import { randomBytes } from 'crypto';
 import {
   resetPersistence,
   getCredentialSecretStore,
-  getProvisioningAttemptStore as ledger,
   getWorkloadQueryStore as queries,
   getWorkloadOutcomes as outcomes,
 } from '../../../../src/api/services/persistence.js';

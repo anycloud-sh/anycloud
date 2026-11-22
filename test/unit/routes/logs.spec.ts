@@ -1,7 +1,6 @@
 import { LOGS_CONTAINER_NOT_READY } from '../../../src/shared/api-contract/native-schemas.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { callApi } from '../helpers/api-test-helper';
-import { TEST_DAEMON_VERSION } from '../config';
 import {
   walkToState,
   provisionTestVm,

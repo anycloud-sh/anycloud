@@ -19,7 +19,6 @@ import { WaitTimeoutError } from '../wait.js';
 import {
   INVENTORY_SETTLE_MS,
   JobPrivateCommands,
-  jobOperationTimeout,
   privateJobJson,
 } from './job-command.js';
 

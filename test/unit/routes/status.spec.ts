@@ -4,7 +4,7 @@ import {
   getWorkloadOutcomes,
 } from '../../../src/api/services/persistence.js';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TEST_ID, TEST_DAEMON_VERSION } from '../config';
+import { TEST_ID } from '../config';
 import {
   walkToState,
   provisionTestVm,

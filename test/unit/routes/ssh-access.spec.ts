@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { callApi } from '../helpers/api-test-helper';
-import { TEST_DAEMON_VERSION } from '../config';
 import { walkToState, provisionTestVm } from '../../helpers/workload-store.js';
 import { getDB } from '../../../src/api/services/repositories/db';
 import { CloudType } from '../../../src/shared/cloud.js';
