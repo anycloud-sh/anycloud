@@ -77,6 +77,7 @@ interface PipelineReconciler {
   deferActiveRecovery(workloadId: string): Promise<boolean>;
   enqueueCleanupNow(workloadId: string): Promise<boolean>;
   enqueueImmediateRetryNow(workloadId: string): Promise<boolean>;
+  enqueuePollNow(workloadId: string): Promise<boolean>;
 }
 export interface WorkloadPipelineDeps {
   store: PipelineStore;
@@ -490,11 +491,19 @@ export async function wakeWorkloadPipeline(
     runWorkloadPipeline(deps, workloadId, resolveHandoff),
   );
   trackWorkloadWork(workloadId, pipeline);
-  void pipeline.catch((error) => {
-    log.error('Workload pipeline runner failed', {
-      id: workloadId,
-      error: error,
-    });
-  });
+  void pipeline
+    .catch((error) =>
+      log.error('Workload pipeline runner failed', { id: workloadId, error }),
+    )
+    // This poll delivers a Secret saved during the start, before Running.
+    .then(() => deps.store.getWorkload(workloadId))
+    .then((row) =>
+      row?.secretNames?.length
+        ? deps.reconciler.enqueuePollNow(workloadId)
+        : false,
+    )
+    .catch((error: unknown) =>
+      log.warn('Waking Secret file delivery failed', { id: workloadId, error }),
+    );
   await handedOff;
 }

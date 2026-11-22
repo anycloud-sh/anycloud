@@ -455,7 +455,9 @@ A Job, Service or VM container that names Secrets also mounts the host's
 directory per Secret and a `0444` file per key. Each Secret's directory is a
 symlink to a revision directory named from a hash of the stored ciphertext,
 swapped in one rename. Saving a Secret wakes the poll of every Running Workload
-that names it (`live-secret-files.ts`); each 30-second poll compares every
+that names it (`live-secret-files.ts`), and a Workload that names Secrets is
+polled as soon as its start pipeline settles, so a save during its start reaches
+it at once too; each 30-second poll compares every
 host's symlinks with the stored revisions over SSH and writes the newest values
 where they differ, including after a reboot empties `/run`. Environment
 variables keep the values from the container's start. Node pool Workloads keep
