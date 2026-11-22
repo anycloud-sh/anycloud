@@ -234,6 +234,8 @@ const AWS_NOT_YET_VISIBLE_CODES = new Set([
   'InvalidVpcID.NotFound',
   'InvalidInternetGatewayID.NotFound',
   'InvalidRouteTableID.NotFound',
+  // Another API process attached the gateway first: look again.
+  'Resource.AlreadyAssociated',
 ]);
 /** A refusal tied to one subnet's zone: the launch tries the next subnet. */
 const AWS_ZONE_REFUSAL_CODES = new Set([
@@ -3020,6 +3022,7 @@ export class AWS {
         { length: 16 },
         (_, i) => `10.1.${i * 16}.0/20`,
       ).filter((cidr) => !subnets.some((subnet) => subnet.cidr === cidr));
+      const created: typeof subnets = [];
       for (const [index, zone] of missing.entries()) {
         if (!free[index]) break;
         await ec2
@@ -3031,6 +3034,9 @@ export class AWS {
               TagSpecifications: tags('subnet'),
             }),
           )
+          .then(({ Subnet }) => {
+            created.push({ id: Subnet!.SubnetId!, zone, cidr: free[index] });
+          })
           .catch((error) => {
             const code = awsErrorCode(error);
             // Another API process took the range; its subnet is listed below.
@@ -3045,7 +3051,13 @@ export class AWS {
             });
           });
       }
-      subnets = await listSubnets();
+      // DescribeSubnets can lag the creates: keep what they returned.
+      subnets = [
+        ...created,
+        ...(await listSubnets()).filter(
+          (subnet) => !created.some((made) => made.id === subnet.id),
+        ),
+      ];
     }
     if (subnets.length === 0)
       throw refusal ?? new Error(`AWS region ${this.region} has no zones`);

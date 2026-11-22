@@ -55,6 +55,8 @@ class FakeEc2 {
   once: Record<string, Error> = {};
   /** Zones where CreateSubnet is refused. */
   subnetRefusals = new Set<string>();
+  /** DescribeSubnets doesn't show subnets made from now on. */
+  subnetsLag = false;
   #next = 0;
 
   #id(prefix: string) {
@@ -160,7 +162,7 @@ class FakeEc2 {
           Subnets: this.subnets.filter((subnet) => subnet.VpcId === vpcId),
         };
       }
-      case 'CreateSubnet':
+      case 'CreateSubnet': {
         if (this.subnetRefusals.has(input.AvailabilityZone))
           throw Object.assign(
             new Error(
@@ -178,8 +180,10 @@ class FakeEc2 {
           throw Object.assign(new Error('conflict'), {
             name: 'InvalidSubnet.Conflict',
           });
-        this.subnets.push({ SubnetId: this.#id('subnet'), ...input });
-        return {};
+        const subnet = { SubnetId: this.#id('subnet'), ...input };
+        if (!this.subnetsLag) this.subnets.push(subnet);
+        return { Subnet: subnet };
+      }
       case 'DescribeSecurityGroups':
         return {
           SecurityGroups: this.groups.filter(
@@ -522,5 +526,30 @@ describe('AWS Jobs network (RFC 0053)', () => {
     expect(ec2.tables[0].Routes).toEqual([
       { DestinationCidrBlock: '0.0.0.0/0', GatewayId: 'igw-orphan' },
     ]);
+  });
+
+  it('launches in the subnets it just made while DescribeSubnets lags', async () => {
+    const ec2 = new FakeEc2();
+    ec2.subnetsLag = true;
+
+    const network = await prepare(gateway(ec2));
+
+    expect(network!.subnets!.map((subnet) => subnet.zone)).toEqual([
+      'us-east-1a',
+      'us-east-1b',
+    ]);
+  });
+
+  it('looks again when another API process attached the gateway first', async () => {
+    const ec2 = new FakeEc2();
+    ec2.once.AttachInternetGateway = Object.assign(new Error('associated'), {
+      name: 'Resource.AlreadyAssociated',
+    });
+
+    await prepare(gateway(ec2));
+
+    expect(ec2.gateways).toHaveLength(1);
+    expect(ec2.gateways[0].Attachments).toHaveLength(1);
+    expect(ec2.tables[0].Routes).toHaveLength(1);
   });
 });

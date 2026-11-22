@@ -1028,6 +1028,12 @@ describe('GCP class', () => {
 
   /** A gateway on its own project, so the process-wide network lock starts empty. */
   let projects = 0;
+  /** The Jobs network once auto mode has made this region's subnet. */
+  const regional = {
+    subnetworks: [
+      'https://www.googleapis.com/compute/v1/projects/p/regions/us-central1/subnetworks/anycloud-jobs',
+    ],
+  };
   const jobsGateway = (network: Record<string, unknown>) => {
     const gcp = new GCP(
       completeCloudConfig({
@@ -1055,7 +1061,10 @@ describe('GCP class', () => {
   it("0053/S1 makes the Jobs network and puts a VM Job's SSH rules in it", async () => {
     const notFound = Object.assign(new Error('not found'), { code: 404 });
     const network = {
-      get: vi.fn().mockRejectedValue(notFound),
+      get: vi
+        .fn()
+        .mockRejectedValueOnce(notFound)
+        .mockResolvedValue([regional]),
       insert: vi.fn().mockResolvedValue([{}]),
     };
     const { gcp, insert, prepare } = jobsGateway(network);
@@ -1095,7 +1104,7 @@ describe('GCP class', () => {
       get: vi
         .fn()
         .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 404 }))
-        .mockResolvedValue([{}]),
+        .mockResolvedValue([regional]),
       insert: vi.fn().mockResolvedValue([{}]),
     };
     const { gcp, prepare } = jobsGateway(network);
@@ -1120,7 +1129,7 @@ describe('GCP class', () => {
       ),
     ]);
 
-    expect(network.get).toHaveBeenCalledTimes(1);
+    expect(network.get).toHaveBeenCalledTimes(2);
     expect(network.insert).toHaveBeenCalledTimes(1);
   });
 
@@ -1129,7 +1138,7 @@ describe('GCP class', () => {
     try {
       const notFound = Object.assign(new Error('x'), { code: 404 });
       const network = {
-        get: vi.fn().mockResolvedValue([{}]),
+        get: vi.fn().mockResolvedValue([regional]),
         insert: vi.fn().mockResolvedValue([{}]),
       };
       const { prepare } = jobsGateway(network);
@@ -1140,14 +1149,15 @@ describe('GCP class', () => {
       network.get.mockRejectedValueOnce(notFound);
       vi.advanceTimersByTime(15 * 60_000 + 1);
       await prepare();
-      expect(network.get).toHaveBeenCalledTimes(2);
+      // Missing, made again, then read back.
+      expect(network.get).toHaveBeenCalledTimes(3);
       expect(network.insert).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('waits for a Jobs network another API process is still making', async () => {
+  it("waits for a Jobs network another API process is still making, and this region's subnet", async () => {
     vi.useFakeTimers();
     try {
       const notFound = Object.assign(new Error('x'), { code: 404 });
@@ -1155,8 +1165,9 @@ describe('GCP class', () => {
         get: vi
           .fn()
           .mockRejectedValueOnce(notFound)
-          .mockRejectedValueOnce(notFound)
-          .mockResolvedValue([{}]),
+          // Readable before auto mode has made this region's subnet.
+          .mockResolvedValueOnce([{ subnetworks: [] }])
+          .mockResolvedValue([regional]),
         insert: vi.fn().mockRejectedValue({ code: 409 }),
       };
       const { insert, prepare } = jobsGateway(network);

@@ -156,7 +156,7 @@ const GCP_JOBS_NETWORK = 'anycloud-jobs';
  */
 const GCP_LEGACY_JOB_HOST_TAG = 'anycloud-job-host';
 /**
- * One creation per project in this process: every `compute()` call builds a
+ * One creation per project and region in this process: every `compute()` call builds a
  * new gateway, so a per-gateway memo wouldn't stop concurrent Jobs racing.
  * Rechecked every 15 minutes, so a deleted network is made again.
  */
@@ -1747,14 +1747,26 @@ export class GCP {
   }
 
   private ensureJobsNetwork(): Promise<void> {
-    const get = () =>
-      this.networksClient.get({
+    // Readable with this region's auto-mode subnet: a network another API
+    // process is still making may have neither yet.
+    const ready = async () => {
+      const [network] = await this.networksClient.get({
         project: this.projectId,
         network: GCP_JOBS_NETWORK,
       });
+      if (
+        !network.subnetworks?.some((url) =>
+          url.includes(`/regions/${this.region}/`),
+        )
+      )
+        throw Object.assign(
+          new Error(`${GCP_JOBS_NETWORK} has no subnet in ${this.region} yet`),
+          { code: 404 },
+        );
+    };
     const create = async () => {
       try {
-        await get();
+        await ready();
         return;
       } catch (err) {
         if (!isGCPNotFound(err)) throw err;
@@ -1771,18 +1783,20 @@ export class GCP {
         await this.waitForOperation(operation, 'global');
       } catch (err: any) {
         if (err.code !== 6 && err.code !== 409) throw err;
-        // Another API process is making it: wait until it can be read.
-        await withRetry(get, 'GCP Jobs network', {
-          maxAttempts: 12,
-          waitMs: 5_000,
-          exponentialBackoff: false,
-          shouldRetry: isGCPNotFound,
-        });
       }
+      await withRetry(ready, 'GCP Jobs network', {
+        maxAttempts: 12,
+        waitMs: 5_000,
+        exponentialBackoff: false,
+        shouldRetry: isGCPNotFound,
+      });
     };
-    return memoizeAsyncTtl(gcpJobsNetworks, this.projectId, create, {
-      ttlMs: 15 * 60_000,
-    });
+    return memoizeAsyncTtl(
+      gcpJobsNetworks,
+      `${this.projectId}:${this.region}`,
+      create,
+      { ttlMs: 15 * 60_000 },
+    );
   }
 
   /**
