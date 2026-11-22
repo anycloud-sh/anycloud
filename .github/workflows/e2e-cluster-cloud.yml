@@ -114,9 +114,7 @@ jobs:
     env:
       RESULTS_DIR: /tmp/e2e-results-e2e-cluster-cloud-${{ github.run_id }}-${{ github.run_attempt }}
       # Bootstrap (about 2 min on AWS in the 10-06 runs) + walk + destroy stay
-      # inside the job. from_release adds an installer restart, an upgrade and
-      # its rollout, and up to 35 min after the Release step for the runner's
-      # cached NXDOMAIN of the hosted API to expire.
+      # inside the job. from_release adds an upgrade and its rollout.
       E2E_TEST_TIMEOUT_SECONDS: ${{ inputs.live_checks != '' && '13200' || (inputs.restore_stage || inputs.from_release) && '7800' || inputs.hosted_stage && '5100' || '3900' }}
       E2E_CLUSTER_PROVIDER: ${{ inputs.cluster_provider || 'aws' }}
       E2E_CLUSTER_REGION: ${{ inputs.region }}
@@ -212,10 +210,9 @@ jobs:
           ANYCLOUD_BINARY_TARGETS="bun-linux-$arch" ./release/build-binaries.sh
           echo "E2E_CANDIDATE_CLI=$GITHUB_WORKSPACE/binaries/anycloud-linux-$arch" >> "$GITHUB_ENV"
 
-      # The published CLI, checked against the release's checksums; e2e.sh
-      # starts the installer with it. This tree's `api upgrade` restarts the
-      # installer through `anycloud api start`, so ANYCLOUD_UPDATE_BIN names
-      # this tree's CLI.
+      # The published CLI, checked against the release's checksums: it
+      # creates the cluster and drives its hosted API until this tree's
+      # `api upgrade`.
       - name: Install the from_release CLI
         if: ${{ inputs.from_release && !inputs.sweep_only }}
         env:
@@ -230,10 +227,7 @@ jobs:
           done
           grep " $asset\$" checksums.txt | sha256sum -c - && tar -xzf "$asset"
           [ "$(./anycloud --version)" = "$FROM_RELEASE" ]
-          printf '#!/usr/bin/env bash\nexec node %q/dist/cli/index.js "$@"\n' "$GITHUB_WORKSPACE" > head-anycloud
-          chmod +x head-anycloud
           echo "E2E_CLUSTER_FROM_RELEASE_CLI=$dir/anycloud" >> "$GITHUB_ENV"
-          echo "ANYCLOUD_UPDATE_BIN=$dir/head-anycloud" >> "$GITHUB_ENV"
 
       # The hosted API's `fetch failed` capture digs the failing name;
       # the runner image has no dig. Without it, the capture records the spawn error.

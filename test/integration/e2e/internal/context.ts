@@ -425,22 +425,13 @@ async function runDirectCli(
   );
 }
 
-/**
- * The token `api start` wrote for the installer in `apiDirectory`. A
- * from_release run's installer may predate it (G0, 0.1.68) and take the
- * GitHub sign-in, `preTokenBearer`, until `api upgrade` writes the token.
- */
-export function readInstallerToken(
-  apiDirectory: string,
-  preTokenBearer?: string,
-): string {
+/** The token `api start` wrote for the local API in `apiDirectory`. */
+function readInstallerToken(apiDirectory: string): string {
   const file = path.join(apiDirectory, 'local-api-token');
   let value: string;
   try {
     value = readFileSync(file, 'utf8').trim();
   } catch (error) {
-    const missing = (error as NodeJS.ErrnoException).code === 'ENOENT';
-    if (missing && preTokenBearer) return preTokenBearer;
     throw new Error(
       `Cannot read the local API token at ${file}: ${(error as Error).message}`,
     );
@@ -475,10 +466,7 @@ export async function createE2ELifecycle(
     // No `api start` here: the controller is an in-process API (the local
     // cluster lane's) that authenticates the GitHub stub, which takes this.
     if (!apiDirectory) return 'in-process-api';
-    const value = readInstallerToken(
-      apiDirectory,
-      environment.optional('E2E_CLUSTER_FROM_RELEASE') ? token : undefined,
-    );
+    const value = readInstallerToken(apiDirectory);
     redactor.add(value);
     return value;
   };
@@ -673,12 +661,10 @@ export async function createE2ELifecycle(
       liveChecks,
     } = clusterCloudConfiguration((name) => environment.optional(name));
     const clusterProfile = providers.vm(clusterProvider);
-    // `from_release`: the workflow installs that release's CLI, and e2e.sh
-    // starts the installer (data in its ANYCLOUD_DIR) with it.
+    // `from_release`: the workflow installs that release's CLI.
     const released = fromRelease
       ? {
           version: fromRelease,
-          installerDirectory: environment.required('ANYCLOUD_DIR'),
           cli: new CliClient(
             runner,
             options.projectRoot,
@@ -696,8 +682,6 @@ export async function createE2ELifecycle(
       cleanup,
       cli,
       ...(released ? { fromRelease: released } : {}),
-      database: new CliDatabase(cli),
-      installerDirectory: environment.optional('ANYCLOUD_DIR') || undefined,
       http: targetHttp,
       profile: clusterProfile,
       region: clusterRegion,

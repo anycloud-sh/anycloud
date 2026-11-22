@@ -2,13 +2,7 @@ import type {
   BatchV1Api,
   CoreV1Api,
   CustomObjectsApi,
-  KubeConfig,
 } from '@kubernetes/client-node';
-import sodium from 'libsodium-wrappers';
-import {
-  kubeConfigFromClusterConnection,
-  parseClusterConnection,
-} from '../../../../../../src/api/services/kubernetes/cluster-connection.js';
 import { API_INGRESS_RELEASE } from '../../../../../../src/shared/api-ingress.js';
 import { SYSTEM_RELEASE_NAMESPACE } from '../../../../../../src/shared/system-release.js';
 import { errorMessage } from '../../types.js';
@@ -134,34 +128,6 @@ export async function withinDeadline<T>(
   } finally {
     clearTimeout(timer);
   }
-}
-
-/** The installer's stored connection, opened with its cipher key (secret-crypto's secretbox). */
-async function openConnection(
-  encrypted: string,
-  cipherKey: string,
-): Promise<string> {
-  await sodium.ready;
-  const combined = new Uint8Array(Buffer.from(encrypted, 'base64'));
-  const nonce = combined.slice(0, sodium.crypto_secretbox_NONCEBYTES);
-  const plaintext = sodium.crypto_secretbox_open_easy(
-    combined.slice(sodium.crypto_secretbox_NONCEBYTES),
-    nonce,
-    sodium.from_hex(cipherKey.trim()),
-  );
-  return sodium.to_string(plaintext);
-}
-
-/** The cluster connection the installer holds, as a kubeconfig. */
-export async function hostedKubeConfig(
-  encryptedConnection: string,
-  cipherKey: string,
-): Promise<KubeConfig> {
-  return kubeConfigFromClusterConnection(
-    parseClusterConnection(
-      await openConnection(encryptedConnection, cipherKey),
-    ),
-  );
 }
 
 /**

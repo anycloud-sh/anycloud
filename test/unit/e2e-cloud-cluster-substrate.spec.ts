@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { describe, expect, onTestFinished, test, vi } from 'vitest';
 
@@ -12,7 +6,6 @@ import { hostedApiIdentity } from '../../src/shared/hosted-api-identity.js';
 import { CloudType } from '../../src/shared/cloud.js';
 import { generateClusterId } from '../../src/shared/id-generator.js';
 import { CleanupStack } from '../integration/e2e/internal/cleanup.js';
-import { CliDatabase } from '../integration/e2e/internal/database.js';
 import {
   CloudClusterEnvironment,
   type CloudClusterEnvironmentOptions,
@@ -26,9 +19,6 @@ import {
 import { isRecord } from '../integration/e2e/internal/types.js';
 import { Waiter, WaitTimeoutError } from '../integration/e2e/internal/wait.js';
 import { commandResultForTest } from './helpers/e2e.js';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { readInstallerToken } from '../integration/e2e/internal/context.js';
 
 type CliAnswer = (args: readonly string[]) => unknown;
 
@@ -184,12 +174,9 @@ function environment(
       | 'wait'
       | 'http'
     >
-  > & {
-    /** The runner's IPv4 lookup; answers at once by default. */
-    readonly lookup4?: (hostname: string) => Promise<unknown>;
-  } = {},
+  > = {},
 ) {
-  const { lookup4 = async () => '203.0.113.5', ...seams } = management;
+  const seams = management;
   const dnsDeletes: string[] = [];
   const dnsFetch = vi.fn(
     async (url: string | URL | Request, init?: RequestInit) => {
@@ -282,7 +269,6 @@ function environment(
     artifacts,
     cleanup,
     cli,
-    database: new CliDatabase(cli),
     http: { get: vi.fn() },
     profile: awsProfile,
     region: 'us-east-2',
@@ -292,7 +278,6 @@ function environment(
     wait: new Waiter(new AbortController().signal),
     ...seams,
     dns: {
-      lookup4,
       token: 'gh-token',
       fetch: dnsFetch as unknown as typeof fetch,
       resolve: async (hostname) => {
@@ -333,12 +318,6 @@ function pollsOnly(): CloudClusterEnvironmentOptions['wait'] {
 }
 
 /** A Waiter on a fake `Date`: each pause moves the clock, and is recorded. */
-function onFakeClock(pauses: number[] = []): Waiter {
-  return new Waiter(new AbortController().signal, async (ms) => {
-    pauses.push(ms);
-    vi.setSystemTime(Date.now() + ms);
-  });
-}
 
 const cluster = (state: string) => ({
   id: 'e2e-clust-1790000000000-e5f6',
@@ -604,202 +583,94 @@ describe('AWS cluster substrate', () => {
     expect(() => aws.bucket).toThrow('Cluster is not created');
   });
 
-  test("from a release, its CLI saves the credential and creates the cluster, then this CLI's api upgrade must restart the installer over the same data", async () => {
-    const released: { args: string[]; timeoutMs?: number }[] = [];
-    let restarted = 'Local API server is on 0.1.65; restarting it';
-    const { aws, cliRuns } = environment(
-      () => [],
-      (args) => (args[0] === 'api' ? restarted : cluster('running')),
-      undefined,
-      {
-        fromRelease: {
-          version: '0.1.65',
-          installerDirectory: '/tmp/installer',
-          cli: {
-            run: vi.fn(async (args, options) => {
-              released.push({ args: [...args], timeoutMs: options?.timeoutMs });
-              // From 0.1.66 create returns at once; the list shows it running.
-              return commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [{ name: 'e2e-cluster-abcdef0123', state: 'running' }]
-                    : { id: cluster('running').id, state: 'provisioning' },
-                ),
-              });
-            }),
-          },
-        },
-        wait: onFakeClock(),
-      },
-    );
-    await aws.prepare();
-    // A fake clock: the released create gets the whole budget only when no
-    // time passes between bootstrap's deadline and its first remaining() read.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    try {
-      await aws.bootstrap(60_000);
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(released.map(({ args }) => args.slice(0, 2))).toEqual([
-      ['credentials', 'new'],
-      ['cluster', 'create'],
-      ['cluster', 'list'],
-    ]);
-    expect(released[1].timeoutMs).toBe(60_000);
-    expect(cliRuns[0]).toMatchObject({
-      args: ['api', 'upgrade'],
-      env: { ANYCLOUD_DIR: '/tmp/installer' },
-    });
-    expect(cliRuns[1].args.slice(0, 2)).toEqual(['cluster', 'list']);
-    restarted = 'Local API matches anycloud 0.0.3.';
-    const again = environment(
-      () => [],
-      () => restarted,
-      undefined,
-      {
-        fromRelease: {
-          version: '0.1.65',
-          installerDirectory: '/tmp/installer',
-          cli: {
-            run: vi.fn(async (args: readonly string[]) =>
-              commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [{ name: 'e2e-cluster-abcdef0123', state: 'ready' }]
-                    : { id: 'c-1' },
-                ),
+  test.each([
+    ['0.1.80', 'cluster'],
+    ['0.1.81', 'api'],
+  ])(
+    "from release %s, its CLI creates the cluster on the run's cloud session with `%s create`, then lists and deletes it until the hosted upgrade is requested",
+    async (version, group) => {
+      const released: { args: string[]; env?: Record<string, string> }[] = [];
+      const { aws, cleanup, cliRuns } = environment(
+        () => [],
+        (args) => (args[1] === 'delete' ? deleteResult() : cluster('running')),
+        undefined,
+        {
+          fromRelease: {
+            version,
+            cli: {
+              run: vi.fn(async (args: readonly string[], options) => {
+                released.push({
+                  args: [...args],
+                  env: options?.env as Record<string, string>,
+                });
+                return commandResultForTest({
+                  stdout: JSON.stringify(
+                    args[1] === 'list'
+                      ? [cluster('running')]
+                      : args[1] === 'delete'
+                        ? deleteResult()
+                        : cluster('running'),
+                  ),
+                });
               }),
-            ),
+            },
           },
         },
-      },
-    );
-    await expect(again.aws.bootstrap(60_000)).rejects.toThrow(
-      'api upgrade did not restart the 0.1.65 installer',
-    );
-  });
+      );
+      await aws.bootstrap(60_000);
+      expect(released[0]!.args).toEqual([
+        group,
+        'create',
+        '--cloud',
+        'aws',
+        '--region',
+        'us-east-2',
+        '--vm-type',
+        't3.medium',
+        '--json',
+        'e2e-cluster-abcdef0123',
+      ]);
+      expect(released[0]!.env).toMatchObject({ ANYCLOUD_E2E_ACCESS: '1' });
+      await aws.clusters();
+      expect(released.at(-1)!.args).toEqual(['cluster', 'list', '--json']);
+      expect(cliRuns).toEqual([]);
+      await cleanup.run();
+      expect(released.at(-1)!.args.slice(0, 2)).toEqual([group, 'delete']);
+      expect(cliRuns).toEqual([]);
+    },
+  );
 
-  test('the installer is not upgraded while the released creation runs, and a failed creation stops the bootstrap before it', async () => {
-    const states = ['provisioning', 'provisioning', 'failed'];
-    const { aws, cliRuns } = environment(() => [], undefined, undefined, {
-      fromRelease: {
-        version: '0.1.66',
-        installerDirectory: '/tmp/installer',
-        cli: {
-          run: vi.fn(async (args: readonly string[]) =>
-            commandResultForTest({
-              stdout: JSON.stringify(
-                args[1] === 'list'
-                  ? [
-                      {
-                        name: 'e2e-cluster-abcdef0123',
-                        state: states.shift() ?? 'failed',
-                        lastError: 'no capacity',
-                      },
-                    ]
-                  : { id: 'c-1', state: 'provisioning' },
-              ),
-            }),
-          ),
-        },
-      },
-      wait: pollsOnly(),
-    });
-    await expect(aws.bootstrap(60_000)).rejects.toThrow(
-      "the 0.1.66 installer's cluster is failed: no capacity",
-    );
-    expect(cliRuns).toEqual([]);
-  });
-
-  test('before the installer upgrade, the released CLI deletes the cluster it created once its creation settles; this CLI is refused by that installer', async () => {
+  test("once the hosted upgrade is requested, this tree's CLI lists and deletes the released CLI's cluster", async () => {
     const released: string[][] = [];
-    // Delete is refused while creation runs, so cleanup waits for it.
-    const states = ['bootstrapping', 'ready'];
     const { aws, cleanup, cliRuns } = environment(
       () => [],
-      undefined,
+      (args) => (args[1] === 'delete' ? deleteResult() : [cluster('running')]),
       undefined,
       {
         fromRelease: {
-          version: '0.1.80', // the last release with `cluster create|delete`
-          installerDirectory: '/tmp/installer',
+          version: '0.1.80',
           cli: {
             run: vi.fn(async (args: readonly string[]) => {
               released.push([...args]);
-              if (args[1] === 'create') {
-                return commandResultForTest({ exitCode: null, timedOut: true });
-              }
               return commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [
-                        {
-                          name: 'e2e-cluster-abcdef0123',
-                          state: states.shift() ?? 'ready',
-                        },
-                      ]
-                    : { state: 'destroyed' },
-                ),
+                stdout: JSON.stringify(cluster('running')),
               });
             }),
           },
         },
-        wait: pollsOnly(),
       },
     );
-    await expect(aws.bootstrap(60_000)).rejects.toThrow(
-      'cluster create (released)',
-    );
+    await aws.bootstrap(60_000);
+    aws.noteHostedUpgrade();
+    await aws.clusters();
     await cleanup.run();
     expect(released.map((args) => args.slice(0, 2))).toEqual([
       ['cluster', 'create'],
-      ['cluster', 'list'],
-      ['cluster', 'list'],
-      ['cluster', 'delete'],
     ]);
-    expect(released[3]).toContain('e2e-cluster-abcdef0123');
-    expect(cliRuns).toEqual([]);
-    expect(cleanup.observations()).toEqual([
-      { label: 'cluster e2e-cluster-abcdef0123', completed: true },
+    expect(cliRuns.map(({ args }) => args.slice(0, 2))).toEqual([
+      ['cluster', 'list'],
+      ['api', 'delete'],
     ]);
-  });
-
-  test('a creation stuck past the bootstrap budget is not waited for again: cleanup reads it once and leaves it to the sweep', async () => {
-    const released: string[][] = [];
-    const { aws, cleanup } = environment(() => [], undefined, undefined, {
-      fromRelease: {
-        version: '0.1.66',
-        installerDirectory: '/tmp/installer',
-        cli: {
-          run: vi.fn(async (args: readonly string[]) => {
-            released.push([...args]);
-            return commandResultForTest({
-              stdout: JSON.stringify(
-                args[1] === 'list'
-                  ? [
-                      {
-                        name: 'e2e-cluster-abcdef0123',
-                        state: 'provisioning',
-                      },
-                    ]
-                  : { id: 'c-1', state: 'provisioning' },
-              ),
-            });
-          }),
-        },
-      },
-      wait: pollsOnly(),
-    });
-    await expect(aws.bootstrap(60_000, 900_000)).rejects.toThrow(
-      'cluster is provisioning',
-    );
-    const listedByBootstrap = released.length - 1;
-    await expect(cleanup.run()).rejects.toThrow(
-      'is still provisioning; delete is refused while its creation runs',
-    );
-    expect(released.length - 1 - listedByBootstrap).toBe(1);
-    expect(released.some((args) => args[1] === 'delete')).toBe(false);
   });
 
   test.each([
@@ -954,7 +825,6 @@ describe('AWS cluster substrate', () => {
               }),
         },
       );
-      await aws.prepare();
       const created = await aws.bootstrap(60_000);
       expect(created.id).toBe(cluster('running').id);
       const create = cliRuns.find(({ args }) => args[1] === 'create')!;
@@ -1003,7 +873,6 @@ describe('AWS cluster substrate', () => {
       () => [],
       (args) => (args[1] === 'delete' ? deleteResult() : cluster('running')),
     );
-    await aws.prepare();
     await aws.bootstrap(60_000);
     const read = runner.run.mock.calls.find(([, args]) =>
       args.includes(
@@ -1141,161 +1010,6 @@ describe('AWS cluster substrate', () => {
     await expect(aws.serviceAccountIssuer()).rejects.toThrow(
       `${issuer}/.well-known/openid-configuration answered 403: "<html>Just a moment...</html>"`,
     );
-  });
-
-  test('a cleanup refused for the version goes through the other CLI', async () => {
-    const released: string[][] = [];
-    const { aws, cleanup } = environment(
-      () => [],
-      (args) =>
-        args[0] === 'cluster' || (args[0] === 'api' && args[1] === 'delete')
-          ? {
-              failed:
-                'Failed to list clusters: Client/API version mismatch. Client version 0.1.999 must exactly match API version 0.1.65.',
-            }
-          : 'not restarted',
-      undefined,
-      {
-        fromRelease: {
-          version: '0.1.65',
-          installerDirectory: '/tmp/installer',
-          cli: {
-            run: vi.fn(async (args: readonly string[]) => {
-              released.push([...args]);
-              return commandResultForTest({
-                stdout: JSON.stringify(
-                  args[1] === 'list'
-                    ? [{ name: 'e2e-cluster-abcdef0123', state: 'ready' }]
-                    : args[1] === 'create'
-                      ? { id: 'c-1' }
-                      : { state: 'destroyed' },
-                ),
-              });
-            }),
-          },
-        },
-        wait: pollsOnly(),
-      },
-    );
-    // `api upgrade` ran but did not restart the installer.
-    await expect(aws.bootstrap(60_000, 900_000)).rejects.toThrow(
-      'api upgrade did not restart the 0.1.65 installer',
-    );
-    await cleanup.run();
-    expect(released.map((args) => args.slice(0, 2)).slice(-2)).toEqual([
-      ['cluster', 'list'],
-      ['cluster', 'delete'],
-    ]);
-  });
-
-  describe("a from_release bootstrap waits for the runner's resolver to answer an A record", () => {
-    function released(lookup4: (hostname: string) => Promise<unknown>) {
-      const pauses: number[] = [];
-      const states = ['provisioning', 'starting', 'running'];
-      const env = environment(
-        () => [],
-        (args) =>
-          args[0] === 'api'
-            ? 'Local API server is on 0.1.70; restarting it'
-            : cluster('running'),
-        undefined,
-        {
-          lookup4,
-          wait: onFakeClock(pauses),
-          fromRelease: {
-            version: '0.1.70',
-            installerDirectory: '/tmp/installer',
-            cli: {
-              run: vi.fn(async (args: readonly string[]) =>
-                commandResultForTest({
-                  stdout: JSON.stringify(
-                    args[1] === 'list'
-                      ? [
-                          {
-                            name: 'e2e-cluster-abcdef0123',
-                            state: states.shift() ?? 'running',
-                          },
-                        ]
-                      : { id: cluster('running').id },
-                  ),
-                }),
-              ),
-            },
-          },
-        },
-      );
-      return { ...env, pauses };
-    }
-    const nxdomain = async () => {
-      throw Object.assign(new Error('getaddrinfo ENOTFOUND'), {
-        code: 'ENOTFOUND',
-      });
-    };
-
-    /** Bootstrap on the fake clock; resolves to the milliseconds it took. */
-    async function timed(bootstrap: () => Promise<unknown>) {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      try {
-        const startedAt = Date.now();
-        await bootstrap();
-        return Date.now() - startedAt;
-      } finally {
-        vi.useRealTimers();
-      }
-    }
-
-    // `starting` is first seen on the second poll, 10 s in, so the floor is at
-    // 10 s + 1890 s; the DNS wait polls every 15 s from `running`, 20 s in.
-    test('no lookup ends it before the Release step + 1890 s, even when A answers at once', async () => {
-      const lookup4 = vi.fn(async () => ({ address: '172.67.180.7' }));
-      const { aws, pauses } = released(lookup4);
-      expect(await timed(() => aws.bootstrap(2_400_000))).toBe(1_910_000);
-      expect(lookup4).toHaveBeenCalledTimes(1);
-      expect(lookup4).toHaveBeenCalledWith(
-        'e2e-clust-1790000000000-e5f6.anycloud.sh',
-      );
-      expect(pauses).toEqual([10_000, 10_000, ...Array(126).fill(15_000)]);
-    });
-
-    test('after the floor, it ends on the first A record', async () => {
-      const lookup4 = vi
-        .fn<(hostname: string) => Promise<unknown>>()
-        .mockImplementationOnce(nxdomain)
-        .mockImplementationOnce(nxdomain)
-        .mockResolvedValue({ address: '172.67.180.7', family: 4 });
-      const { aws } = released(lookup4);
-      expect(await timed(() => aws.bootstrap(2_400_000))).toBe(1_940_000);
-      expect(lookup4).toHaveBeenCalledTimes(3);
-    });
-
-    test('it fails at 35 min after the Release step, naming the lookup error', async () => {
-      const lookup4 = vi.fn(nxdomain);
-      const { aws } = released(lookup4);
-      vi.useFakeTimers({ toFake: ['Date'] });
-      try {
-        const startedAt = Date.now();
-        await expect(aws.bootstrap(2_400_000)).rejects.toThrow(
-          /e2e-clust-1790000000000-e5f6\.anycloud\.sh A record at the runner's resolver: timed out .*no A record: ENOTFOUND/u,
-        );
-        expect(Date.now() - startedAt).toBe(10_000 + 35 * 60_000);
-      } finally {
-        vi.useRealTimers();
-      }
-      // Lookups only from the floor: 1910 s to 2105 s, every 15 s.
-      expect(lookup4).toHaveBeenCalledTimes(14);
-    });
-
-    test('a run without from_release never looks the host up', async () => {
-      const lookup4 = vi.fn(nxdomain);
-      const { aws } = environment(
-        () => [],
-        () => cluster('running'),
-        undefined,
-        { lookup4 },
-      );
-      await aws.bootstrap(60_000);
-      expect(lookup4).not.toHaveBeenCalled();
-    });
   });
 
   test('records the hosted API identity after bootstrap and sweeps VMs by its owner tag', async () => {
@@ -1840,23 +1554,4 @@ describe('the seed installation after delete', () => {
       expect((await aws.sweep()).installation).toEqual(installation);
     },
   );
-});
-
-describe('the installer token a from_release run presents', () => {
-  test('is the GitHub sign-in until the upgraded installer writes its token', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'installer-token-'));
-    try {
-      // A pre-G0 release's `api start` wrote no token; its API takes GitHub.
-      expect(readInstallerToken(directory, 'gho_github_sign_in')).toBe(
-        'gho_github_sign_in',
-      );
-      expect(() => readInstallerToken(directory)).toThrow('ENOENT');
-      writeFileSync(join(directory, 'local-api-token'), 'a'.repeat(64));
-      expect(readInstallerToken(directory, 'gho_github_sign_in')).toBe(
-        'a'.repeat(64),
-      );
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
 });

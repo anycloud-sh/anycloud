@@ -158,7 +158,6 @@ export interface ClusterCloudNativeLeftovers {
 export interface ClusterCloudSubstrate {
   /** Where the management VM runs (`cluster_provider`). */
   readonly clusterProvider: ClusterCloudTarget;
-  prepare(): Promise<void>;
   /** `destroyTimeoutMs` bounds the cleanup it registers. */
   bootstrap(timeoutMs: number, destroyTimeoutMs: number): Promise<LiveCluster>;
   clusters(): Promise<readonly LiveCluster[]>;
@@ -353,7 +352,6 @@ export class ClusterCloudContract {
     target: ClusterCloudTarget,
   ): Promise<ClusterCloudContractResult> {
     const d = this.#dependencies;
-    await d.substrate.prepare();
 
     const cluster = await d.substrate.bootstrap(
       d.policy.bootstrapTimeoutMs,

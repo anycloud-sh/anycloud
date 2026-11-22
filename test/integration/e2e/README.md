@@ -452,27 +452,15 @@ credential decrypts) and the recursive VM Jobs run too. The Service and Jobs
 are `vm_type` VMs (`E2E_CLUSTER_VM_TYPE`, `t3.small` by default) on the
 cluster's credential and in its region, so the native sweep covers them by the
 hosted API's `anycloud_owner_api` tag.
-With `from_release` (for example `0.1.66`) that release's CLI starts the
-installer on the published image (`e2e.sh` pulls it first, since other e2e
-builds on the runner's Docker host tag this tree as `api:<package version>`),
-saves the credential, creates the cluster, waits until that installer lists
-it up (from 0.1.66 `api create` returns at once, and restarting the
-installer mid-creation orphans it) and runs `api use`, `credentials new` and
-the VM Service against its hosted API; this tree's `api upgrade`, with the installer's local
-API active, then restarts the installer on this tree, and a later `api upgrade`
-against the hosted API alone upgrades it without `--image`, and the Service
-must still run and the credential decrypt before the stage continues.
-A release older than `Upgrade N` (0.1.65) answers the upgrade request in a
-shape this CLI prints as accepted; the stage counts it as started once the API
-that served the release serves this tree's version and its status names the
-upgrade.
-Until this tree's `api upgrade` moves the installer, cleanup deletes the
-cluster with the released CLI, since the released installer refuses this one;
-the released CLI waits up to five minutes for its creation to settle, and not
-at all if bootstrap already timed out waiting for it (the workflow's sweep then
-removes what it made). After the upgrade this tree's CLI has no create ledger
-for a cluster a released installer made, so it deletes it through the hosted
-API's record, with the released CLI as the fallback. This tree's own create
+With `from_release` (0.1.74 or later, for example `0.1.80`) that release's
+CLI creates the cluster through the run's cloud CLI session, as this tree's
+`api create` does, lists it, and runs `api use`, `credentials new` and the VM
+Service against its hosted API. This tree's `api upgrade` then moves the hosted
+API to this tree without `--image`, and the Service must still run and the
+credential decrypt before the stage continues. Until that upgrade is
+requested, the released CLI also lists and deletes the cluster, since the
+hosted API refuses this CLI's version; after it, this tree's CLI does.
+This tree's own create
 runs to its end in its CLI process, so cleanup deletes a failed or cut-short
 create from the runner's create ledger at once, and a create that failed
 before recording one leaves nothing to delete. A delete that a hosted API
