@@ -5,6 +5,28 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.81
+
+### VM Jobs run in an anycloud-owned network on AWS and GCP
+
+Breaking: AWS and GCP VM Jobs now launch into an `anycloud-jobs` VPC or network and can't reach private addresses in your default network. Re-run each role connection's setup; key credentials need the new [network grants](/platform/jobs#vm-job-network).
+
+### `cluster create` and `cluster delete` are now `api create` and `api delete`
+
+Create a hosted API with `anycloud api create <name>` and delete it with `anycloud api delete <name>`; `--skip-cloud` still forgets one whose cloud resources are gone. `anycloud cluster list` and `cluster status` are unchanged.
+
+### Upgrading drops node pool and Deployment history
+
+The upgrade deletes the records of ended node pools, Deployments, their Jobs and node pool Services, including node pool VM costs, so `anycloud spend` and spend limits stop counting them.
+
+### `api access --service-account` is removed
+
+A registered Deployment no longer calls a hosted API with its Pod's ServiceAccount token, and `anycloud api access add|remove --service-account` is gone. Give a program an owner-issued service token with `anycloud api access add --service <name>` instead.
+
+### Node pools, Kubernetes Deployments and node pool Services are removed
+
+anycloud now runs VMs, VM Jobs and VM Services: run Jobs as VM Jobs, and long-running processes on a VM or VM Service. `anycloud api upgrade` refuses while a hosted API still has node pools, Deployments or node pool Services, naming each; delete them first.
+
 ## 0.1.80
 
 ### Secrets saved while a Job starts reach it at once
