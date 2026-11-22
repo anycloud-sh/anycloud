@@ -5,19 +5,28 @@ import {
 } from './cloud.js';
 import { JOB_HOST_DISK_GB } from '../job-host.js';
 import {
+  AttachInternetGatewayCommand,
   AuthorizeSecurityGroupIngressCommand,
   CancelSpotInstanceRequestsCommand,
+  CreateInternetGatewayCommand,
+  CreateRouteCommand,
   CreateSecurityGroupCommand,
+  CreateSubnetCommand,
   CreateTagsCommand,
+  CreateVpcCommand,
   DeleteNetworkInterfaceCommand,
   DeleteSecurityGroupCommand,
   DeleteVolumeCommand,
+  DescribeAvailabilityZonesCommand,
   DescribeImagesCommand,
   DescribeInstancesCommand,
+  DescribeInternetGatewaysCommand,
   type DescribeInstancesCommandInput,
   DescribeNetworkInterfacesCommand,
+  DescribeRouteTablesCommand,
   DescribeSecurityGroupsCommand,
   DescribeSpotInstanceRequestsCommand,
+  DescribeSubnetsCommand,
   DescribeVolumesCommand,
   DescribeVpcsCommand,
   type EC2Client,
@@ -28,6 +37,7 @@ import {
   type Reservation,
   type ResourceType,
   type SpotInstanceRequest,
+  type TagSpecification,
   RunInstancesCommand,
   RevokeSecurityGroupIngressCommand,
   StartInstancesCommand,
@@ -151,7 +161,13 @@ import {
 } from '../../../shared/errors.js';
 import { NEURON_RUNTIME_UNSUPPORTED_MESSAGE } from '../../../shared/providers.js';
 import { log } from '../logger.js';
-import { memoizeAsync, retryUntil, withRetry } from '../../../shared/utils.js';
+import {
+  memoizeAsync,
+  memoizeAsyncTtl,
+  type MemoizeAsyncTtlEntry,
+  retryUntil,
+  withRetry,
+} from '../../../shared/utils.js';
 import { buildJobIngressSpec, hasHttpIngress } from '../network.js';
 import { numericRulePort, resolveFirewallPlan } from '../firewall-plan.js';
 
@@ -190,6 +206,43 @@ const AWS_BUCKET_CREATION_READINESS_MAX_WAIT_SECONDS = 30;
 const AWS_SHARED_SG_NAMES = new Set<string>([
   AWS_SHARED_VM_SG_NAME,
   AWS_SHARED_SERVICE_SG_NAME,
+]);
+
+/**
+ * VM Jobs' own VPC (RFC 0053), one per account and region, found by its Name
+ * and `anycloud_managed=shared` tags: a public /20 per availability zone, an
+ * internet gateway and nothing else, so a Job's VM has no route to any other
+ * network. Tagged `anycloud_jobs_network=ready` once its default route exists.
+ */
+const AWS_JOBS_NETWORK = 'anycloud-jobs';
+const AWS_JOBS_VPC_CIDR = '10.1.0.0/16';
+const AWS_JOBS_READY_TAG = 'anycloud_jobs_network';
+/**
+ * One creation per account and region in this process: every `compute()`
+ * call builds a new gateway, and the VPC quota is 5 per region. Rechecked
+ * every 15 minutes, so a zone added later gets its subnet.
+ */
+const awsJobsNetworks = new Map<
+  string,
+  MemoizeAsyncTtlEntry<{
+    vpcId: string;
+    subnets: { id: string; zone: string }[];
+  }>
+>();
+/** Codes EC2 returns for a resource it has made but not yet propagated. */
+const AWS_NOT_YET_VISIBLE_CODES = new Set([
+  'InvalidVpcID.NotFound',
+  'InvalidInternetGatewayID.NotFound',
+  'InvalidRouteTableID.NotFound',
+  // Another API process attached the gateway first: look again.
+  'Resource.AlreadyAssociated',
+]);
+/** A refusal tied to one subnet's zone: the launch tries the next subnet. */
+const AWS_ZONE_REFUSAL_CODES = new Set([
+  'Unsupported',
+  'InsufficientInstanceCapacity',
+  'InsufficientSpotCapacity',
+  'InsufficientFreeAddressesInSubnet',
 ]);
 
 interface AwsCandidateAvailabilitySnapshot {
@@ -732,7 +785,7 @@ export class AWS {
   minimumDiskSizeGb?: number;
   diskTier?: DiskTier;
   private readonly gp3: Gp3Performance;
-  // Memoized shared security groups, keyed by GroupName. Each shared SG is
+  // Memoized shared security groups, keyed by GroupName and VPC. Each shared SG is
   // created/looked-up once per gateway instance and reused by every VM.
   private sharedSecurityGroupReady = new Map<string, Promise<string>>();
   // Raw AWS storage creds, retained only for minting scoped cross-cloud sync
@@ -1058,7 +1111,9 @@ export class AWS {
       const result = await this.ec2client.send(
         new DescribeInstancesCommand({
           Filters: [
-            { Name: 'client-token', Values: [vmId] },
+            // A Jobs-network launch's token is `${vmId}.${zone}`; workload
+            // ids have no dots, so the wildcard matches this attempt alone.
+            { Name: 'client-token', Values: [vmId, `${vmId}.*`] },
             {
               Name: 'instance-state-name',
               Values: [
@@ -1204,8 +1259,9 @@ export class AWS {
       this.gp3,
     );
     // Attach the shared anycloud security group prepared for this network
-    // intent. It lives in the default VPC — the same VPC AWS auto-selects a
-    // subnet from when no SubnetId is given — so SG and subnet always match.
+    // intent. Without subnets it lives in the default VPC — the same VPC AWS
+    // auto-selects a subnet from when no SubnetId is given — so SG and subnet
+    // always match; with them, in the Jobs VPC.
     const securityGroupId =
       params.network?.securityGroupId ??
       (await this.ensureSharedSecurityGroup());
@@ -1214,7 +1270,6 @@ export class AWS {
       InstanceType: this.vmType as _InstanceType,
       MinCount: 1,
       MaxCount: 1,
-      SecurityGroupIds: [securityGroupId],
       // The catalog publisher records EC2's per-region processor features, so
       // launches need no ec2:DescribeInstanceTypes grant. Unknown stays off.
       ...(nestedVirtualizationSupport(
@@ -1301,9 +1356,6 @@ export class AWS {
           : []),
       ],
       UserData: Buffer.from(startupScript).toString('base64'),
-      // Keep the client token stable for this durable attempt. Reconciliation
-      // inspects by token before deciding whether a create is still needed.
-      ClientToken: vmId,
       ...blockDeviceMappings,
       // A Job's spot VM stops on interruption and restarts in place; a node
       // pool's (resource-scoped) is terminated and replaced by its pool.
@@ -1336,12 +1388,45 @@ export class AWS {
         });
       }
     }
-    if (!create) {
+    // The Jobs VPC names its subnet, and so its zone, which may not offer the
+    // type: try each in turn. Each takes its own client token, since a token
+    // reused with other parameters reads as a concurrent create.
+    const subnets = params.network?.subnets ?? [undefined];
+    for (const [index, subnet] of subnets.entries()) {
+      if (create) break;
       try {
         create = await this.ec2client.send(
-          new RunInstancesCommand(instanceParams),
+          new RunInstancesCommand({
+            ...instanceParams,
+            // Keep the client token stable for this durable attempt.
+            // Reconciliation inspects by token before deciding whether a
+            // create is still needed.
+            ...(subnet
+              ? {
+                  ClientToken: `${vmId}.${subnet.zone}`,
+                  NetworkInterfaces: [
+                    {
+                      DeviceIndex: 0,
+                      SubnetId: subnet.id,
+                      Groups: [securityGroupId],
+                      AssociatePublicIpAddress: true,
+                      DeleteOnTermination: true,
+                    },
+                  ],
+                }
+              : { ClientToken: vmId, SecurityGroupIds: [securityGroupId] }),
+          }),
         );
       } catch (error: any) {
+        const code = error.Code ?? error.name;
+        if (index < subnets.length - 1 && AWS_ZONE_REFUSAL_CODES.has(code)) {
+          log.info('EC2 refused the launch in this zone; trying the next', {
+            vmId,
+            zone: subnet?.zone,
+            code,
+          });
+          continue;
+        }
         if (
           // Handle concurrent VM creation: another upgrade attempt succeeded with same ClientToken
           error.name === 'IdempotentParameterMismatch' ||
@@ -1378,7 +1463,7 @@ export class AWS {
       }
     }
     return this.connectToProvisioningInstance(
-      create.Instances?.[0],
+      create?.Instances?.[0],
       resolvedAmi.imageId,
     );
   }
@@ -2807,11 +2892,261 @@ export class AWS {
         ),
       };
     }
+    // A VM Job's VM goes into the Jobs VPC, with that VPC's own shared SG.
+    // Failing to make it fails the Job rather than falling back to the
+    // default VPC.
+    if (spec.jobNetwork) {
+      const { vpcId, subnets } = await this.ensureJobsNetwork();
+      const securityGroupId = await this.ensureSharedSecurityGroup(
+        AWS_SHARED_VM_SG_NAME,
+        spec,
+        vpcId,
+      );
+      return { securityGroupId, subnets };
+    }
     const name = hasHttpIngress(spec)
       ? AWS_SHARED_SERVICE_SG_NAME
       : AWS_SHARED_VM_SG_NAME;
     const securityGroupId = await this.ensureSharedSecurityGroup(name, spec);
     return { securityGroupId };
+  }
+
+  private ensureJobsNetwork() {
+    return memoizeAsyncTtl(
+      awsJobsNetworks,
+      `${this.credentialIdentity}:${this.region}`,
+      () => this.upsertJobsNetwork(),
+      { ttlMs: 15 * 60_000 },
+    );
+  }
+
+  /**
+   * Find or finish the Jobs VPC. Every process converges on the same one: a
+   * ready VPC first, then the lowest id. A creator resumes an unready VPC
+   * instead of making another, and a duplicate that another API process
+   * left is reported, not deleted.
+   */
+  private async upsertJobsNetwork(): Promise<{
+    vpcId: string;
+    subnets: { id: string; zone: string }[];
+  }> {
+    const ec2 = this.ec2client;
+    const nameTag = { Key: 'Name', Value: AWS_JOBS_NETWORK };
+    const sharedTag = { Key: 'anycloud_managed', Value: 'shared' };
+    const tags = (type: ResourceType) => [
+      { ResourceType: type, Tags: [nameTag, sharedTag] },
+    ];
+    const vpcs = (
+      (
+        await ec2.send(
+          new DescribeVpcsCommand({
+            Filters: [
+              { Name: 'tag:Name', Values: [AWS_JOBS_NETWORK] },
+              { Name: 'tag:anycloud_managed', Values: ['shared'] },
+            ],
+          }),
+        )
+      ).Vpcs ?? []
+    )
+      .map((vpc) => ({
+        id: vpc.VpcId!,
+        ready: !!vpc.Tags?.some((tag) => tag.Key === AWS_JOBS_READY_TAG),
+      }))
+      .sort((a, b) => +b.ready - +a.ready || a.id.localeCompare(b.id));
+    if (vpcs.length > 1)
+      log.warn(
+        `AWS region ${this.region} has ${vpcs.length} anycloud Jobs VPCs; using ${vpcs[0].id}. Delete the others when no Job runs in them.`,
+        { region: this.region, vpcIds: vpcs.map((vpc) => vpc.id) },
+      );
+    const vpcId =
+      vpcs[0]?.id ??
+      (
+        await ec2
+          .send(
+            new CreateVpcCommand({
+              CidrBlock: AWS_JOBS_VPC_CIDR,
+              TagSpecifications: tags('vpc'),
+            }),
+          )
+          .catch((error) => {
+            if (awsErrorCode(error) === 'VpcLimitExceeded')
+              error.message = `${error.message} VM Jobs need one VPC of their own in ${this.region}; delete an unused VPC or raise the "VPCs per Region" quota.`;
+            throw error;
+          })
+      ).Vpc!.VpcId!;
+    if (!vpcs[0]?.ready)
+      // A new VPC can take a moment to reach every EC2 read.
+      await withRetry(() => this.finishJobsVpc(vpcId, tags), 'Jobs VPC', {
+        maxAttempts: 5,
+        waitMs: 1_000,
+        shouldRetry: (error) =>
+          AWS_NOT_YET_VISIBLE_CODES.has(awsErrorCode(error) ?? ''),
+      });
+
+    // A subnet per standard zone, so Local and Wavelength Zones stay out.
+    const zones = (
+      (
+        await ec2.send(
+          new DescribeAvailabilityZonesCommand({
+            Filters: [{ Name: 'zone-type', Values: ['availability-zone'] }],
+          }),
+        )
+      ).AvailabilityZones ?? []
+    )
+      .map((zone) => zone.ZoneName!)
+      .sort();
+    const listSubnets = async () =>
+      (
+        (
+          await ec2.send(
+            new DescribeSubnetsCommand({
+              Filters: [{ Name: 'vpc-id', Values: [vpcId] }],
+            }),
+          )
+        ).Subnets ?? []
+      )
+        .map((subnet) => ({
+          id: subnet.SubnetId!,
+          zone: subnet.AvailabilityZone!,
+          cidr: subnet.CidrBlock!,
+        }))
+        .filter((subnet) => zones.includes(subnet.zone));
+    let subnets = await listSubnets();
+    const missing = zones.filter(
+      (zone) => !subnets.some((subnet) => subnet.zone === zone),
+    );
+    let refusal: unknown;
+    if (missing.length > 0) {
+      // The /16's sixteen /20s, lowest unused first.
+      const free = Array.from(
+        { length: 16 },
+        (_, i) => `10.1.${i * 16}.0/20`,
+      ).filter((cidr) => !subnets.some((subnet) => subnet.cidr === cidr));
+      const created: typeof subnets = [];
+      for (const [index, zone] of missing.entries()) {
+        if (!free[index]) break;
+        await ec2
+          .send(
+            new CreateSubnetCommand({
+              VpcId: vpcId,
+              AvailabilityZone: zone,
+              CidrBlock: free[index],
+              TagSpecifications: tags('subnet'),
+            }),
+          )
+          .then(({ Subnet }) => {
+            created.push({ id: Subnet!.SubnetId!, zone, cidr: free[index] });
+          })
+          .catch((error) => {
+            const code = awsErrorCode(error);
+            // Another API process took the range; its subnet is listed below.
+            if (code === 'InvalidSubnet.Conflict') return;
+            if (code === 'UnauthorizedOperation') throw error;
+            // Some accounts can't make subnets in every zone: launch in the
+            // others, and retry this one on the next check.
+            refusal ??= error;
+            log.warn(`AWS refused a Jobs subnet in ${zone}`, {
+              zone,
+              error: errorMessage(error),
+            });
+          });
+      }
+      // DescribeSubnets can lag the creates: keep what they returned.
+      subnets = [
+        ...created,
+        ...(await listSubnets()).filter(
+          (subnet) => !created.some((made) => made.id === subnet.id),
+        ),
+      ];
+    }
+    if (subnets.length === 0)
+      throw refusal ?? new Error(`AWS region ${this.region} has no zones`);
+    return {
+      vpcId,
+      subnets: subnets
+        .sort((a, b) => a.zone.localeCompare(b.zone))
+        .map(({ id, zone }) => ({ id, zone })),
+    };
+  }
+
+  /**
+   * Attach the VPC's internet gateway and route to it, then mark the VPC
+   * ready. The gateway is found by its tags too, so one created before a
+   * crash is attached rather than leaked.
+   */
+  private async finishJobsVpc(
+    vpcId: string,
+    tags: (type: ResourceType) => TagSpecification[],
+  ): Promise<void> {
+    const ec2 = this.ec2client;
+    const gateways =
+      (
+        await ec2.send(
+          new DescribeInternetGatewaysCommand({
+            Filters: [
+              { Name: 'tag:Name', Values: [AWS_JOBS_NETWORK] },
+              { Name: 'tag:anycloud_managed', Values: ['shared'] },
+            ],
+          }),
+        )
+      ).InternetGateways ?? [];
+    let gatewayId = gateways.find((igw) =>
+      igw.Attachments?.some((attachment) => attachment.VpcId === vpcId),
+    )?.InternetGatewayId;
+    if (!gatewayId) {
+      gatewayId =
+        gateways.find((igw) => !igw.Attachments?.length)?.InternetGatewayId ??
+        (
+          await ec2.send(
+            new CreateInternetGatewayCommand({
+              TagSpecifications: tags('internet-gateway'),
+            }),
+          )
+        ).InternetGateway!.InternetGatewayId!;
+      await ec2.send(
+        new AttachInternetGatewayCommand({
+          InternetGatewayId: gatewayId,
+          VpcId: vpcId,
+        }),
+      );
+    }
+    const mainTable = (
+      await ec2.send(
+        new DescribeRouteTablesCommand({
+          Filters: [
+            { Name: 'vpc-id', Values: [vpcId] },
+            { Name: 'association.main', Values: ['true'] },
+          ],
+        }),
+      )
+    ).RouteTables?.[0];
+    if (!mainTable)
+      throw Object.assign(
+        new Error(`VPC ${vpcId} has no main route table yet`),
+        {
+          name: 'InvalidRouteTableID.NotFound',
+        },
+      );
+    if (
+      !mainTable.Routes?.some(
+        (route) =>
+          route.DestinationCidrBlock === '0.0.0.0/0' &&
+          route.GatewayId === gatewayId,
+      )
+    )
+      await ec2.send(
+        new CreateRouteCommand({
+          RouteTableId: mainTable.RouteTableId!,
+          DestinationCidrBlock: '0.0.0.0/0',
+          GatewayId: gatewayId,
+        }),
+      );
+    await ec2.send(
+      new CreateTagsCommand({
+        Resources: [vpcId],
+        Tags: [{ Key: AWS_JOBS_READY_TAG, Value: 'ready' }],
+      }),
+    );
   }
 
   private async ensureScopedSecurityGroup(
@@ -2905,17 +3240,25 @@ export class AWS {
   async ensureSharedSecurityGroup(
     name = AWS_SHARED_VM_SG_NAME,
     spec: IngressSpec = buildJobIngressSpec(),
+    vpcId?: string,
   ): Promise<string> {
-    return memoizeAsync(this.sharedSecurityGroupReady, name, () =>
-      this.upsertSharedSecurityGroup(name, spec),
+    return memoizeAsync(
+      this.sharedSecurityGroupReady,
+      `${name}:${vpcId ?? 'default'}`,
+      async () =>
+        this.upsertSharedSecurityGroup(
+          name,
+          spec,
+          vpcId ?? (await this.getDefaultVpcId()),
+        ),
     );
   }
 
   private async upsertSharedSecurityGroup(
     name: string,
     spec: IngressSpec,
+    vpcId: string,
   ): Promise<string> {
-    const vpcId = await this.getDefaultVpcId();
     const existing = await this.getSecurityGroupByNameInVpc(name, vpcId);
     let securityGroupId = existing?.GroupId;
     if (!securityGroupId) {

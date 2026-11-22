@@ -107,10 +107,12 @@ export interface IngressSpec {
    */
   denyPublicIngress?: boolean;
   /**
-   * Refuse the network's other VMs beyond these rules, on providers whose
-   * networks admit internal traffic by default (GCP): a VM Job's host.
+   * A VM Job's host: AWS and GCP launch it into the anycloud-owned Jobs
+   * network instead of the account's default one (RFC 0053), and fail the
+   * launch when that network can't be made. Azure gives every VM its own
+   * network already.
    */
-  refusesNetworkPeers?: boolean;
+  jobNetwork?: boolean;
 }
 
 /**
@@ -135,6 +137,8 @@ export interface CloudResourceScope {
 export interface CloudNetworkHandle {
   securityGroupId?: string;
   firewallRulesetIds?: string[];
+  /** AWS's Jobs network: launch into the first of these subnets that takes the VM. */
+  subnets?: readonly { id: string; zone: string }[];
 }
 
 /** Parameters for creating multiple VMs */

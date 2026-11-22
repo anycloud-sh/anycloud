@@ -43,6 +43,9 @@ const PERMISSIONS: Record<string, string[]> = {
   '@google-cloud/compute:ImagesClient.getFromFamily': [
     'compute.images.getFromFamily',
   ],
+  // VM Jobs' own network, made on first use (RFC 0053).
+  '@google-cloud/compute:NetworksClient.get': ['compute.networks.get'],
+  '@google-cloud/compute:NetworksClient.insert': ['compute.networks.create'],
   '@google-cloud/compute:InstancesClient.aggregatedListAsync': [
     'compute.instances.list',
   ],

@@ -269,6 +269,9 @@ if not resumed:
   diskTier(...args: Parameters<CloudJobTransport['diskTier']>) {
     return this.#transport.diskTier(...args);
   }
+  network(...args: Parameters<CloudJobTransport['network']>) {
+    return this.#transport.network(...args);
+  }
 
   hydration(
     ...args: Parameters<CloudJobTransport['hydration']>

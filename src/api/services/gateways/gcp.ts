@@ -14,6 +14,7 @@ import type {
   ImagesClient,
   DisksClient,
   MachineTypesClient,
+  NetworksClient,
   protos,
 } from '@google-cloud/compute';
 type IOperation = protos.google.cloud.compute.v1.IOperation;
@@ -93,7 +94,13 @@ import {
   getZonesForVMType,
   validateGCPZoneSuffixSyntax,
 } from '../../../shared/cloud-config.js';
-import { retryUntil, sleep, withRetry } from '../../../shared/utils.js';
+import {
+  memoizeAsyncTtl,
+  type MemoizeAsyncTtlEntry,
+  retryUntil,
+  sleep,
+  withRetry,
+} from '../../../shared/utils.js';
 import { gcpGpuMachineCapability } from '../../../shared/gcp-machine-capabilities.js';
 import { gcpNestedMinCpuPlatform } from '../../../shared/catalog/nested-virtualization.js';
 import { buildJobIngressSpec, isSharedJobIngress } from '../network.js';
@@ -136,21 +143,24 @@ const GCP_SCOPE_DENY_PRIORITY = 1;
 /** The network tag, and rule-name prefix, of the standing public-SSH rules every Job and VM shares. */
 const GCP_SHARED_JOB_TAG = 'anycloud-shared-vm';
 /**
- * Every VM Job's VM carries it, and the network tag and rule-name prefix of
- * the standing rules that refuse it the network's other VMs.
+ * VM Jobs' own network (RFC 0053), and the network tag and rule-name prefix
+ * of its standing public-SSH rules: firewall names are project-wide. Auto
+ * mode gives it a subnet in every region. A new network admits no ingress, so
+ * a Job's VM reaches no other VM's internal address and takes only SSH.
  */
-const GCP_JOB_HOST_TAG = 'anycloud-job-host';
+const GCP_JOBS_NETWORK = 'anycloud-jobs';
 /**
- * Below a Job's own allow rules (GCP's default 1000) and above broad network
- * allows such as the default network's `default-allow-internal` (65534): a
- * Job's VM takes its own rules and nothing else from the network.
+ * The tag of VM Jobs launched into `default` before the Jobs network. Its
+ * standing deny rules keep refusing those VMs their peers until they end, so
+ * neither teardown nor the sweep takes them.
  */
-const GCP_JOB_HOST_DENY_PRIORITY = 1001;
+const GCP_LEGACY_JOB_HOST_TAG = 'anycloud-job-host';
 /**
- * Above a cluster VM's own allow rules (1000): a Job's VM reaches it only
- * through its public address, never over the network's internal one.
+ * One creation per project and region in this process: every `compute()` call builds a
+ * new gateway, so a per-gateway memo wouldn't stop concurrent Jobs racing.
+ * Rechecked every 15 minutes, so a deleted network is made again.
  */
-const GCP_CLUSTER_DENY_JOB_HOSTS_PRIORITY = 900;
+const gcpJobsNetworks = new Map<string, MemoizeAsyncTtlEntry<void>>();
 
 // Plan priority classes → GCP's flat allow space. `default` omits the field
 // so ordinary workloads keep provider-default priority.
@@ -570,6 +580,7 @@ export class GCP {
   public imagesClient: ImagesClient;
   public disksClient: DisksClient;
   public machineTypesClient: MachineTypesClient;
+  public networksClient: NetworksClient;
   public storageClient: Storage;
   projectId: string;
   private readonly configuredZone?: string;
@@ -816,6 +827,7 @@ export class GCP {
     this.imagesClient = clients.images;
     this.disksClient = clients.disks;
     this.machineTypesClient = clients.machineTypes;
+    this.networksClient = clients.networks;
     this.storageClient = clients.storage;
   }
 
@@ -872,7 +884,6 @@ export class GCP {
             scope.id,
             version,
             scope.tags.anycloud_user ?? 'unknown',
-            true,
           ),
         newResourceVM: ({ scope, ...params }) =>
           this.newVM({
@@ -1401,6 +1412,9 @@ export class GCP {
             gpuCapability.networkInterfaceType && {
               nicType: gpuCapability.networkInterfaceType,
             }),
+          ...(params.ingressSpec?.jobNetwork && {
+            network: `projects/${this.projectId}/global/networks/${GCP_JOBS_NETWORK}`,
+          }),
           accessConfigs: [
             {
               type: 'ONE_TO_ONE_NAT',
@@ -1422,13 +1436,14 @@ export class GCP {
       tags: {
         items: [
           workloadId,
-          ...(params.ingressSpec?.refusesNetworkPeers
-            ? [GCP_JOB_HOST_TAG]
-            : []),
           ...(isSharedJobIngress(
             params.ingressSpec ?? buildJobIngressSpec(params.ipWhitelist),
           )
-            ? [GCP_SHARED_JOB_TAG]
+            ? [
+                params.ingressSpec?.jobNetwork
+                  ? GCP_JOBS_NETWORK
+                  : GCP_SHARED_JOB_TAG,
+              ]
             : []),
         ],
       },
@@ -1669,48 +1684,20 @@ export class GCP {
     id: string,
     _version: string,
     _userId: string,
-    resourceScoped = false,
   ): Promise<undefined> {
+    // A VM Job's rules and VM go into the Jobs network; failing to make it
+    // fails the Job rather than falling back to `default`.
+    const network = spec.jobNetwork ? GCP_JOBS_NETWORK : undefined;
+    if (network) await this.ensureJobsNetwork();
     // Transcribe the shared plan rule-for-rule; composition (priorities,
     // IP-family splits, the scope-deny pair) is resolveFirewallPlan's job.
-    // Public SSH alone is one standing rule set for every such VM; its
-    // creation is a 409 after the first. Teardown deletes by the workload's
-    // own tag, so it leaves these.
-    const target = isSharedJobIngress(spec) ? GCP_SHARED_JOB_TAG : id;
-    // A VM Job's VM takes only its own rules from the network (standing
-    // rules on its tag), and a cluster's management VM refuses Job VMs'
-    // internal traffic; created alongside the plan's rules. A pool's Nodes
-    // already deny everything outside their scope.
-    const exists = (err: { code?: number }) => {
-      if (err.code !== 6 && err.code !== 409) throw err;
-    };
-    const denies = spec.refusesNetworkPeers
-      ? (
-          [
-            ['', '0.0.0.0/0'],
-            ['-ipv6', '::/0'],
-          ] as const
-        ).map(([suffix, range]) =>
-          this.createScopeIngressDenyRule(
-            `${GCP_JOB_HOST_TAG}-deny-other${suffix}`,
-            GCP_JOB_HOST_TAG,
-            [range],
-            GCP_JOB_HOST_DENY_PRIORITY,
-          ).catch(exists),
-        )
-      : resourceScoped && !spec.denyPublicIngress
-        ? [
-            this.createScopeIngressDenyRule(
-              // GCP names stop at 63; a cluster's scope id reaches 45.
-              `${target}-deny-jh`,
-              target,
-              [],
-              GCP_CLUSTER_DENY_JOB_HOSTS_PRIORITY,
-              [GCP_JOB_HOST_TAG],
-            ).catch(exists),
-          ]
-        : [];
-    const planned = (async () => {
+    // Public SSH alone is one standing rule set per network for every such
+    // VM; its creation is a 409 after the first. Teardown deletes by the
+    // workload's own tag, so it leaves these.
+    const target = isSharedJobIngress(spec)
+      ? (network ?? GCP_SHARED_JOB_TAG)
+      : id;
+    try {
       for (const rule of resolveFirewallPlan(spec, GCP_FIREWALL_TRAITS)) {
         try {
           if (rule.kind === 'deny') {
@@ -1720,6 +1707,7 @@ export class GCP {
               `${target}-peer-deny${rule.nameSuffix}`,
               target,
               [...rule.sourceRanges],
+              network,
             );
           } else {
             await this.createFirewallRule(
@@ -1729,6 +1717,7 @@ export class GCP {
               numericRulePort(rule.port),
               rule.protocol,
               GCP_PRIORITY_BY_CLASS[rule.priorityClass],
+              network,
             );
           }
         } catch (err: any) {
@@ -1737,28 +1726,77 @@ export class GCP {
           throw err;
         }
       }
-    })();
-    // Every insert settles before a failure surfaces, so teardown's listing
-    // by tag sees each rule that was made.
-    const failed = (await Promise.allSettled([planned, ...denies])).find(
-      (result) => result.status === 'rejected',
-    );
-    if (!failed) return undefined;
-    const err = failed.reason;
-    // Rules and VMs name no network, so GCP places them in `default`. The
-    // CLI shows `errors[0].message` when present, so hint both.
-    if (
-      typeof err?.message === 'string' &&
-      /networks\/default|network resource/.test(err.message) &&
-      /not found|cannot be found/i.test(err.message)
-    ) {
-      const hint = ` GCP project ${this.projectId} has no \`default\` network, which Anycloud uses for VMs and firewall rules; create one with \`gcloud compute networks create default --subnet-mode=auto --project ${this.projectId}\`.`;
-      err.message += hint;
-      if (typeof err.errors?.[0]?.message === 'string')
-        err.errors[0].message += hint;
+    } catch (err: any) {
+      // Other rules and VMs name no network, so GCP places them in
+      // `default`. The CLI shows `errors[0].message` when present, so hint
+      // both.
+      if (
+        !network &&
+        typeof err?.message === 'string' &&
+        /networks\/default|network resource/.test(err.message) &&
+        /not found|cannot be found/i.test(err.message)
+      ) {
+        const hint = ` GCP project ${this.projectId} has no \`default\` network, which Anycloud uses for VMs and firewall rules; create one with \`gcloud compute networks create default --subnet-mode=auto --project ${this.projectId}\`.`;
+        err.message += hint;
+        if (typeof err.errors?.[0]?.message === 'string')
+          err.errors[0].message += hint;
+      }
+      throw err;
     }
-    throw err;
     return undefined;
+  }
+
+  private ensureJobsNetwork(): Promise<void> {
+    // Readable with this region's auto-mode subnet: a network another API
+    // process is still making may have neither yet.
+    const ready = async () => {
+      const [network] = await this.networksClient.get({
+        project: this.projectId,
+        network: GCP_JOBS_NETWORK,
+      });
+      if (
+        !network.subnetworks?.some((url) =>
+          url.includes(`/regions/${this.region}/`),
+        )
+      )
+        throw Object.assign(
+          new Error(`${GCP_JOBS_NETWORK} has no subnet in ${this.region} yet`),
+          { code: 404 },
+        );
+    };
+    const create = async () => {
+      try {
+        await ready();
+        return;
+      } catch (err) {
+        if (!isGCPNotFound(err)) throw err;
+      }
+      try {
+        const [operation] = await this.networksClient.insert({
+          project: this.projectId,
+          networkResource: {
+            name: GCP_JOBS_NETWORK,
+            description: 'anycloud VM Jobs',
+            autoCreateSubnetworks: true,
+          },
+        });
+        await this.waitForOperation(operation, 'global');
+      } catch (err: any) {
+        if (err.code !== 6 && err.code !== 409) throw err;
+      }
+      await withRetry(ready, 'GCP Jobs network', {
+        maxAttempts: 12,
+        waitMs: 5_000,
+        exponentialBackoff: false,
+        shouldRetry: isGCPNotFound,
+      });
+    };
+    return memoizeAsyncTtl(
+      gcpJobsNetworks,
+      `${this.projectId}:${this.region}`,
+      create,
+      { ttlMs: 15 * 60_000 },
+    );
   }
 
   /**
@@ -1938,10 +1976,11 @@ export class GCP {
         if (!firewall.name || !firewall.targetTags?.length) continue;
 
         const resourceOwner = firewall.targetTags[0];
-        // The standing public-SSH and Job-host rules belong to no workload.
+        // The standing public-SSH rules belong to no workload.
         if (
           resourceOwner === GCP_SHARED_JOB_TAG ||
-          resourceOwner === GCP_JOB_HOST_TAG
+          resourceOwner === GCP_JOBS_NETWORK ||
+          resourceOwner === GCP_LEGACY_JOB_HOST_TAG
         )
           continue;
 
@@ -2609,9 +2648,11 @@ export class GCP {
     port: number,
     protocol: string,
     priority: number | undefined,
+    network?: string,
   ) {
     const firewallResource = {
       name,
+      ...(network && { network: `global/networks/${network}` }),
       targetTags: [targetTag],
       sourceRanges,
       ...(priority !== undefined ? { priority } : {}),
@@ -2635,16 +2676,16 @@ export class GCP {
     name: string,
     targetTag: string,
     sourceRanges: string[],
-    priority = GCP_SCOPE_DENY_PRIORITY,
-    sourceTags?: string[],
+    network?: string,
   ) {
     const [operation] = await this.firewallsClient.insert({
       project: this.projectId,
       firewallResource: {
         name,
+        ...(network && { network: `global/networks/${network}` }),
         targetTags: [targetTag],
-        ...(sourceTags ? { sourceTags } : { sourceRanges }),
-        priority,
+        sourceRanges,
+        priority: GCP_SCOPE_DENY_PRIORITY,
         denied: [{ IPProtocol: 'all' }],
       },
     });
@@ -2653,7 +2694,12 @@ export class GCP {
 
   private async removeFirewalls(id: string) {
     // A workload named like the shared rules (`--id`) must not take them.
-    if (id === GCP_SHARED_JOB_TAG || id === GCP_JOB_HOST_TAG) return;
+    if (
+      id === GCP_SHARED_JOB_TAG ||
+      id === GCP_JOBS_NETWORK ||
+      id === GCP_LEGACY_JOB_HOST_TAG
+    )
+      return;
     // Delete every firewall rule this workload created, matched by targetTags
     // (set to the workload id at creation — see createFirewallRule) rather than
     // by reconstructed names. This keeps teardown symmetric with setup: it reaps
@@ -2811,7 +2857,7 @@ export class GCP {
 
   /**
    * Check if VM is in a stopped state
-   * Returns true if VM is stopped/stopping, false if still running or not found
+   * Returns true if VM is stopped, false if still running, stopping or not found
    * Retries to handle API propagation delays when VM is being preempted
    */
   private async verifyVMPreemption(cloudId: string): Promise<boolean> {
@@ -2823,13 +2869,13 @@ export class GCP {
     //   - Instance not found (deleted from console) → revival triggered ✓
     //     (use `anycloud terminate` to properly decommission without re-provisioning)
     // States checked:
-    //   STOPPING   - brief transition state while stopping
     //   TERMINATED - final state for both preemption and manual stop
     //   STOPPED    - included defensively; listed in GCP proto but TERMINATED is observed in practice
+    // STOPPING is not a stop yet: a delete passes through it too, and only a
+    // later observation tells a stop (TERMINATED) from a delete (not found).
     // See: https://cloud.google.com/compute/docs/instances/spot#preemption-process
     const isNotRunning = (status: string | null | undefined) =>
       status === GcpInstanceStatus.Stopped ||
-      status === GcpInstanceStatus.Stopping ||
       status === GcpInstanceStatus.Terminated;
 
     try {

@@ -419,6 +419,8 @@ export interface CloudJobTransport {
     fixture: CloudJobFixture,
     attempt: JobNativeAttempt,
   ): Promise<JobDiskTierObservation>;
+  /** The name of the VPC or network a live attempt's VM is in. */
+  network(fixture: CloudJobFixture, attempt: JobNativeAttempt): Promise<string>;
   submitAdmission(fixture: CloudJobFixture): Promise<'rejected' | 'accepted'>;
   admissionStatus(fixture: CloudJobFixture): Promise<WorkloadState>;
   admissionOutcome(fixture: CloudJobFixture): Promise<JobAdmissionObservation>;

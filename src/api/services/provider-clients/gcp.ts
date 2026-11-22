@@ -6,6 +6,7 @@ import {
   ImagesClient,
   InstancesClient,
   MachineTypesClient,
+  NetworksClient,
   ZoneOperationsClient,
 } from '@google-cloud/compute';
 import { Storage } from '@google-cloud/storage';
@@ -201,6 +202,7 @@ export function createGcpGatewayClients(
   images: ImagesClient;
   disks: DisksClient;
   machineTypes: MachineTypesClient;
+  networks: NetworksClient;
   storage: Storage;
 } {
   // The GAPIC compute clients treat apiEndpoint as a bare hostname and read
@@ -216,6 +218,7 @@ export function createGcpGatewayClients(
     images: new ImagesClient(gapicOptions),
     disks: new DisksClient(gapicOptions),
     machineTypes: new MachineTypesClient(gapicOptions),
+    networks: new NetworksClient(gapicOptions),
     storage: new Storage(storageOptions),
   };
 }

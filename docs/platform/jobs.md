@@ -104,9 +104,42 @@ in it, and on the VM's IPv4 network the host drops new connections from
 outside to its containers. The
 Job, host-networked containers and other containers on the host still reach
 them, through `localhost`, `host.docker.internal` or a shared Docker network.
-On GCP, every VM Job's VM refuses the network's other VMs beyond its own
-rules, with or without `--host-docker`; a Service's or `anycloud vm` dev box's
-VM keeps its network's internal traffic.
+
+### VM Job network {#vm-job-network}
+
+On AWS and GCP, a VM Job's VM runs in a network Anycloud creates for VM Jobs,
+not in your account's default VPC or `default` network:
+
+- **AWS:** one `anycloud-jobs` VPC per region, `10.1.0.0/16`, with a public
+  subnet in each availability zone, an internet gateway, and its own
+  `anycloud-vm` security group, which admits only SSH. The VM keeps its public
+  address. A zone that doesn't offer the VM type is skipped for the next one.
+- **GCP:** one auto-mode `anycloud-jobs` network per project, whose only
+  firewall rules admit SSH.
+
+Azure already gives each VM its own virtual network. The network has no
+peering, VPN or other route to your networks, so a Job can't reach your other
+VMs or internal services at their private addresses, and VM Jobs reach each
+other only over SSH. Public endpoints, such as registries, Buckets and the
+Ubuntu mirror, work as before. Services and `anycloud vm` dev boxes stay in
+the default network.
+
+The first VM Job in a region (AWS) or project (GCP) creates the network, which
+then stays, like the shared security group and firewall rules. When it can't be
+created, the Job fails with the cloud's error; it never falls back to the
+default network. The causes are a missing grant, the VPC quota (five per AWS
+region by default) or network quota, or an organization policy that forbids
+creating networks. The credential needs these grants, which the
+[published policies](/reference/cli/credentials#aws-permissions) include:
+
+- **AWS:** `ec2:CreateVpc`, `ec2:CreateSubnet`, `ec2:CreateInternetGateway`,
+  `ec2:AttachInternetGateway`, `ec2:CreateRoute`,
+  `ec2:DescribeAvailabilityZones`, `ec2:DescribeInternetGateways`,
+  `ec2:DescribeRouteTables` and `ec2:DescribeSubnets`.
+- **GCP:** `compute.networks.create` and `compute.networks.get`.
+
+A [role connection](/platform/cloud-credentials#role-connections) gets them
+when its setup is re-run; a key's policy or role needs them added.
 
 <span id="workload-workflows"></span>
 <span id="ci-pipeline"></span>

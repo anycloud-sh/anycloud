@@ -1119,11 +1119,11 @@ describe('workload image pull flow', () => {
     expect(
       provisionParams.ingressSpec?.ingress.map((rule) => rule.port),
     ).toEqual([22]);
-    // A dev box keeps its network's internal traffic.
-    expect(provisionParams.ingressSpec?.refusesNetworkPeers).toBeUndefined();
+    // A dev box stays in the default network.
+    expect(provisionParams.ingressSpec?.jobNetwork).toBeUndefined();
   });
 
-  it("refuses a VM Job's VM the network's other VMs", async () => {
+  it("0053/I1 puts a VM Job's VM in the Jobs network", async () => {
     const id = 'deploy-job-peers-' + Date.now();
     const props = await createDeployProps(id, {
       workloadType: WorkloadType.Job,
@@ -1135,7 +1135,7 @@ describe('workload image pull flow', () => {
       .calls[0]?.[1] as ProvisionParams;
     expect(provisionParams.ingressSpec).toMatchObject({
       ingress: [expect.objectContaining({ port: 22 })],
-      refusesNetworkPeers: true,
+      jobNetwork: true,
     });
   });
 

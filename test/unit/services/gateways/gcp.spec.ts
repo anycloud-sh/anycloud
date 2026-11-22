@@ -39,6 +39,7 @@ import {
   canMintScopedStorageToken,
   canListObjects,
   canManageCloudResources,
+  canObserveStoppedVms,
   type CandidateRegion,
 } from '../../../../src/api/services/gateways/cloud';
 import {
@@ -75,6 +76,7 @@ vi.mock('../../../../src/api/services/logger', () => ({
 // Mock GCP SDK clients
 vi.mock('@google-cloud/compute', () => ({
   InstancesClient: vi.fn(),
+  NetworksClient: vi.fn(),
   FirewallsClient: vi.fn(),
   GlobalOperationsClient: vi.fn(),
   ZoneOperationsClient: vi.fn(),
@@ -335,6 +337,26 @@ describe('GCP class', () => {
         'GCP service-account private key is not a valid PEM private key',
       );
       expect(listAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopped VM observation', () => {
+    it('reports a stop only once GCP settles it: STOPPING also precedes a delete', async () => {
+      const gcp = new GCP(completeCloudConfig(mockConfig));
+      const get = vi.fn();
+      gcp.instancesClient = fakeSdkClient<InstancesClient>({ get });
+      const compute = gcp.compute();
+      if (!canObserveStoppedVms(compute)) {
+        throw new Error('Expected stopped-VM observation');
+      }
+      const observe = async (status: string) => {
+        get.mockResolvedValueOnce([{ status }]);
+        return compute.observeStoppedVm('vm-1');
+      };
+
+      await expect(observe('STOPPING')).resolves.toBe(false);
+      await expect(observe('TERMINATED')).resolves.toBe(true);
+      await expect(observe('RUNNING')).resolves.toBe(false);
     });
   });
 
@@ -1025,42 +1047,178 @@ describe('GCP class', () => {
     ).toBe(true);
   });
 
-  it("refuses a VM Job's VM the network's other VMs, with standing rules on its tag", async () => {
-    const gcp = new GCP(completeCloudConfig(mockConfig));
-    const insert = vi.fn().mockResolvedValue([{}]);
-    gcp.firewallsClient = fakeSdkClient({ insert });
-    vi.spyOn(gcp as any, 'waitForOperation').mockResolvedValue(undefined);
-
-    await requirePrepareNetwork(gcp.compute())(
-      { ...buildJobIngressSpec(), refusesNetworkPeers: true },
-      'job-1',
-      '0.0.0-test',
-      'test-user',
-    );
-
-    // It still shares the public-SSH rules, at the default priority 1000.
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        firewallResource: expect.objectContaining({
-          name: 'anycloud-shared-vm22',
-          targetTags: ['anycloud-shared-vm'],
-        }),
+  /** A gateway on its own project, so the process-wide network lock starts empty. */
+  let projects = 0;
+  /** The Jobs network once auto mode has made this region's subnet. */
+  const regional = {
+    subnetworks: [
+      'https://www.googleapis.com/compute/v1/projects/p/regions/us-central1/subnetworks/anycloud-jobs',
+    ],
+  };
+  const jobsGateway = (network: Record<string, unknown>) => {
+    const gcp = new GCP(
+      completeCloudConfig({
+        ...mockConfig,
+        credentials: {
+          ...mockConfig.credentials,
+          projectId: `jobs-project-${++projects}`,
+        },
       }),
     );
-    for (const [suffix, range] of [
-      ['', '0.0.0.0/0'],
-      ['-ipv6', '::/0'],
-    ])
-      expect(insert).toHaveBeenCalledWith({
-        project: 'test-project',
-        firewallResource: {
-          name: `anycloud-job-host-deny-other${suffix}`,
-          targetTags: ['anycloud-job-host'],
-          sourceRanges: [range],
-          priority: 1001,
-          denied: [{ IPProtocol: 'all' }],
-        },
-      });
+    const insert = vi.fn().mockResolvedValue([{}]);
+    gcp.firewallsClient = fakeSdkClient({ insert });
+    gcp.networksClient = fakeSdkClient(network);
+    vi.spyOn(gcp as any, 'waitForOperation').mockResolvedValue(undefined);
+    const prepare = () =>
+      requirePrepareNetwork(gcp.compute())(
+        buildJobIngressSpec([], true),
+        'job-1',
+        '0.0.0-test',
+        'test-user',
+      );
+    return { gcp, insert, prepare };
+  };
+
+  it("0053/S1 makes the Jobs network and puts a VM Job's SSH rules in it", async () => {
+    const notFound = Object.assign(new Error('not found'), { code: 404 });
+    const network = {
+      get: vi
+        .fn()
+        .mockRejectedValueOnce(notFound)
+        .mockResolvedValue([regional]),
+      insert: vi.fn().mockResolvedValue([{}]),
+    };
+    const { gcp, insert, prepare } = jobsGateway(network);
+
+    await prepare();
+
+    expect(network.insert).toHaveBeenCalledWith({
+      project: gcp.projectId,
+      networkResource: {
+        name: 'anycloud-jobs',
+        description: 'anycloud VM Jobs',
+        autoCreateSubnetworks: true,
+      },
+    });
+    expect(insert).toHaveBeenCalledWith({
+      project: gcp.projectId,
+      firewallResource: {
+        name: 'anycloud-jobs22',
+        network: 'global/networks/anycloud-jobs',
+        targetTags: ['anycloud-jobs'],
+        sourceRanges: ['0.0.0.0/0'],
+        allowed: [{ IPProtocol: 'tcp', ports: ['22'] }],
+      },
+    });
+    // A new network admits nothing else, so no deny rule is needed.
+    expect(
+      insert.mock.calls.every(
+        ([request]) =>
+          request.firewallResource.network ===
+            'global/networks/anycloud-jobs' && !request.firewallResource.denied,
+      ),
+    ).toBe(true);
+  });
+
+  it('0053/S4 makes the Jobs network once for concurrent Jobs', async () => {
+    const network = {
+      get: vi
+        .fn()
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 404 }))
+        .mockResolvedValue([regional]),
+      insert: vi.fn().mockResolvedValue([{}]),
+    };
+    const { gcp, prepare } = jobsGateway(network);
+    const second = new GCP(
+      completeCloudConfig({
+        ...mockConfig,
+        credentials: { ...mockConfig.credentials, projectId: gcp.projectId },
+      }),
+    );
+    second.firewallsClient = gcp.firewallsClient;
+    second.networksClient = gcp.networksClient;
+    vi.spyOn(second as any, 'waitForOperation').mockResolvedValue(undefined);
+
+    await Promise.all([
+      prepare(),
+      prepare(),
+      requirePrepareNetwork(second.compute())(
+        buildJobIngressSpec([], true),
+        'job-2',
+        '0.0.0-test',
+        'test-user',
+      ),
+    ]);
+
+    expect(network.get).toHaveBeenCalledTimes(2);
+    expect(network.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-checks the Jobs network after 15 minutes, so a deleted one is made again', async () => {
+    vi.useFakeTimers();
+    try {
+      const notFound = Object.assign(new Error('x'), { code: 404 });
+      const network = {
+        get: vi.fn().mockResolvedValue([regional]),
+        insert: vi.fn().mockResolvedValue([{}]),
+      };
+      const { prepare } = jobsGateway(network);
+      await prepare();
+      await prepare();
+      expect(network.get).toHaveBeenCalledTimes(1);
+
+      network.get.mockRejectedValueOnce(notFound);
+      vi.advanceTimersByTime(15 * 60_000 + 1);
+      await prepare();
+      // Missing, made again, then read back.
+      expect(network.get).toHaveBeenCalledTimes(3);
+      expect(network.insert).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for a Jobs network another API process is still making, and this region's subnet", async () => {
+    vi.useFakeTimers();
+    try {
+      const notFound = Object.assign(new Error('x'), { code: 404 });
+      const network = {
+        get: vi
+          .fn()
+          .mockRejectedValueOnce(notFound)
+          // Readable before auto mode has made this region's subnet.
+          .mockResolvedValueOnce([{ subnetworks: [] }])
+          .mockResolvedValue([regional]),
+        insert: vi.fn().mockRejectedValue({ code: 409 }),
+      };
+      const { insert, prepare } = jobsGateway(network);
+      const prepared = prepare();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await prepared;
+      expect(network.get).toHaveBeenCalledTimes(3);
+      // The rules wait for the network to be readable.
+      expect(insert.mock.invocationCallOrder[0]).toBeGreaterThan(
+        network.get.mock.invocationCallOrder[2],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('0053/I3 fails the Job when the Jobs network cannot be made, with no rule in default', async () => {
+    const denied = Object.assign(
+      new Error("Required 'compute.networks.create' permission"),
+      { code: 403 },
+    );
+    const { insert, prepare } = jobsGateway({
+      get: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('x'), { code: 404 })),
+      insert: vi.fn().mockRejectedValue(denied),
+    });
+
+    await expect(prepare()).rejects.toBe(denied);
+    expect(insert).not.toHaveBeenCalled();
   });
 
   it('maps a scoped ingress-free spec to IP-family deny rules only', async () => {
@@ -1102,10 +1260,7 @@ describe('GCP class', () => {
     });
   });
 
-  it("keeps VM Job hosts off a management VM's internal address", async () => {
-    // The longest scope id: `anycloud-cluster-` and a 28-character cluster id.
-    const SCOPE = `anycloud-cluster-${'a'.repeat(9)}-1790000000000-e5f6`;
-    expect(SCOPE).toHaveLength(45);
+  it('gives a cluster scope no Job-host deny, now that Jobs have their own network', async () => {
     const gcp = new GCP(completeCloudConfig(mockConfig));
     const insert = vi.fn().mockResolvedValue([{}]);
     gcp.firewallsClient = fakeSdkClient({ insert });
@@ -1114,7 +1269,6 @@ describe('GCP class', () => {
     if (!canManageCloudResources(compute))
       throw new Error('missing capability');
 
-    // The management VM's SSH and Kubernetes API, as cluster creation opens them.
     await compute.prepareResourceNetwork(
       {
         ingress: [22, 6443].map((port) => ({
@@ -1123,31 +1277,13 @@ describe('GCP class', () => {
           sourceRanges: ['0.0.0.0/0'],
         })),
       },
-      { id: SCOPE, tags: { anycloud_user: 'owner-1' } },
+      { id: 'scope-a', tags: { anycloud_user: 'owner-1' } },
       'test-version',
     );
 
-    expect(insert).toHaveBeenCalledWith({
-      project: 'test-project',
-      firewallResource: {
-        name: `${SCOPE}-deny-jh`,
-        targetTags: [SCOPE],
-        sourceTags: ['anycloud-job-host'],
-        priority: 900,
-        denied: [{ IPProtocol: 'all' }],
-      },
-    });
     expect(
-      insert.mock.calls.every(
-        ([request]) => request.firewallResource.name.length <= 63,
-      ),
-    ).toBe(true);
-    // A cluster VM keeps the network's internal traffic otherwise.
-    expect(
-      insert.mock.calls.some(([request]) =>
-        request.firewallResource.name.includes('deny-other'),
-      ),
-    ).toBe(false);
+      insert.mock.calls.map(([request]) => request.firewallResource.name),
+    ).toEqual(['scope-a22', 'scope-a6443']);
   });
 
   it('names the missing default network when firewall creation cannot find it', async () => {
@@ -1204,12 +1340,12 @@ describe('GCP class', () => {
     ).rejects.toThrow('has no `default` network');
   });
 
-  it('lets every rule settle on a second Job, and surfaces a real failure', async () => {
+  it('takes the standing rules on a second Job, and surfaces a real failure', async () => {
     const gcp = new GCP(completeCloudConfig(mockConfig));
     vi.spyOn(gcp as any, 'waitForOperation').mockResolvedValue(undefined);
     const prepare = () =>
       requirePrepareNetwork(gcp.compute())(
-        { ...buildJobIngressSpec(), refusesNetworkPeers: true },
+        buildJobIngressSpec(),
         'job-2',
         '0.0.0-test',
         'test-user',
@@ -1219,23 +1355,14 @@ describe('GCP class', () => {
       insert: vi.fn().mockRejectedValue({ code: 409 }),
     });
     await expect(prepare()).resolves.toBeUndefined();
-    // A deny that fails for real fails the launch, after the rest settle.
-    const insert = vi.fn(async (request: any) => {
-      if (request.firewallResource.name.endsWith('-deny-other'))
-        throw Object.assign(new Error('backend error'), { code: 500 });
-      return [{}];
+    gcp.firewallsClient = fakeSdkClient({
+      insert: vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error('backend error'), { code: 500 }),
+        ),
     });
-    gcp.firewallsClient = fakeSdkClient({ insert });
     await expect(prepare()).rejects.toThrow('backend error');
-    // The SSH allow and the other deny were still made.
-    expect(
-      insert.mock.calls.map(([request]) => request.firewallResource.name),
-    ).toEqual(
-      expect.arrayContaining([
-        'anycloud-shared-vm22',
-        'anycloud-job-host-deny-other-ipv6',
-      ]),
-    );
   });
 
   it('keeps ordinary scope ingress ahead of the scope deny', async () => {
@@ -1572,7 +1699,7 @@ describe('GCP GPU image selection by gpuRuntime', () => {
     },
   );
 
-  it("tags only a VM Job's VM as a Job host", async () => {
+  it("puts only a VM Job's VM in the Jobs network", async () => {
     const tags = async (ingressSpec?: IngressSpec) => {
       const gcp = new GCP(completeCloudConfig(mockConfig));
       gcp.imagesClient = fakeSdkClient({
@@ -1594,17 +1721,23 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       });
       gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
       await gcp.compute().newVM({ ...newVMProps(null), ingressSpec });
-      return insert.mock.calls[0]?.[0].instanceResource.tags.items;
+      const { tags, networkInterfaces } =
+        insert.mock.calls[0]![0].instanceResource;
+      return [networkInterfaces[0].network, tags.items];
     };
-    expect(
-      await tags({ ...buildJobIngressSpec(), refusesNetworkPeers: true }),
-    ).toEqual(['gpu-deploy', 'anycloud-job-host', 'anycloud-shared-vm']);
-    // A dev box and a Service keep their network's internal traffic.
-    expect(await tags(buildJobIngressSpec())).toEqual([
-      'gpu-deploy',
-      'anycloud-shared-vm',
+    expect(await tags(buildJobIngressSpec([], true))).toEqual([
+      'projects/test-project/global/networks/anycloud-jobs',
+      ['gpu-deploy', 'anycloud-jobs'],
     ]);
-    expect(await tags(buildServeIngressSpec())).toEqual(['gpu-deploy']);
+    // A dev box and a Service stay in the default network.
+    expect(await tags(buildJobIngressSpec())).toEqual([
+      undefined,
+      ['gpu-deploy', 'anycloud-shared-vm'],
+    ]);
+    expect(await tags(buildServeIngressSpec())).toEqual([
+      undefined,
+      ['gpu-deploy'],
+    ]);
   });
 
   it('sends the exact pd-ssd initialization policy for G2 high', async () => {
@@ -3321,12 +3454,16 @@ describe('GCP.terminateVMs / terminateNetworking', () => {
     expect(tagInstanceForDeletion).not.toHaveBeenCalled();
   });
 
-  it('never tears down the standing SSH or Job-host rules as a workload', async () => {
+  it('never tears down the standing SSH or legacy Job-host rules as a workload', async () => {
     const gcp = new GCP(completeCloudConfig(mockConfig));
     const listAsync = vi.fn();
     const del = vi.fn();
     gcp.firewallsClient = fakeSdkClient({ listAsync, delete: del });
-    for (const tag of ['anycloud-shared-vm', 'anycloud-job-host'])
+    for (const tag of [
+      'anycloud-shared-vm',
+      'anycloud-jobs',
+      'anycloud-job-host',
+    ])
       await (gcp as any).removeFirewalls(tag);
     expect(listAsync).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();

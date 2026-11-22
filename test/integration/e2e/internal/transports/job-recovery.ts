@@ -330,6 +330,81 @@ export class JobRecoveryTransport {
     return (await this.#gcpDisk(attempt, deadlineAt)).identity;
   }
 
+  /** The name of the VPC (AWS) or network (GCP) the live original VM is in. */
+  async network(
+    attempt: JobNativeAttempt,
+    deadlineAt: number,
+  ): Promise<string> {
+    if (
+      attempt.cloudProvider !== this.#session.credential.cloudProvider ||
+      attempt.endedAt !== null
+    )
+      throw new Error(
+        'Network observation requires its live original provider attempt',
+      );
+    await this.#session.initialize(deadlineAt);
+    if (this.#session.credential.cloudProvider === CloudType.AWS) {
+      // Pins the live original VM in this account before reading its VPC.
+      await this.#awsIdentity(attempt, deadlineAt);
+      const read = async (args: string[]) =>
+        privateJobJson(
+          await this.#session.aws(args, attempt.region, deadlineAt),
+        );
+      const instances = await read([
+        'ec2',
+        'describe-instances',
+        '--instance-ids',
+        attempt.cloudId,
+      ]);
+      const reservation =
+        isRecord(instances) && Array.isArray(instances.Reservations)
+          ? (instances.Reservations[0] as unknown)
+          : undefined;
+      const vm =
+        isRecord(reservation) && Array.isArray(reservation.Instances)
+          ? (reservation.Instances[0] as unknown)
+          : undefined;
+      const vpcId = isRecord(vm) ? vm.VpcId : undefined;
+      if (typeof vpcId !== 'string' || !/^vpc-[a-f0-9]+$/u.test(vpcId))
+        throw new Error('Network observation found no VPC');
+      const vpcs = await read(['ec2', 'describe-vpcs', '--vpc-ids', vpcId]);
+      const vpc =
+        isRecord(vpcs) && Array.isArray(vpcs.Vpcs)
+          ? (vpcs.Vpcs[0] as unknown)
+          : undefined;
+      const name =
+        isRecord(vpc) && vpc.VpcId === vpcId && Array.isArray(vpc.Tags)
+          ? (vpc.Tags as unknown[]).find(
+              (tag) => isRecord(tag) && tag.Key === 'Name',
+            )
+          : undefined;
+      return isRecord(name) && typeof name.Value === 'string'
+        ? name.Value
+        : `${vpcId} (unnamed)`;
+    }
+    const vm = privateJobJson(
+      await this.#session.gcp(
+        [
+          'compute',
+          'instances',
+          'describe',
+          attempt.cloudId,
+          `--zone=${this.#gcpZone(attempt)}`,
+          '--format=json(networkInterfaces)',
+        ],
+        deadlineAt,
+      ),
+    );
+    const network =
+      isRecord(vm) && Array.isArray(vm.networkInterfaces)
+        ? (vm.networkInterfaces[0] as Record<string, unknown> | undefined)
+            ?.network
+        : undefined;
+    if (typeof network !== 'string')
+      throw new Error('Network observation found no network interface');
+    return network.slice(network.lastIndexOf('/') + 1);
+  }
+
   async diskTier(
     attempt: JobNativeAttempt,
     deadlineAt: number,

@@ -560,7 +560,7 @@ async function provisionStep(
     },
     ingressSpec: workloadRequestsManagedHttpIngress(props.workloadType)
       ? buildServeIngressSpec()
-      : // A VM Job's VM refuses its network's peers; a dev box's doesn't.
+      : // A VM Job's VM goes into the Jobs network; a dev box's doesn't.
         buildJobIngressSpec([], props.workloadType === WorkloadType.Job),
     jobHost: jobHostPrepare(props, cloudConfig, vmGpuRuntime(ctx)),
   });

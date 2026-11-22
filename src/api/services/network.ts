@@ -34,10 +34,10 @@ export function resolveServiceContainerPort(
 
 export function buildJobIngressSpec(
   ipWhitelist: string[] = [],
-  refusesNetworkPeers = false,
+  jobNetwork = false,
 ): IngressSpec {
   return {
-    ...(refusesNetworkPeers && { refusesNetworkPeers }),
+    ...(jobNetwork && { jobNetwork }),
     ingress: [
       {
         protocol: 'tcp',

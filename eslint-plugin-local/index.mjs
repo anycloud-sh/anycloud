@@ -808,6 +808,7 @@ const API_PROVIDER_FACTORY_IMPORTS = new Map([
         'ImagesClient',
         'InstancesClient',
         'MachineTypesClient',
+        'NetworksClient',
         'ZoneOperationsClient',
       ]),
     },
