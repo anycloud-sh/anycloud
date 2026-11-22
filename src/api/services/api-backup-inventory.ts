@@ -2,7 +2,6 @@ import { GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { CloudType, type CloudCredentials } from '../../shared/cloud.js';
 import { createAwsStsClient } from './provider-clients/aws.js';
 import { gcpProjectId } from './provider-clients/gcp.js';
-import type { NodePoolRepository } from './cluster-store.js';
 import type { ApiBackupInventory } from '../../shared/api-backup-manifest.js';
 
 /** The account a credential acts in; null when it records none. */
@@ -64,7 +63,6 @@ export async function readApiBackupInventory(deps: {
       }>
     >;
   };
-  nodePools: Pick<NodePoolRepository, 'listForReconciliation'>;
   decrypt(encrypted: string): Promise<CloudCredentials>;
   awsAccount?(credential: CloudCredentials): Promise<string>;
 }): Promise<ApiBackupInventory> {
@@ -73,7 +71,6 @@ export async function readApiBackupInventory(deps: {
   );
   const credentials = await Promise.all(
     rows.map(async (row) => ({
-      id: row.id,
       name: row.name,
       cloud: row.cloudProvider,
       // One unreadable account leaves that credential's unknown, not the rest.
@@ -85,18 +82,5 @@ export async function readApiBackupInventory(deps: {
         .catch(() => null),
     })),
   );
-  const byId = new Map(credentials.map((entry) => [entry.id, entry]));
-  const pools = (await deps.nodePools.listForReconciliation()).map((pool) => ({
-    id: pool.id,
-    name: pool.name,
-    cloud: pool.cloudProvider,
-    credential: byId.get(pool.computeCredentialId)?.name ?? null,
-    account: byId.get(pool.computeCredentialId)?.account ?? null,
-    region: pool.region,
-    zone: pool.zone,
-  }));
-  return {
-    credentials: credentials.map(({ id: _id, ...entry }) => entry),
-    pools,
-  };
+  return { credentials };
 }

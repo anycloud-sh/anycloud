@@ -108,8 +108,8 @@ export interface RecordHostedClusterInput {
  * in-cluster ServiceAccount. The control plane it can reach must be the one
  * bootstrap observed for this chart. A database that records another
  * identity for the same installation was restored from a backup into a new
- * cluster (`cluster create --checkpoint-bucket`): the API adopts the new
- * cluster and replaces the old node pool VMs.
+ * cluster (`api create --checkpoint-bucket`): the API adopts the new
+ * cluster.
  */
 export async function recordHostedCluster(
   input: RecordHostedClusterInput,

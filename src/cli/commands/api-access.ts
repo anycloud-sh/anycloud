@@ -18,22 +18,16 @@ import {
   setJsonMode,
 } from '../utils/output.js';
 
-const SERVICE_ACCOUNT_OPTION = '--service-account <deployment>';
 const SERVICE_OPTION = '--service <name>';
 
 interface TargetOptions {
-  serviceAccount?: string;
   service?: string;
 }
 
-/** Exactly one of a GitHub user, `--service` or `--service-account`. */
+/** A GitHub user, or with `--service` a service, not both. */
 function oneTarget(user: string | undefined, options: TargetOptions): void {
-  if (
-    [user, options.service, options.serviceAccount].filter(Boolean).length !== 1
-  ) {
-    throw new Error(
-      `Name a GitHub user, or pass ${SERVICE_OPTION} or ${SERVICE_ACCOUNT_OPTION}: exactly one.`,
-    );
+  if (!user === !options.service) {
+    throw new Error(`Name a GitHub user or pass ${SERVICE_OPTION}, not both.`);
   }
 }
 
@@ -54,16 +48,12 @@ function printToken(
 function createAddCommand(): Command {
   return new Command('add')
     .description(
-      'Grant a GitHub user, a service or a Deployment access to the active hosted API',
+      'Grant a GitHub user or a service access to the active hosted API',
     )
     .argument('[github-user]', 'GitHub username')
     .option(
       SERVICE_OPTION,
       'Issue a token for a service, such as a CI system; it is printed once',
-    )
-    .option(
-      SERVICE_ACCOUNT_OPTION,
-      "Admit this Deployment's replicas by their ServiceAccount token, before or after it is created",
     )
     .option('--json', 'Emit the new member, and a service token, as JSON')
     .action(
@@ -86,19 +76,13 @@ function createAddCommand(): Command {
             );
             return;
           }
-          const user = await client.apiAccess.grant(
-            options.serviceAccount
-              ? { serviceAccount: options.serviceAccount }
-              : { username: username! },
-          );
+          const user = await client.apiAccess.grant({ username: username! });
           if (options.json) {
             console.log(JSON.stringify(user));
             return;
           }
           printSuccess(
-            user.kind !== 'serviceaccount'
-              ? `Granted hosted API access to ${user.username} (${user.userId}).`
-              : `Granted hosted API access to Deployment ${user.username}${user.deploymentId ? '; its replicas restart to mount the token' : ', once it exists'}.`,
+            `Granted hosted API access to ${user.username} (${user.userId}).`,
           );
         } catch (err) {
           printError(`Failed to grant API access: ${(err as Error).message}`);
@@ -134,14 +118,7 @@ function createListCommand(): Command {
           access.owner.userId,
         ]);
         for (const user of access.users) {
-          table.push([
-            'member',
-            user.kind,
-            user.username,
-            user.kind === 'serviceaccount'
-              ? (user.deploymentId ?? 'no deployment')
-              : user.userId,
-          ]);
+          table.push(['member', user.kind, user.username, user.userId]);
         }
         console.log(table.toString());
       } catch (err) {
@@ -181,12 +158,9 @@ function resolveRemovableUser(
 function createRemoveCommand(): Command {
   return new Command('remove')
     .alias('rm')
-    .description(
-      'Remove a GitHub user, a service or a Deployment from the active hosted API',
-    )
+    .description('Remove a GitHub user or a service from the active hosted API')
     .argument('[github-user-or-id]', 'GitHub username or immutable account ID')
     .option(SERVICE_OPTION, "Revoke the service's token")
-    .option(SERVICE_ACCOUNT_OPTION, 'Remove the registered Deployment name')
     .action(async (identifier: string | undefined, options: TargetOptions) => {
       try {
         oneTarget(identifier, options);
@@ -197,16 +171,6 @@ function createRemoveCommand(): Command {
           });
           printSuccess(
             `Service ${options.service} no longer has hosted API access.`,
-          );
-          return;
-        }
-        if (options.serviceAccount) {
-          // The API lowercases the name as it did at registration.
-          await client.apiAccess.revoke({
-            params: { userId: `serviceaccount:${options.serviceAccount}` },
-          });
-          printSuccess(
-            `Deployment ${options.serviceAccount} no longer has hosted API access.`,
           );
           return;
         }
@@ -231,7 +195,7 @@ function createRemoveCommand(): Command {
 
 export function createApiAccessCommand(): Command {
   const access = new Command('access').description(
-    'Manage who, which services and which Deployments can use the active hosted API',
+    'Manage who and which services can use the active hosted API',
   );
   access.addCommand(createAddCommand());
   access.addCommand(createRemoveCommand());
@@ -296,10 +260,7 @@ API_URL. 'rotate' replaces it everywhere. A service's token comes from
       try {
         const url = getApiUrl();
         const token = await hostedApiBearer(url, () => getGitHubToken());
-        // Without an API token the bearer is a GitHub sign-in: never print it.
-        if (!token?.startsWith('acapi_')) {
-          throw new Error(`${url} issued no API token.`);
-        }
+        if (!token) throw new Error('No GitHub sign-in found.');
         console.log(token);
       } catch (err) {
         printError(`Failed to get the API token: ${(err as Error).message}`);

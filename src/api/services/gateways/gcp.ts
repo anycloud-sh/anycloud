@@ -45,8 +45,6 @@ import {
   type VMReleaseObservation,
   type VMReleaseObservationOptions,
   type CandidateRegion,
-  METADATA_NODE_POOL_BOOT,
-  type NodePoolBootInputs,
 } from './cloud.js';
 import {
   CloudType,
@@ -564,12 +562,6 @@ export function resetGcpCandidatePreflightCache(): void {
   gcpCandidatePreflightCache.clear();
 }
 
-/** GCP Nodes resolve through the metadata server. */
-export const GCP_NODE_POOL_BOOT: NodePoolBootInputs = {
-  ...METADATA_NODE_POOL_BOOT,
-  resolvesThroughHostOnly: true,
-};
-
 export class GCP {
   public instancesClient: InstancesClient;
   public firewallsClient: FirewallsClient;
@@ -862,7 +854,6 @@ export class GCP {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       terminateVMsConcurrency: GCP_TERMINATE_CONCURRENCY,
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.verifyVMPreemption(cloudId),
       },
@@ -875,7 +866,6 @@ export class GCP {
       },
       candidateRegionFilter: this.createCandidateRegionFilter(),
       resourceScoped: {
-        nodePoolBoot: GCP_NODE_POOL_BOOT,
         prepareResourceNetwork: (spec, scope, version) =>
           this.prepareNetwork(
             spec,

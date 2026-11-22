@@ -5,7 +5,6 @@ import {
   printError,
   printWorkloadHeader,
   formatWorkloadChoice,
-  formatWorkloadChoices,
 } from '../../../src/cli/utils/output.js';
 import {
   formatAge,
@@ -14,8 +13,8 @@ import {
 import { suggestFilter } from '../../../src/cli/utils/suggest-filter.js';
 import { RELEASING_LABELS } from '../../../src/cli/utils/releasing.js';
 import { formatSessionDisplay } from '../../../src/shared/session-display.js';
-import { CloudType, DiskTier } from '../../../src/shared/cloud.js';
-import { WorkloadState, WorkloadType } from '../../../src/shared/workload.js';
+import { DiskTier } from '../../../src/shared/cloud.js';
+import { WorkloadState } from '../../../src/shared/workload.js';
 import {
   makeStatusWorkloadMetadata,
   makeWorkloadListRow,
@@ -159,39 +158,6 @@ describe('printWorkloadHeader', () => {
 
   const now = Date.now();
   const completedAt = now - HOUR_MS;
-
-  it('names the node pool beside the node pool cloud for a Service on a node pool', () => {
-    const lines = captureHeader(
-      makeStatusWorkloadMetadata({
-        workloadType: WorkloadType.Service,
-        cloudProvider: CloudType.AWS,
-        region: null,
-        vmType: null,
-        nodePoolId: 'node-pool-aws',
-        nodePoolName: 'aws-east',
-        state: WorkloadState.Running,
-      }),
-    ).split('\n');
-    expect(lines.some((line) => /Cloud.*AWS/.test(line))).toBe(true);
-    expect(
-      lines.some((line) => /Node pool.*aws-east \(node-pool-aws\)/.test(line)),
-    ).toBe(true);
-    expect(lines.some((line) => /Kubernetes/.test(line))).toBe(false);
-  });
-
-  it('0036/S19 shows the Deployment target for an identity-only Job', () => {
-    const output = captureHeader(
-      makeStatusWorkloadMetadata({
-        deploymentId: 'deployment-model',
-        image: null,
-        cloudProvider: null,
-        vmType: null,
-      }),
-    );
-    expect(output).toContain('Deployment');
-    expect(output).toContain('deployment-model');
-    expect(output).not.toContain('Image');
-  });
 
   it('shows wall-clock Duration, Billable, and estimated Cost', () => {
     const output = captureHeader(
@@ -584,27 +550,6 @@ describe('suggestFilter', () => {
 });
 
 describe('formatWorkloadChoice', () => {
-  it('0036/S19 formats and filters mixed Job choices using Deployment target identity', async () => {
-    const choices = formatWorkloadChoices([
-      makeWorkloadListRow({
-        id: 'vm-job',
-        image: 'org/app:latest',
-        startedAt: 2_000,
-      }),
-      makeWorkloadListRow({
-        id: 'deployment-job',
-        deploymentId: 'long-deployment-model',
-        image: null,
-        startedAt: 1_000,
-      }),
-    ]);
-    expect(choices[0].title).toContain('app');
-    expect(choices[1].title).toContain('Deployment long-deployment-model');
-    expect(await suggestFilter('long-deployment', choices)).toEqual([
-      choices[1],
-    ]);
-  });
-
   it('includes the session label in the title (so the picker can filter by it)', () => {
     const choice = formatWorkloadChoice(
       makeWorkloadListRow({

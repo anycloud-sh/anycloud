@@ -38,7 +38,7 @@ S3 reserves forms such as an `xn--` prefix or an `-an` suffix for new buckets.
 The same applies to an output bucket that doesn't exist yet.
 Cluster-hosted APIs create a managed checkpoint bucket by default. To retain a
 bucket you own, create it first and pass
-`anycloud cluster create --checkpoint-bucket`.
+`anycloud api create --checkpoint-bucket`.
 
 ## Attach input and output
 
@@ -222,16 +222,15 @@ See [`bucket` reference](/reference/cli/bucket) for exact commands.
 
 ## Hand out storage tokens
 
-A program that holds no cloud credential, such as a Deployment registered on a
-[hosted API](/platform/hosted-apis#clients-inside-the-cluster), can ask the API
+A program that holds no cloud credential but holds an API token can ask the API
 for short-lived tokens scoped to prefixes of a saved credential's buckets, and
 use them with the cloud's own SDK. Each grant is `read` (read and list) or
 `readwrite` (also write and overwrite):
 
 ```bash
-curl -sS -X POST "$ANYCLOUD_API_URL/v1/credentials/prod-aws/storage-tokens" \
-  -H "Authorization: Bearer $(cat "$ANYCLOUD_API_TOKEN_FILE")" \
-  -H "AnyCloud-Client-Version: $(curl -sS "$ANYCLOUD_API_URL/v1/version" | jq -r .version)" \
+curl -sS -X POST "$API_URL/v1/credentials/prod-aws/storage-tokens" \
+  -H "Authorization: Bearer $ANYCLOUD_API_TOKEN" \
+  -H "AnyCloud-Client-Version: $(curl -sS "$API_URL/v1/version" | jq -r .version)" \
   -H 'Content-Type: application/json' \
   -d '{"lifetimeSeconds": 900, "grants": [
         {"bucket": "build-cache", "prefix": "cache/main/", "mode": "read"},
@@ -267,16 +266,14 @@ life is the control. In an emergency:
 - AWS: attach to the credential's IAM user, or to a role connection's role, a
   policy that denies everything when `aws:TokenIssueTime` is earlier than now.
   Rotating the key does not end sessions already issued. The deny also ends
-  VM and pool Job storage sessions issued before then.
+  VM storage sessions issued before then.
 - GCP: remove the service account's access to the bucket.
 - Azure: rotate the storage account's first key (`key1`), which signs every
-  token and also voids VM and pool Job SAS tokens. For up to 15 minutes the
+  token and also voids VM SAS tokens. For up to 15 minutes the
   API may still sign new tokens with its cached old key, and they are refused.
 
-Minting follows the hosted API's peer model: the owner, every member and every
-registered Deployment (see
-[Hosted APIs](/platform/hosted-apis#clients-inside-the-cluster)) may mint any
-grant on any saved credential, as each can already reach those buckets through
+Minting follows the hosted API's peer model: the owner and every member may
+mint any grant on any saved credential, as each can already reach those buckets through
 the bucket commands or a Job. `noDelete: false` mints a token that deletes on
 AWS and on a whole Azure container. Scope a token by what you request, not by
 who requests it. No one can mint for the API's own backup bucket. Cloudflare
@@ -361,7 +358,6 @@ while a VM first downloads its input and checkpoint data and while a VM-hosted
 Job or Service runs, and mints a fresh one for the final copy, so termination still preserves
 accumulated output and checkpoint data. If the API is unreachable past a
 token's expiry, sync stops until it renews the token.
-Deployment-targeted Jobs do not support per-Job Buckets.
 
 Minting uses STS `GetFederationToken`, which needs a long-term IAM user access
 key with `sts:GetFederationToken` and S3 access to the Bucket. Anycloud refuses
@@ -379,7 +375,6 @@ AWS, Azure, and GCP Jobs can use the selected compute identity for same-account
 Buckets, including automatic spot checkpoints. Lambda and Local Jobs
 require explicit storage credentials for checkpoint buckets, plus a storage
 region for S3, because they do not provide a compatible native bucket identity.
-Scoped cross-identity storage supports AWS and Cloudflare R2, and Azure and
-GCP for [Jobs on a node pool](/platform/jobs#jobs-on-a-node-pool). Checkpointed Services
+Scoped cross-identity storage supports AWS and Cloudflare R2. Checkpointed Services
 use their selected compute identity unless `--checkpoint-storage-credentials`
 names a separate AWS or Cloudflare credential.

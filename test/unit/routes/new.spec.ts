@@ -221,7 +221,7 @@ describe('/v1/workloads endpoint', () => {
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toMatchObject({
         code: 'WORKLOAD_ADMISSION_REJECTED',
-        message: expect.stringContaining('anycloud cluster create'),
+        message: expect.stringContaining('anycloud api create'),
       });
       expect(await queries().getWorkload(id)).toBeNull();
     },
@@ -254,7 +254,7 @@ describe('/v1/workloads endpoint', () => {
         expect(response.status).toBe(400);
         await expect(response.json()).resolves.toMatchObject({
           code: 'SERVICE_UPGRADE_INVALID',
-          message: expect.stringContaining('anycloud cluster create'),
+          message: expect.stringContaining('anycloud api create'),
         });
         expect(inspectImage).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
@@ -937,10 +937,9 @@ describe('/v1/workloads endpoint', () => {
     await walkToState(id, WorkloadState.Terminated);
     const response = await requestResubmit(id);
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain('anycloud cluster create');
+    expect(await response.text()).toContain('anycloud api create');
     expect(await queries().getWorkload(id)).toMatchObject({
       state: WorkloadState.Terminated,
-      submissionRevision: 0,
     });
   });
 
@@ -1888,9 +1887,7 @@ describe('/v1/workloads endpoint', () => {
       });
 
       expect(response.status).toBe(400);
-      expect(await response.text()).toContain(
-        'launch multiple service workloads',
-      );
+      expect(await response.text()).toContain('launch one Service per VM');
     });
 
     it.each([
@@ -2605,38 +2602,6 @@ describe('/v1/workloads endpoint', () => {
       expect(await response.text()).toContain(
         storageOnlyComputeMessage(CloudType.Cloudflare),
       );
-      expect(admissionChecks.validateCredentials).not.toHaveBeenCalled();
-    });
-
-    it('0044/S24: refuses a Job, VM or Service without --node-pool on a pools-only credential before building a gateway', async () => {
-      await seedNamedCred(
-        'gpu-cloud',
-        { cloudProvider: CloudType.Lambda, apiKey: 'test-lambda-key' },
-        CloudType.Lambda,
-      );
-      const data = PROVIDER_DATA[CloudType.Lambda].compute as {
-        poolsOnly?: boolean;
-      };
-      data.poolsOnly = true;
-      try {
-        for (const workloadType of ['job', 'vm', 'service']) {
-          const response = await callApi('https://example.com/v1/workloads', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...mockNewWorkloadPayload,
-              id: getUniqueTestId(),
-              workloadType,
-              credentialName: 'gpu-cloud',
-              cloudConfig: {},
-            }),
-          });
-          expect(response.status).toBe(400);
-          expect(await response.text()).toContain('--node-pool');
-        }
-      } finally {
-        delete data.poolsOnly;
-      }
       expect(admissionChecks.validateCredentials).not.toHaveBeenCalled();
     });
 

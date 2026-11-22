@@ -92,59 +92,6 @@ export function getDiskForVMType(
 }
 
 /**
- * Raw local NVMe on H100 and A100 sizes, in GiB, for catalogs that don't
- * record it; 0 is a size without it. Azure from Microsoft Learn's size pages
- * (NC A100 v4's devices are 960 GB); GCP from its bundled Local SSD (375 GiB
- * each, none on A2 Standard or `-nolssd`). AWS's catalog records its instance
- * store, and Lambda's root disk is already local.
- */
-export const NVME_GIB: Record<string, number> = {
-  standard_nc24ads_a100_v4: 894,
-  standard_nc48ads_a100_v4: 1788,
-  standard_nc96ads_a100_v4: 3576,
-  standard_nd96asr_v4: 6000,
-  standard_nd96amsr_a100_v4: 6400,
-  standard_nc40ads_h100_v5: 3576,
-  standard_nc80adis_h100_v5: 7152,
-  standard_ncc40ads_h100_v5: 0,
-  standard_nd96isr_h100_v5: 28608,
-  'a2-highgpu-1g': 0,
-  'a2-highgpu-2g': 0,
-  'a2-highgpu-4g': 0,
-  'a2-highgpu-8g': 0,
-  'a2-megagpu-16g': 0,
-  'a2-ultragpu-1g': 375,
-  'a2-ultragpu-2g': 750,
-  'a2-ultragpu-4g': 1500,
-  'a2-ultragpu-8g': 3000,
-  'a3-highgpu-1g': 750,
-  'a3-highgpu-2g': 1500,
-  'a3-highgpu-4g': 3000,
-  'a3-highgpu-8g': 6000,
-  'a3-megagpu-8g': 6000,
-  'a3-edgegpu-8g': 6000,
-  'a3-edgegpu-8g-nolssd': 0,
-};
-
-/** An H100 or A100 VM type's raw local NVMe in GiB; undefined without it. */
-export function getNvmeGibForVMType(
-  cloud: CloudType,
-  vmType: string,
-): number | undefined {
-  const key = vmType.toLowerCase();
-  const catalog = readCatalog(cloud);
-  const h100OrA100 = Object.entries(catalog?.typesPerAccelerator ?? {}).some(
-    ([name, types]) =>
-      /^(H100|A100)/i.test(name) &&
-      types.some((type) => type.instanceType.toLowerCase() === key),
-  );
-  const disk = catalog?.localDiskPerType[key];
-  const gib =
-    NVME_GIB[key] ?? (disk && Math.floor((disk.totalGb * 1e9) / 2 ** 30));
-  return (h100OrA100 && gib) || undefined;
-}
-
-/**
  * Whether a VM type supports Premium SSD storage (Azure `PremiumIO`). Returns
  * `undefined` when the catalog has no premium-capability data for this type
  * (unknown VM, or a catalog fetched before the column existed) — callers must

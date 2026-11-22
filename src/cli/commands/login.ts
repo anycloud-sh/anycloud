@@ -14,12 +14,8 @@ import { printError, printSuccess } from '../utils/output.js';
 /** Exchange the GitHub sign-in (signing in first if needed) for a hosted API's token. */
 async function loginToApi(api: string): Promise<void> {
   const url = normalizeApiUrl(api);
-  const exchanged = await exchangeApiToken(url, await getGitHubToken());
-  printSuccess(
-    exchanged
-      ? `Signed in to ${url}.`
-      : `${url} issued no API token, so it gets your GitHub sign-in.`,
-  );
+  await exchangeApiToken(url, await getGitHubToken());
+  printSuccess(`Signed in to ${url}.`);
 }
 
 export function createLoginCommand(): Command {

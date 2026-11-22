@@ -291,26 +291,6 @@ if [ "${ANYCLOUD_PUSH_API_IMAGE:-}" = "true" ]; then
     print_success "Pushed $IMAGE_TAG for the cluster bootstrap"
 fi
 
-# The `user-namespace` live check's three images (RFC 0049 C32), each a
-# target of one fixture, pushed beside the API image under this run's tag and
-# passed by digest.
-LIVE_CHECKS=",${E2E_CLUSTER_LIVE_CHECKS:-},"
-if [ "${ANYCLOUD_PUSH_API_IMAGE:-}" = "true" ] && [[ "${LIVE_CHECKS// /,}" == *,user-namespace,* ]]; then
-    E2E_USER_NAMESPACE_IMAGES=""
-    for target in root sudo no-sudo; do
-        tag="$IMAGE_NAME:$VERSION-userns-$target"
-        retry_cmd 3 15 docker build --target "$target" -t "$tag" \
-            -f "$PROJECT_ROOT/test/integration/fixtures/user-namespace-job.Dockerfile" \
-            "$PROJECT_ROOT/test/integration/fixtures" >> "$BUILD_LOG" 2>&1
-        retry_cmd 3 15 docker push "$tag"
-        digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$tag" | sed 's/.*@//')"
-        [ -n "$digest" ] || fail "Could not read the digest of $tag"
-        E2E_USER_NAMESPACE_IMAGES="$E2E_USER_NAMESPACE_IMAGES $tag@$digest"
-    done
-    export E2E_USER_NAMESPACE_IMAGES
-    print_success "Pushed the user-namespace check images"
-fi
-
 ensure_cipher_key() {
     local key_file="$ANYCLOUD_DIR/cipher.key"
     mkdir -p "$ANYCLOUD_DIR"
@@ -403,17 +383,7 @@ fi
 if needs_local_smolvm_runtime "$TEST_NAME"; then
     start_local_api_for_smolvm_e2e
 else
-    # e2e-cluster-cloud's from_release: that release's CLI starts the installer
-    # on its own image; the spec's `api upgrade` moves it to this tree. `api
-    # start` runs whatever the local tag holds, and other e2e builds on a shared
-    # Docker host tag this tree as `api:<package version>`, so the published
-    # image is pulled first and the started container must run it.
-    if [ -n "${E2E_CLUSTER_FROM_RELEASE_CLI:-}" ]; then
-        RELEASED_IMAGE="$IMAGE_NAME:${E2E_CLUSTER_FROM_RELEASE:?from_release needs E2E_CLUSTER_FROM_RELEASE}"
-        retry_cmd 3 15 docker pull "$RELEASED_IMAGE" >> "$BUILD_LOG" 2>&1
-        RELEASED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$RELEASED_IMAGE")"
-    fi
-    if ! env ANYCLOUD_DIR="$TEMP_DIR" ${API_START_IDENTITY_ENV[@]+"${API_START_IDENTITY_ENV[@]}"} ${E2E_CLUSTER_FROM_RELEASE_CLI:-$CLI} api start --port "$API_PORT" >> "$BUILD_LOG" 2>&1; then
+    if ! env ANYCLOUD_DIR="$TEMP_DIR" ${API_START_IDENTITY_ENV[@]+"${API_START_IDENTITY_ENV[@]}"} $CLI api start --port "$API_PORT" >> "$BUILD_LOG" 2>&1; then
         # `api start` deliberately leaves an unhealthy container available for
         # diagnosis. Capture it before the EXIT trap removes the container and
         # isolated ANYCLOUD_DIR, otherwise the evidence record only reports that
@@ -424,12 +394,6 @@ else
             fi
         }
         fail "Local API failed to start; see $RESULTS_DIR/api-not-started.log"
-    fi
-    if [ -n "${RELEASED_IMAGE_ID:-}" ]; then
-        STARTED_IMAGE_ID="$(docker inspect --format '{{.Image}}' anycloud-api)"
-        [ "$STARTED_IMAGE_ID" = "$RELEASED_IMAGE_ID" ] ||
-            fail "The installer runs $STARTED_IMAGE_ID, not the published $RELEASED_IMAGE ($RELEASED_IMAGE_ID)"
-        print_success "Installer runs the published $RELEASED_IMAGE"
     fi
     export API_URL="http://localhost:$API_PORT"
     E2E_API_STARTED=true

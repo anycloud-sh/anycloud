@@ -5,13 +5,11 @@ const MAX_RESOURCE_NAME_LENGTH = 28;
 export const RUN_ID_LENGTH = 10;
 const NAME_HASH_LENGTH = 8;
 
-type FixtureResourceScope = 'nodePool' | 'workload' | 'secret' | 'deployment';
+type FixtureResourceScope = 'workload' | 'secret';
 
 const scopeTag = {
-  nodePool: 'p',
   workload: 'd',
   secret: 's',
-  deployment: 'w',
 } as const satisfies Record<FixtureResourceScope, string>;
 
 function normalizedPrefix(prefix: string): string {
@@ -35,16 +33,8 @@ export class FixtureNames {
     return this.#allocate('workload', prefix);
   }
 
-  nodePool(prefix: string): string {
-    return this.#allocate('nodePool', prefix);
-  }
-
   secret(prefix: string): string {
     return this.#allocate('secret', prefix);
-  }
-
-  deployment(prefix: string): string {
-    return this.#allocate('deployment', prefix);
   }
 
   #allocate(scope: FixtureResourceScope, prefix: string): string {

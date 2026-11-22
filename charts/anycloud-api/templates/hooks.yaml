@@ -7,7 +7,9 @@
 # The guard runs first on every upgrade (never on install: there is no
 # Deployment yet) and refuses an incoming revision that is not newer than the
 # one the running Deployment carries, so a stale or replayed HelmChart cannot
-# roll the release backwards from inside the cluster either.
+# roll the release backwards from inside the cluster either. It also reads the
+# running API's database and refuses a release whose migrations would drop
+# node pools or Deployments that are still live, while that API still serves.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -55,6 +57,15 @@ spec:
               value: {{ .Values.installation.id | quote }}
             - name: ANYCLOUD_RELEASE_NAMESPACE
               value: {{ .Release.Namespace | quote }}
+            - name: ANYCLOUD_DIR
+              value: /mnt/checkpoint
+          volumeMounts:
+            - name: state
+              mountPath: /mnt/checkpoint
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: anycloud-api-state
 ---
 apiVersion: batch/v1
 kind: Job

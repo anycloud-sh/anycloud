@@ -12,7 +12,6 @@ import {
 import type { GithubSignIn, User } from './entities.js';
 import { log } from './logger.js';
 import {
-  isServiceAccountUserId,
   isServiceUserId,
   serviceUserId,
   type ApiAccessPolicy,
@@ -53,15 +52,6 @@ class ApiTokenExchangeRefusedError extends Error {
       `${reason} Sign in with \`anycloud login\`, which asks GitHub only for read:org and read:packages.`,
     );
     this.name = 'ApiTokenExchangeRefusedError';
-  }
-}
-
-export class ApiAccessManagedDeploymentError extends Error {
-  constructor(name: string) {
-    super(
-      `"${name}" is a managed Deployment, whose replicas run pool Jobs; register a Deployment you created.`,
-    );
-    this.name = 'ApiAccessManagedDeploymentError';
   }
 }
 
@@ -144,18 +134,13 @@ export interface ApiAccessDomain {
 export interface ApiAccessDomainDependencies {
   policy: {
     get(): Promise<ApiAccessPolicy | null>;
-    listUsers(): Promise<RegisteredUser[]>;
+    listUsers(): Promise<StoredApiAccessUser[]>;
     upsertUser(user: StoredApiAccessUser): Promise<StoredApiAccessUser>;
-    registerServiceAccount(
-      deploymentName: string,
-    ): Promise<RegisteredUser | { managedDeploymentId: string }>;
-    removeUser(userId: string): Promise<RegisteredUser | null>;
+    removeUser(userId: string): Promise<StoredApiAccessUser | null>;
     issueServiceToken(name: string): Promise<string | null>;
     rotateServiceToken(name: string): Promise<string | null>;
     setGithubApps(githubAppIds: number[]): Promise<void>;
   };
-  /** Rolls a live Deployment whose token mount a registration changed. */
-  reconcileDeployment(deploymentId: string): void;
   resolveGithubUser(
     accessToken: string,
     username: string,
@@ -174,13 +159,7 @@ export interface ApiAccessDomainDependencies {
   };
 }
 
-/** A stored entry and the live Deployment a registered name is held by. */
-type RegisteredUser = StoredApiAccessUser & { deploymentId: string | null };
-
-function member(user: RegisteredUser): ApiAccessMember {
-  if (isServiceAccountUserId(user.userId)) {
-    return { kind: 'serviceaccount', ...user };
-  }
+function member(user: StoredApiAccessUser): ApiAccessMember {
   const kind = isServiceUserId(user.userId) ? 'service' : 'github';
   return { kind, userId: user.userId, username: user.username };
 }
@@ -248,20 +227,7 @@ export function createApiAccessDomain(
 
     async grant(actor, input, signal) {
       signal?.throwIfAborted();
-      const policy = await requireOwner(dependencies, actor);
-      if ('serviceAccount' in input) {
-        await assertNameFree(dependencies, policy, input.serviceAccount);
-        const registered = await dependencies.policy.registerServiceAccount(
-          input.serviceAccount,
-        );
-        if ('managedDeploymentId' in registered) {
-          throw new ApiAccessManagedDeploymentError(input.serviceAccount);
-        }
-        if (registered.deploymentId) {
-          dependencies.reconcileDeployment(registered.deploymentId);
-        }
-        return member(registered);
-      }
+      await requireOwner(dependencies, actor);
       // The owner is a GitHub account, whose sign-in the exchange stored.
       if (!actor.token)
         throw GithubSignInRequiredError.needs('Sharing an API needs');
@@ -288,17 +254,13 @@ export function createApiAccessDomain(
     async revoke(actor, rawUserId, signal) {
       signal?.throwIfAborted();
       const policy = await requireOwner(dependencies, actor);
-      const userId =
-        isServiceAccountUserId(rawUserId) || isServiceUserId(rawUserId)
-          ? rawUserId
-          : githubUserId(rawUserId);
+      const userId = isServiceUserId(rawUserId)
+        ? rawUserId
+        : githubUserId(rawUserId);
       if (userId === policy.ownerUserId) {
         throw new ApiAccessOwnerCannotBeRemovedError();
       }
       const removed = await dependencies.policy.removeUser(userId);
-      if (removed?.deploymentId) {
-        dependencies.reconcileDeployment(removed.deploymentId);
-      }
       signal?.throwIfAborted();
       return removed;
     },

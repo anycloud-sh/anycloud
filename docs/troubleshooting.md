@@ -27,16 +27,12 @@ Common errors and what to do about them. For the full state machine, see [Jobs �
 
 ### My job is stuck in `queued`.
 
-For dedicated VM Jobs, two common causes are:
+Two common causes are:
 
 1. More than 50 workloads are setting up VMs at once (the per-API provisioning cap), so the rest wait for a slot.
 2. A spend control — throttle or budget — is at its cap.
 
-For Deployment-targeted Jobs, inspect `client.get(job_id).status().jobs_ahead` and
-`client.get_deployment(deployment_name)` while the client is open. Queue position and
-Deployment readiness are advisory; see [Python queue status](/reference/python-sdk#jobs-on-deployments).
-
-For dedicated Jobs, the blocking reason shows in `anycloud status <id>` and `anycloud list`, and the job auto-dispatches once a slot frees or the cap clears. See [Jobs — Lifecycle](/platform/jobs#lifecycle) and [Spend Controls](/platform/spend-controls).
+The blocking reason shows in `anycloud status <id>` and `anycloud list`, and the job auto-dispatches once a slot frees or the cap clears. See [Jobs — Lifecycle](/platform/jobs#lifecycle) and [Spend Controls](/platform/spend-controls).
 
 ### My spot job keeps restarting (`Recovering`).
 
@@ -94,15 +90,6 @@ A local API answers only requests addressed to `localhost`, `127.0.0.1` or
 `[::1]`. Run the CLI on the machine that runs the local API, or use a hosted
 API for remote access.
 
-### `Pods can't reach this API to claim Jobs`.
-
-Deployment replicas claim Jobs from the API that created them, and a local
-API's workload URL is loopback, which Pods on a node pool can't reach. So a
-local API refuses `deployment create`, `job IMAGE --node-pool` and
-`job --deployment`; Services on a node pool still run. Switch to the
-cluster's API with `anycloud api use https://<cluster-id>.anycloud.sh` (see
-[Clusters](/platform/clusters)) and submit there.
-
 ### `This hosted API takes only the API tokens it issues, not a GitHub token`.
 
 The request carried a GitHub token, or a loopback URL's local API token
@@ -120,8 +107,7 @@ removed. Run `anycloud login <api-url>` for the current token, and update
 ### `GITHUB_SIGN_IN_REQUIRED`.
 
 A 403 with this code means the request needs a GitHub sign-in, even on a local
-API: a Service that publishes a public URL (Local Services publish none), or
-cluster create, delete and forget. "Your GitHub sign-in was rejected" means
+API: a Service that publishes a public URL (Local Services publish none). "Your GitHub sign-in was rejected" means
 your GitHub token (saved or `GITHUB_TOKEN`) expired or was revoked. Run
 `anycloud login`, then retry.
 
@@ -148,8 +134,7 @@ Generated `ApiClient` setup requires an explicit
 
 For an image Job, pass `client.submit(..., credential_name="aws-prod")` or
 inline `cloud_config={"credentials": ...}`. API token discovery does not choose
-a cloud compute credential. Deployment-targeted Jobs use their Deployment's node
-pool capacity and reject per-Job credentials. See
+a cloud compute credential. See
 [Credential selection](/reference/configuration#credential-precedence).
 
 ### A credential error sent my job to `Invalid` mid-run.

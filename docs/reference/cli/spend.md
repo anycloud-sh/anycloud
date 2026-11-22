@@ -37,12 +37,6 @@ Cost follows provisioned VM lifetimes: accrual starts when a VM is created and
 stops at its `endedAt` cutoff. A workload's `completedAt` is its outcome
 timestamp and neither selects nor caps cost reporting.
 
-With `--session`, the report also charges each Job on a Deployment for its slot
-time: the replica's share of its node pool Node's hourly price, divided by
-`--max-concurrent-jobs-per-replica`, for as long as each attempt runs. Without
-`--session`, the report leaves this time out; the node pool VM's cost counts
-toward account spend caps and `anycloud spend show`.
-
 Billing reconciliation uses the compute credential recorded on each VM attempt.
 Malformed unrelated SSH, storage, container payloads, or requested placement
 settings no longer prevent available provider costs from settling. Missing

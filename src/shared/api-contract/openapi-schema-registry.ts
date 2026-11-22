@@ -1,30 +1,11 @@
 import type { SchemaConverter } from '@orpc/openapi';
 import * as apiAccess from './api-access-schemas.js';
 import * as bucketMetadata from './bucket-metadata-schemas.js';
-import * as deploymentWorkload from './deployment-workload-schemas.js';
-import {
-  selectedJobSchema,
-  workloadJobCandidateSchema,
-  workloadClaimJobBodySchema,
-  workloadCleanupBodySchema,
-  workloadOutcomeBodySchema,
-  runnerCauseSchema,
-  workloadRunnerReportBodySchema,
-} from './deployment-workload-schemas.js';
-import * as deployments from './deployments-schemas.js';
-import {
-  updateDeploymentBodySchema,
-  deploymentDockerOptionsUpdateSchema,
-  deploymentReadinessProbeSchema,
-  deploymentStatusSchema,
-} from './deployments-schemas.js';
 import * as clusters from './clusters-schemas.js';
 import {
   clusterSummarySchema,
   clusterReleaseSummarySchema,
 } from './clusters-schemas.js';
-import * as nodePools from './node-pools-schemas.js';
-import { nodePoolSummarySchema } from './node-pools-schemas.js';
 import * as systemRelease from './system-release-schemas.js';
 import {
   kubernetesStepSchema,
@@ -36,13 +17,10 @@ import * as credentials from './credentials-schemas.js';
 import { saveCredentialBodySchema } from './credentials-schemas.js';
 import * as database from './database-schemas.js';
 import * as workloadAdmission from './workload-admission-schemas.js';
-import { workloadAdmissionVariantsSchema } from './workload-admission-schemas.js';
+import { workloadAdmissionInputSchema } from './workload-admission-schemas.js';
 import * as workloadManagement from './workload-management-schemas.js';
 import {
   workloadResubmitBodySchema,
-  jobSubmissionObservationBodySchema,
-  jobSubmissionObservationSchema,
-  jobSubmissionOutcomeSchema,
   workloadResubmitResponseSchema,
 } from './workload-management-schemas.js';
 import * as notifications from './notifications-schemas.js';
@@ -63,28 +41,13 @@ import { spendCapInputSchema } from './spend-controls-schemas.js';
 // become named components. Keep their registration explicit; the remaining
 // exports are discovered to avoid a parallel inventory of authored models.
 const publicBodySchemas = {
-  deploymentReadinessProbeSchema,
-  deploymentStatusSchema,
   clusterSummarySchema,
   clusterReleaseSummarySchema,
-  nodePoolSummarySchema,
   systemReleaseRolloutSchema,
   systemUpgradeSchema,
   kubernetesStepSchema,
-  selectedJobSchema,
-  workloadJobCandidateSchema,
-  workloadClaimJobBodySchema,
-  workloadCleanupBodySchema,
-  workloadOutcomeBodySchema,
-  runnerCauseSchema,
-  workloadRunnerReportBodySchema,
-  deploymentDockerOptionsUpdateSchema,
-  updateDeploymentBodySchema,
-  workloadAdmissionVariantsSchema,
+  workloadAdmissionInputSchema,
   workloadResubmitBodySchema,
-  jobSubmissionObservationBodySchema,
-  jobSubmissionObservationSchema,
-  jobSubmissionOutcomeSchema,
   workloadResubmitResponseSchema,
   saveNotificationBodySchema,
   testNotificationBodySchema,
@@ -98,10 +61,7 @@ const schemaModules = [
   publicBodySchemas,
   apiAccess,
   bucketMetadata,
-  deploymentWorkload,
-  deployments,
   clusters,
-  nodePools,
   common,
   credentials,
   database,
@@ -125,20 +85,15 @@ const excludedSchemas = new Set([
   'bucketPathParametersSchema',
   'bucketRequestSchema',
   'channelParamsRequestSchema',
-  'deploymentPathInputSchema',
-  'workloadAdmissionInputSchema',
   'workloadListRequestSchema',
   'workloadPathParametersSchema',
   'workloadResubmitRequestSchema',
-  'jobSubmissionObservationRequestSchema',
   'workloadSshAccessRequestSchema',
   'workloadStatusRequestSchema',
   'workloadTerminateRequestSchema',
   'exactWorkloadCostRequestSchema',
   'listBucketObjectsRequestSchema',
   'listBucketsRequestSchema',
-  'listDeploymentsInputSchema',
-  'listNodePoolsInputSchema',
   'mintStorageTokensRequestSchema',
   'noContentSchema',
   'noInputSchema',
@@ -153,21 +108,9 @@ const excludedSchemas = new Set([
   'unsetBudgetRequestSchema',
   'unsetThrottleRequestSchema',
   'updateCredentialRequestSchema',
-  'updateDeploymentInputSchema',
-  'workloadCancellationInputSchema',
-  'workloadCleanupInputSchema',
-  'workloadCandidateInputSchema',
-  'workloadCandidateResponseSchema',
-  'workloadClaimJobInputSchema',
-  'workloadExecutionInputSchema',
-  'workloadOutcomeInputSchema',
-  'workloadRunnerReportInputSchema',
 ]);
 
 function componentName(exportName: string): string {
-  if (exportName === 'workloadAdmissionVariantsSchema') {
-    return 'WorkloadAdmissionInput';
-  }
   const withoutSuffix = exportName.replace(/Schema$/u, '');
   return `${withoutSuffix[0]?.toUpperCase()}${withoutSuffix.slice(1)}`;
 }

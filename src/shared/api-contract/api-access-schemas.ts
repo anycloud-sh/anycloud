@@ -24,22 +24,10 @@ const serviceMemberSchema = z
   })
   .strict();
 
-/**
- * A GitHub member, an owner-issued service token, or a Deployment name registered for its replicas'
- * ServiceAccount token (RFC 0049 C29), with the live Deployment that holds
- * the name, if any.
- */
+/** A GitHub member, or an owner-issued service token. */
 export const apiAccessMemberSchema = z.discriminatedUnion('kind', [
   apiAccessUserSchema.extend({ kind: z.literal('github') }),
   serviceMemberSchema,
-  z
-    .object({
-      kind: z.literal('serviceaccount'),
-      userId: z.string().startsWith('serviceaccount:'),
-      username: z.string().min(1),
-      deploymentId: z.string().nullable(),
-    })
-    .strict(),
 ]);
 
 export const apiAccessUsersResponseSchema = z
@@ -49,11 +37,9 @@ export const apiAccessUsersResponseSchema = z
   })
   .strict();
 
-export const grantApiAccessInputSchema = z.union([
-  z.object({ username: z.string().trim().min(1) }).strict(),
-  // A Deployment name, as `CreateDeploymentInput` takes it.
-  z.object({ serviceAccount: z.string().trim().min(1).max(64) }).strict(),
-]);
+export const grantApiAccessInputSchema = z
+  .object({ username: z.string().trim().min(1) })
+  .strict();
 
 export const apiAccessUserIdSchema = z.string().min(1);
 

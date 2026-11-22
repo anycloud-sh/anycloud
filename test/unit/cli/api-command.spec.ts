@@ -43,10 +43,9 @@ const mocks = vi.hoisted(() => ({
   systemReleaseStatus: vi.fn(),
   systemReleaseRequest: vi.fn(),
   setGithubApps: vi.fn(),
-  systemReleaseDrain: vi.fn(async () => ({ jobs: [] })),
   systemReleaseKubernetes: vi.fn(),
   clustersList: vi.fn(),
-  checkApiHealth: vi.fn(async () => true),
+  remainingRemovedWorkloads: vi.fn(async (): Promise<unknown[]> => []),
   createApiClientOptions: vi.fn(),
   /** `docker inspect --format {{.RestartCount}}`; null when no container. */
   restartCount: vi.fn((): string | null => null),
@@ -123,7 +122,6 @@ vi.mock('../../../src/cli/services/api-target.js', async (importActual) => ({
     >()
   ).vmHostedApiMigrationMessage,
   activeVmHostedApi: mocks.activeVmHostedApi,
-  checkApiHealth: mocks.checkApiHealth,
   describeApiUrlSource: vi.fn(() => 'default local API'),
   discoverApiTargetRows: mocks.discoverApiTargetRows,
   getActiveApiTargetInfo: mocks.getActiveApiTargetInfo,
@@ -134,6 +132,14 @@ vi.mock('../../../src/cli/services/api-target.js', async (importActual) => ({
   selectableApiTargets: mocks.selectableApiTargets,
   selectApiTarget: mocks.selectApiTarget,
 }));
+
+vi.mock(
+  '../../../src/cli/use-cases/removed-workloads.js',
+  async (importActual) => ({
+    ...(await importActual()),
+    remainingRemovedWorkloads: mocks.remainingRemovedWorkloads,
+  }),
+);
 
 vi.mock(
   '../../../src/cli/services/local-api-update.js',
@@ -152,7 +158,6 @@ vi.mock('../../../src/shared/services/api-client/rpc.js', async (actual) => ({
     systemRelease: {
       status: mocks.systemReleaseStatus,
       request: mocks.systemReleaseRequest,
-      drain: mocks.systemReleaseDrain,
       kubernetes: mocks.systemReleaseKubernetes,
     },
     clusters: {
@@ -413,33 +418,12 @@ describe('api command', () => {
     await runApi(['upgrade']);
 
     expect(mocks.reconcileLocalApi).toHaveBeenCalledWith(packageJson.version, {
-      beforeRestart: expect.any(Function),
       startIfStopped: true,
     });
     expect(mocks.apiBearer).not.toHaveBeenCalled();
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
     expect(mocks.printSuccess).toHaveBeenCalledWith(
       `Local API matches anycloud ${packageJson.version}.`,
-    );
-  });
-
-  it('drains the local API before its restart, unless it does not answer', async () => {
-    await runApi(['upgrade', '--force']);
-    const [, options] = mocks.reconcileLocalApi.mock.calls[0] as [
-      string,
-      { beforeRestart: (apiUrl: string) => Promise<void> },
-    ];
-    await options.beforeRestart('http://localhost:8080');
-    expect(mocks.checkApiHealth).toHaveBeenCalledWith('http://localhost:8080');
-    // The first poll lists before anything stops (RFC 0049 C27).
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledExactlyOnceWith({
-      force: false,
-    });
-    mocks.checkApiHealth.mockResolvedValueOnce(false);
-    await options.beforeRestart('http://localhost:8080');
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledOnce();
-    expect(mocks.printWarning).toHaveBeenCalledWith(
-      'Skipped draining pool Jobs: the local API did not answer /health. Pool Jobs it claimed before keep running until the new API replaces their replicas, then retry.',
     );
   });
 
@@ -461,7 +445,6 @@ describe('api command', () => {
     await runApi(['upgrade']);
 
     expect(mocks.reconcileLocalApi).toHaveBeenCalledWith(packageJson.version, {
-      beforeRestart: expect.any(Function),
       startIfStopped: true,
       startPort: 9000,
     });
@@ -469,7 +452,7 @@ describe('api command', () => {
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
   });
 
-  it('api upgrade names a VM-hosted API for what it is and points at cluster create', async () => {
+  it('api upgrade names a VM-hosted API for what it is and points at api create', async () => {
     useHostedActive();
 
     mocks.activeVmHostedApi.mockResolvedValue({
@@ -486,7 +469,7 @@ describe('api command', () => {
     expect(message).toContain(
       'https://api-1.anycloud.sh is a VM-hosted API (the removed anycloud api serve)',
     );
-    expect(message).toContain('anycloud cluster create <name>');
+    expect(message).toContain('anycloud api create <name>');
     expect(message).toContain(
       'anycloud api use https://<cluster-id>.anycloud.sh',
     );
@@ -526,14 +509,6 @@ describe('api command', () => {
       image: `${packageJson.apiImage}:${packageJson.version}`,
     });
     expect(mocks.activeVmHostedApi).not.toHaveBeenCalled();
-    // Decision 30: the pool Jobs drain before the release is requested.
-    expect(mocks.systemReleaseDrain).toHaveBeenCalledWith({
-      force: false,
-      image: `${packageJson.apiImage}:${packageJson.version}`,
-    });
-    expect(mocks.systemReleaseDrain.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.systemReleaseRequest.mock.invocationCallOrder[0]!,
-    );
     // The verdict is a plain line with the upgrade number, not a spinner
     // message (a non-TTY run prints none).
     expect(mocks.printSuccess).toHaveBeenCalledWith(
@@ -656,7 +631,7 @@ describe('api command', () => {
       });
     });
 
-    it('runs after the drain and before the hosted upgrade, from any machine, and reports its result', async () => {
+    it('runs before the hosted upgrade, from any machine, and reports its result', async () => {
       mocks.systemReleaseKubernetes.mockResolvedValue({ step });
       await runApi(['upgrade']);
 
@@ -667,9 +642,6 @@ describe('api command', () => {
       });
       const order = (mock: { mock: { invocationCallOrder: number[] } }) =>
         mock.mock.invocationCallOrder[0]!;
-      expect(order(mocks.systemReleaseDrain)).toBeLessThan(
-        order(mocks.systemReleaseKubernetes),
-      );
       expect(order(mocks.systemReleaseKubernetes)).toBeLessThan(
         order(mocks.systemReleaseRequest),
       );
@@ -719,7 +691,7 @@ describe('api command', () => {
     );
   });
 
-  it('api upgrade prints a refusal from the pool Job drain as the same verdict, before stopping anything', async () => {
+  it('api upgrade refuses, naming them, while the hosted API runs node pools, Deployments or node pool Services', async () => {
     useHostedActive();
     mocks.systemReleaseStatus.mockResolvedValue({
       servedVersion: '0.0.1',
@@ -727,18 +699,30 @@ describe('api command', () => {
       upgrade: null,
       rollout: null,
     });
-    mocks.systemReleaseDrain.mockRejectedValueOnce(
-      new ORPCError('SYSTEM_RELEASE_REFUSED', {
-        status: 400,
-        message: 'Release refused: no published API image for version 9.9.9',
-      }),
-    );
-    await expect(runApi(['upgrade', '--force'])).rejects.toThrow(
+    mocks.remainingRemovedWorkloads.mockResolvedValueOnce([
+      { kind: 'node pool Service', id: 'svc-1', name: 'svc-1' },
+      { kind: 'node pool', id: 'np-1', name: 'gpu' },
+    ]);
+    await expect(runApi(['upgrade', '--json'])).rejects.toThrow(
       /process\.exit:1/,
     );
-    expect(mocks.printError).toHaveBeenCalledWith(
-      'Hosted API upgrade refused: Release refused: no published API image for version 9.9.9',
+    // Read with the served version, before anything else.
+    expect(mocks.remainingRemovedWorkloads).toHaveBeenCalledWith(
+      'https://api-1.anycloud.sh',
+      '0.0.1',
+      'gh-token',
     );
+    const [document] = logSpy.mock.calls.map(
+      (call) =>
+        JSON.parse(String(call[0])) as {
+          error: { code: string; message: string };
+        },
+    );
+    expect(document!.error.code).toBe('REMOVED_WORKLOADS_REMAIN');
+    expect(document!.error.message).toContain(
+      '  node pool Service svc-1\n  node pool gpu (np-1)\n',
+    );
+    expect(mocks.systemReleaseKubernetes).not.toHaveBeenCalled();
     expect(mocks.systemReleaseRequest).not.toHaveBeenCalled();
   });
 
@@ -1309,7 +1293,7 @@ describe('api command', () => {
     expect(mocks.activeVmHostedApi).toHaveBeenCalledWith();
     expect(mocks.printError).toHaveBeenCalledWith(
       expect.stringContaining(
-        'is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud cluster create',
+        'is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud api create',
       ),
     );
   });

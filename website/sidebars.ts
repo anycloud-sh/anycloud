@@ -46,7 +46,6 @@ const sidebars: SidebarsConfig = {
           'Configure the images, hardware, access, and controls behind your workloads.',
       },
       items: [
-        'platform/clusters',
         'platform/hosted-apis',
         'platform/container-images',
         'platform/gpus-vm-types',
@@ -80,8 +79,6 @@ const sidebars: SidebarsConfig = {
             'reference/cli/service',
             'reference/cli/vm',
             'reference/cli/cluster',
-            'reference/cli/node-pools',
-            'reference/cli/deployments',
             'reference/cli/workloads',
             'reference/cli/catalog-pricing',
             'reference/cli/quota',

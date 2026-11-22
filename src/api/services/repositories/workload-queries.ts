@@ -12,7 +12,6 @@ import {
 import {
   type StoredWorkload,
   type ProvisioningConfig,
-  type WorkloadPublicEndpoint,
 } from '../workload-record.js';
 import { CloudType, isDiskTier } from '../../../shared/cloud.js';
 import {
@@ -91,22 +90,6 @@ function parseScalarCredentialId(v: string | null): string | null {
 // Narrow the raw TEXT column to the StoredWorkload.imageRuntime enum.
 // Any value outside the three known literals (incl. NULL / corrupt rows) maps to
 // null — the conservative keep-all signal the optimizer treats as "don't filter".
-function parsePublicEndpoint(row: {
-  public_endpoint_ip: string | null;
-  public_endpoint_state: string | null;
-  public_endpoint_error: string | null;
-}): WorkloadPublicEndpoint | null {
-  const state = row.public_endpoint_state;
-  if (state !== 'published' && state !== 'repointing' && state !== 'stale') {
-    return null;
-  }
-  return {
-    ip: row.public_endpoint_ip,
-    state,
-    error: row.public_endpoint_error,
-  };
-}
-
 function parseImageRuntime(v: string | null): ImageRuntime | null {
   if (
     v === ImageRuntime.Cuda ||
@@ -146,34 +129,10 @@ function laneKeySql(alias: string): string {
   )`;
 }
 
-function nodePoolNameSql(workloadAlias: string): string {
-  return `(
-    SELECT p.name FROM node_pools p
-    -- A pool Job's node pool is its managed Deployment's.
-    WHERE p.id = COALESCE(${workloadAlias}.node_pool_id, (SELECT t.node_pool_id
-      FROM deployments t WHERE t.id = ${workloadAlias}.deployment_id AND t.managed = 1))
-    LIMIT 1
-  )`;
-}
-
-/** Cloud provider plus the node pool name, for hydrated workload reads. */
+/** Cloud provider, for hydrated workload reads. */
 function workloadOriginColumnsSql(workloadAlias: string): string {
-  return `${computedWorkloadCloudProviderSql(workloadAlias)} AS computed_cloud_provider,
-    ${nodePoolNameSql(workloadAlias)} AS node_pool_name`;
+  return `${computedWorkloadCloudProviderSql(workloadAlias)} AS computed_cloud_provider`;
 }
-
-/**
- * Work the VM-host scheduler and controller own. Deployment-targeted Jobs are
- * claimed by their Deployment; node-pool-targeted Services are reconciled by
- * the node pool Service controller.
- * Terminal cleanup is shared and does not use this predicate.
- */
-function vmHostOwnedSql(alias?: string): string {
-  const col = alias ? `${alias}.` : '';
-  return `${col}deployment_id IS NULL AND ${col}node_pool_id IS NULL`;
-}
-
-const VM_HOST_OWNED_SQL = vmHostOwnedSql();
 
 function computedVmCloudProviderSql(
   vmAlias: string,
@@ -380,14 +339,6 @@ export interface WorkloadRow {
   id: string;
   user_id: string;
   owner_user_id: string | null;
-  deployment_id: string | null;
-  node_pool_id: string | null;
-  /** Computed by hydrated reads: the active name of `node_pool_id`. */
-  node_pool_name?: string | null;
-  current_execution_id: string | null;
-  submission_revision: number;
-  claim_deadline_at: number | null;
-  first_claimed_at: number | null;
   workload_type: WorkloadTypeValue;
   computed_cloud_provider?: CloudType | null;
   region: string | null;
@@ -440,11 +391,6 @@ export interface WorkloadRow {
   checkpoint_storage_region: string | null;
   image_runtime: string | null; // 'cuda'|'rocm'|'unknown' (migration 0066). Raw TEXT; narrowed on read. Insert-only.
   dns_record_id: string | null;
-  // Node pool Service public endpoint (migration 0128): the entry IP the
-  // record was last published at and whether it is current.
-  public_endpoint_ip: string | null;
-  public_endpoint_state: string | null;
-  public_endpoint_error: string | null;
   secret_names: string | null; // JSON string[] in DB
   // Caller-supplied attribution (migration 0047). Insert-only, never mutated.
   session: string | null;
@@ -456,7 +402,7 @@ export interface WorkloadRow {
 const FIRST_WORKLOAD_VM_TYPE_SQL = `CASE
   WHEN json_valid(d.vm_type) AND json_type(d.vm_type) = 'array'
   THEN json_extract(d.vm_type, '$[0]') ELSE d.vm_type END`;
-const PUBLIC_WORKLOAD_COLUMNS = `d.id, d.user_id, d.owner_user_id, d.deployment_id, d.node_pool_id, d.current_execution_id, d.submission_revision, d.claim_deadline_at, d.first_claimed_at, d.workload_type, d.region, d.vm_type, d.gpu_type, d.spot, d.state, d.started_at, d.submitted_at, d.completed_at, d.cleaned_at, d.cleanup_error, d.end_reason, d.last_attempt_end_reason, d.max_retries, d.no_checkpoint, d.require_nested_virtualization, d.host_docker, d.docker_command, d.input_bucket, d.output_bucket, d.checkpoint_bucket, d.disk_size_gb, d.disk_tier, d.disk_iops, d.disk_throughput_mibps, d.regions, d.availability_zone, d.credential_id, d.requested_compute_provider, d.input_storage_credential_id, d.input_storage_region, d.output_storage_credential_id, d.output_storage_region, d.checkpoint_storage_credential_id, d.checkpoint_storage_region, d.image_runtime, d.dns_record_id, d.public_endpoint_ip, d.public_endpoint_state, d.public_endpoint_error, d.secret_names, d.session, d.agent, d.session_label`;
+const PUBLIC_WORKLOAD_COLUMNS = `d.id, d.user_id, d.owner_user_id, d.workload_type, d.region, d.vm_type, d.gpu_type, d.spot, d.state, d.started_at, d.submitted_at, d.completed_at, d.cleaned_at, d.cleanup_error, d.end_reason, d.last_attempt_end_reason, d.max_retries, d.no_checkpoint, d.require_nested_virtualization, d.host_docker, d.docker_command, d.input_bucket, d.output_bucket, d.checkpoint_bucket, d.disk_size_gb, d.disk_tier, d.disk_iops, d.disk_throughput_mibps, d.regions, d.availability_zone, d.credential_id, d.requested_compute_provider, d.input_storage_credential_id, d.input_storage_region, d.output_storage_credential_id, d.output_storage_region, d.checkpoint_storage_credential_id, d.checkpoint_storage_region, d.image_runtime, d.dns_record_id, d.secret_names, d.session, d.agent, d.session_label`;
 
 /** The LEFT JOIN deliberately exposes missing children instead of hiding owners. */
 interface HydratedWorkloadRow
@@ -549,8 +495,6 @@ export interface WorkloadReconcileCandidate {
   revision: number;
   latestEventAt: number | null;
   completedAt: number | null;
-  deploymentId: string | null;
-  currentExecutionId: string | null;
 }
 
 interface WorkloadReconcileCandidateRow {
@@ -561,8 +505,6 @@ interface WorkloadReconcileCandidateRow {
   revision: number | null;
   latest_event_at: number | null;
   completed_at: number | null;
-  deployment_id: string | null;
-  current_execution_id: string | null;
 }
 
 function toWorkloadReconcileCandidate(
@@ -576,8 +518,6 @@ function toWorkloadReconcileCandidate(
     revision: row.revision ?? 0,
     latestEventAt: row.latest_event_at,
     completedAt: row.completed_at,
-    deploymentId: row.deployment_id,
-    currentExecutionId: row.current_execution_id,
   };
 }
 
@@ -626,7 +566,7 @@ export class WorkloadQueryStore {
   }
 
   /**
-   * Read authorized status and shared Deployment queue facts from one snapshot.
+   * Read authorized status from one snapshot.
    * `eventsLimit` keeps the most recent events (chronological order); `null`
    * returns the whole history. `eventsTotal` counts every event either way.
    */
@@ -638,9 +578,7 @@ export class WorkloadQueryStore {
     workload: StoredWorkload;
     events: WorkloadEventRow[];
     eventsTotal: number;
-    jobsAhead: number | null;
     retry: RetryCandidate | null;
-    attempt: number | null;
   } | null> {
     const owner = ownershipPredicate(scope, 'd');
     const now = Date.now();
@@ -670,77 +608,13 @@ export class WorkloadQueryStore {
           `SELECT COUNT(*) AS count FROM workload_events WHERE workload_id = ?`,
           [workloadId],
         )[0]?.count ?? events.length;
-      let jobsAhead: number | null = null;
-      if (
-        workload.workload_type === WorkloadType.Job &&
-        workload.deployment_id !== null &&
-        workload.state === WorkloadState.Queued &&
-        (workload.first_claimed_at !== null ||
-          workload.claim_deadline_at === null ||
-          workload.claim_deadline_at > now)
-      ) {
-        // Match discovery's submitted_at, id order, including SQLite's
-        // NULL-first timestamps. The subject is authorized above; every creator
-        // and session competes for the same Deployment's queue.
-        const queueParams = [workload.deployment_id, WorkloadState.Queued, now];
-        // Separate shapes keep every ordering arm range-constrained by the
-        // Deployment queue index; one OR predicate degrades to a full queue scan.
-        if (workload.submitted_at === null) {
-          jobsAhead =
-            tx.query<{ count: number }>(
-              `SELECT COUNT(*) AS count FROM workloads q
-               WHERE q.deployment_id = ? AND q.state = ?
-                 AND (q.first_claimed_at IS NOT NULL OR q.claim_deadline_at IS NULL OR q.claim_deadline_at > ?)
-                 AND q.submitted_at IS NULL AND q.id < ?`,
-              [...queueParams, workload.id],
-            )[0]?.count ?? 0;
-        } else {
-          jobsAhead =
-            tx.query<{ count: number }>(
-              `SELECT SUM(count) AS count
-               FROM (
-                 SELECT COUNT(*) AS count FROM workloads q
-                 WHERE q.deployment_id = ? AND q.state = ?
-                 AND (q.first_claimed_at IS NOT NULL OR q.claim_deadline_at IS NULL OR q.claim_deadline_at > ?)
-                   AND q.submitted_at IS NULL
-                 UNION ALL
-                 SELECT COUNT(*) AS count FROM workloads q
-                 WHERE q.deployment_id = ? AND q.state = ?
-                 AND (q.first_claimed_at IS NOT NULL OR q.claim_deadline_at IS NULL OR q.claim_deadline_at > ?)
-                   AND q.submitted_at < ?
-                 UNION ALL
-                 SELECT COUNT(*) AS count FROM workloads q
-                 WHERE q.deployment_id = ? AND q.state = ?
-                 AND (q.first_claimed_at IS NOT NULL OR q.claim_deadline_at IS NULL OR q.claim_deadline_at > ?)
-                   AND q.submitted_at = ? AND q.id < ?
-               )`,
-              [
-                ...queueParams,
-                ...queueParams,
-                workload.submitted_at,
-                ...queueParams,
-                workload.submitted_at,
-                workload.id,
-              ],
-            )[0]?.count ?? 0;
-        }
-      }
       let retry: RetryCandidate | null = null;
-      // Only the VM-host reconciler follows this backoff window (vmHostOwnedSql);
-      // targeted Jobs and node-pool Services retry on their own paths.
-      if (
-        workload.state === WorkloadState.Retrying &&
-        workload.deployment_id === null &&
-        workload.node_pool_id === null
-      ) {
+      // The VM-host reconciler follows this backoff window.
+      if (workload.state === WorkloadState.Retrying) {
         const { sql, params } = retryCandidatesQuery([workloadId]);
         retry = tx.query<RetryCandidate>(sql, params)[0] ?? null;
       }
-      const { attempt } = tx.query<{ attempt: number | null }>(
-        'SELECT MAX(attempt) AS attempt FROM workload_attempts WHERE workload_id = ?',
-        [workloadId],
-      )[0]!;
-      return { workload, events, eventsTotal, jobsAhead, retry, attempt };
+      return { workload, events, eventsTotal, retry };
     });
     if (!snapshot) return null;
     return { ...snapshot, workload: await toStoredWorkload(snapshot.workload) };
@@ -753,8 +627,7 @@ export class WorkloadQueryStore {
    *   `started_at >= sinceMs` window.
    *   `session`/`agent` match; `status` (exact state), `credentialId` (selected
    *   workload credential or actual VM credential), `stateClass` (picker
-   *   set), `workloadType` (job/service/vm), `deploymentId` (exact Deployment
-   *   target), and `search` (literal substring across id/type/image/cloud/
+   *   set), `workloadType` (job/service/vm), and `search` (literal substring across id/type/image/cloud/
    *   region/state/session/agent) narrow the set.
    *   Null/undefined fields are skipped. `limitExplicit` distinguishes a
    *   caller-specified `-n`/`limit` (honored as a hard cap, active rows
@@ -773,7 +646,6 @@ export class WorkloadQueryStore {
       stateClass?: ListStateClass;
       status?: WorkloadState;
       workloadType?: WorkloadTypeValue;
-      deploymentId?: string;
       credentialId?: string;
       search?: string;
       user?: string;
@@ -792,10 +664,6 @@ export class WorkloadQueryStore {
     if (filter?.workloadType) {
       extraFilters.push('d.workload_type = ?');
       filterParams.push(filter.workloadType);
-    }
-    if (filter?.deploymentId) {
-      extraFilters.push('d.deployment_id = ?');
-      filterParams.push(filter.deploymentId);
     }
     if (filter?.credentialId) {
       // Pinned: stale stats once rescanned a credential's VMs per workload.
@@ -833,7 +701,6 @@ export class WorkloadQueryStore {
       const cols = [
         'd.id',
         'd.workload_type',
-        'd.deployment_id',
         's.image',
         computedWorkloadCloudProviderSql('d'),
         'd.region',
@@ -1208,20 +1075,14 @@ export class WorkloadQueryStore {
       `WITH candidate_ids AS (
          SELECT id
          FROM workloads INDEXED BY idx_workloads_state_started
-         WHERE ${VM_HOST_OWNED_SQL} AND state IN (${pipeline})
+         WHERE state IN (${pipeline})
          UNION
          SELECT id
          FROM workloads INDEXED BY idx_workloads_state_started
          WHERE state = ?
-           AND ${VM_HOST_OWNED_SQL}
            AND (workload_type IN (?, ?) OR spot = 1
               OR (workload_type = ? AND ((checkpoint_storage_credential_id IS NOT NULL AND checkpoint_bucket IS NOT NULL)
                 OR secret_names IS NOT NULL)))
-         UNION
-         SELECT id
-         FROM workloads INDEXED BY idx_workloads_deployment
-         WHERE deployment_id IS NOT NULL
-           AND state IN (?, ?)
          UNION
          SELECT id
          FROM workloads INDEXED BY idx_workloads_pending_cleanup
@@ -1232,8 +1093,6 @@ export class WorkloadQueryStore {
               d.workload_type,
               d.spot,
               d.completed_at,
-              d.deployment_id,
-              d.current_execution_id,
               e.id AS revision,
               e.created_at AS latest_event_at
        FROM candidate_ids candidates
@@ -1252,8 +1111,6 @@ export class WorkloadQueryStore {
         WorkloadType.Job,
         WorkloadType.Vm,
         WorkloadType.Service,
-        WorkloadState.Running,
-        WorkloadState.Retrying,
         ...TERMINAL_STATES,
       ],
     );
@@ -1283,8 +1140,6 @@ export class WorkloadQueryStore {
               d.workload_type,
               d.spot,
               d.completed_at,
-              d.deployment_id,
-              d.current_execution_id,
               e.id AS revision,
               e.created_at AS latest_event_at
        FROM workloads d
@@ -1297,17 +1152,12 @@ export class WorkloadQueryStore {
        )
        WHERE d.id = ?
          AND (
-           (${vmHostOwnedSql('d')} AND d.state IN (${pipeline}))
+           d.state IN (${pipeline})
            OR (
              d.state = ?
-             AND ${vmHostOwnedSql('d')}
              AND (d.workload_type IN (?, ?) OR d.spot = 1
                 OR (d.workload_type = ? AND ((d.checkpoint_storage_credential_id IS NOT NULL AND d.checkpoint_bucket IS NOT NULL)
                   OR d.secret_names IS NOT NULL)))
-           )
-           OR (
-             d.deployment_id IS NOT NULL
-             AND d.state IN (?, ?)
            )
            OR (
              ${cleanupNeededSql('d')}
@@ -1320,8 +1170,6 @@ export class WorkloadQueryStore {
         WorkloadType.Job,
         WorkloadType.Vm,
         WorkloadType.Service,
-        WorkloadState.Running,
-        WorkloadState.Retrying,
         ...TERMINAL_STATES,
       ],
     );
@@ -1339,8 +1187,7 @@ export class WorkloadQueryStore {
       `WITH lane_load AS (
          SELECT ${laneKeySql('workloads')} AS lane_key, COUNT(*) AS active_count
          FROM workloads
-         WHERE ${VM_HOST_OWNED_SQL}
-           AND state IN (${placeholders})
+         WHERE state IN (${placeholders})
          GROUP BY lane_key
        ),
        ranked AS (
@@ -1352,7 +1199,7 @@ export class WorkloadQueryStore {
                 ) AS lane_position
          FROM workloads d
          LEFT JOIN lane_load l ON l.lane_key IS ${laneKeySql('d')}
-         WHERE d.state = ? AND ${vmHostOwnedSql('d')}
+         WHERE d.state = ?
        )
        SELECT * FROM ranked
        ORDER BY lane_active_count + lane_position ASC,
@@ -1371,8 +1218,7 @@ export class WorkloadQueryStore {
     const rows = await this.db.query<{ count: number }>(
       `SELECT COUNT(*) as count
        FROM workloads d
-       WHERE ${vmHostOwnedSql('d')}
-         AND d.state IN (${placeholders})`,
+       WHERE d.state IN (${placeholders})`,
       PROVISIONING_PIPELINE_STATES,
     );
     return rows[0]?.count ?? 0;
@@ -1436,8 +1282,7 @@ export class WorkloadQueryStore {
   async listLiveVmHostWorkloadIds(): Promise<string[]> {
     const rows = await this.db.query<{ id: string }>(
       `SELECT id FROM workloads
-       WHERE node_pool_id IS NULL
-         AND state NOT IN (${TERMINAL_STATES.map(() => '?').join(', ')})
+       WHERE state NOT IN (${TERMINAL_STATES.map(() => '?').join(', ')})
        ORDER BY id`,
       [...TERMINAL_STATES],
     );
@@ -1480,20 +1325,6 @@ async function toStoredWorkload(
   row: HydratedWorkloadRow,
 ): Promise<StoredWorkload> {
   assertSpecOwnership(row);
-  if (row.deployment_id !== null) {
-    // A pool Job's image and command; its env stays with its runner.
-    const { image } = row;
-    return {
-      ...workloadFromRow(
-        row,
-        image ? decodePublicContainerSpec({ ...row, image }, row.id) : null,
-      ),
-      env: null,
-      githubToken: null,
-      registryUsername: null,
-      sshPrivateKey: '',
-    };
-  }
   assertRuntimeSpec(row);
   const spec = await decodeContainerSpec(row, `Workload ${row.id}`);
   return {
@@ -1520,13 +1351,6 @@ function workloadFromRow(
   return {
     id: row.id,
     userId: row.user_id,
-    deploymentId: row.deployment_id,
-    nodePoolId: row.node_pool_id,
-    nodePoolName: row.node_pool_name ?? null,
-    currentExecutionId: row.current_execution_id,
-    submissionRevision: row.submission_revision,
-    claimDeadlineAt: row.claim_deadline_at,
-    firstClaimedAt: row.first_claimed_at,
     workloadType: row.workload_type,
     image: spec?.image ?? null,
     cloudProvider:
@@ -1573,7 +1397,6 @@ function workloadFromRow(
     totalCost: row.total_cost ?? null,
     costSource: row.cost_source ?? null,
     dnsRecordId: row.dns_record_id,
-    publicEndpoint: parsePublicEndpoint(row),
     secretNames: row.secret_names
       ? (JSON.parse(row.secret_names) as string[])
       : null,

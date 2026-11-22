@@ -7,12 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
 import time
-from uuid import UUID
 
-from anycloud.api.deployment_workload_api import DeploymentWorkloadApi
+from anycloud.api.workloads_api import WorkloadsApi
 from anycloud.api_client import ApiClient
 from anycloud.configuration import Configuration
-from anycloud.models.workload_claim_job_body import WorkloadClaimJobBody
+from anycloud.models.workload_resubmit_body import WorkloadResubmitBody
 from anycloud.sync_helper import run_sync
 from anycloud_workflows._request_deadline import (
     RequestDeadlineExceeded,
@@ -21,7 +20,6 @@ from anycloud_workflows._request_deadline import (
 
 
 def qualify_request_deadlines() -> None:
-    execution = UUID("746f1b96-e089-4bf5-9052-480cd27cf5ed")
     slow = threading.Event()
     observed: list[str] = []
 
@@ -29,21 +27,15 @@ def qualify_request_deadlines() -> None:
         def log_message(self, *_args: object) -> None:
             pass
 
-        def do_GET(self) -> None:
-            self.respond(
-                {"jobId": "job-1", "submissionRevision": 0, "previousExecutionId": None}
-            )
-
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", "0"))
-            body = json.loads(self.rfile.read(length))
-            assert body == {"submissionRevision": 0, "previousExecutionId": None}
-            self.respond({"jobId": "job-1", "executionId": str(execution)})
+            assert json.loads(self.rfile.read(length)) == {}
+            self.respond({"message": "Resubmitted job-1"})
 
         def respond(self, payload: dict[str, object]) -> None:
             observed.append(self.path)
             body = json.dumps(payload).encode()
-            self.send_response(200)
+            self.send_response(202)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -62,18 +54,9 @@ def qualify_request_deadlines() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     client = ApiClient(Configuration(host=f"http://127.0.0.1:{server.server_port}/v1"))
-    api = DeploymentWorkloadApi(client)
+    api = WorkloadsApi(client)
     operations = [
-        (api.discover_deployment_job_candidate, ("deployment-1",)),
-        (
-            api.claim_deployment_job,
-            (
-                "deployment-1",
-                "job-1",
-                execution,
-                WorkloadClaimJobBody(submissionRevision=0, previousExecutionId=None),
-            ),
-        ),
+        (api.resubmit_workload, ("job-1", "0.0.0", WorkloadResubmitBody())),
     ]
     try:
         for operation, args in operations:
@@ -88,9 +71,8 @@ def qualify_request_deadlines() -> None:
             assert time.monotonic() - start < 0.4
             slow.clear()
             result = request_with_deadline(operation, *args, deadline=time.monotonic() + 2)
-            assert result.job_id == "job-1"
-        assert any(path.endswith("/candidate") for path in observed)
-        assert any(path.endswith("/claim") for path in observed)
+            assert result.message == "Resubmitted job-1"
+        assert any(path.endswith("/workloads/job-1/resubmissions") for path in observed)
     finally:
         run_sync(client.close())
         server.shutdown()

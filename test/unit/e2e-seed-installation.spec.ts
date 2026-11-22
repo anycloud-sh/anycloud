@@ -419,15 +419,13 @@ describe('seed installation through the cloud CLIs', () => {
   });
 
   it('takes a --json command only as one document on stdout', () => {
-    expect(
-      parseOneDocument(result('{"id":"c-1"}\n'), 'cluster create'),
-    ).toEqual({
+    expect(parseOneDocument(result('{"id":"c-1"}\n'), 'api create')).toEqual({
       id: 'c-1',
     });
     expect(() =>
       parseOneDocument(
         result('{"level":"info"}\n{"id":"c-1"}\n'),
-        'cluster delete',
+        'api delete',
       ),
     ).toThrow(/no single JSON document/);
   });

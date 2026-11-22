@@ -20,7 +20,7 @@ export async function seedWorkloadRows(
       tx.query(
         `INSERT INTO container_specs (workload_id, image, registry_username)
          SELECT d.id, ?, ? FROM workloads d
-         WHERE d.user_id = ? AND d.deployment_id IS NULL
+         WHERE d.user_id = ?
            AND NOT EXISTS (SELECT 1 FROM container_specs s WHERE s.workload_id = d.id)`,
         [image, owner.encrypted, owner.username],
       );

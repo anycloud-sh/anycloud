@@ -7,7 +7,7 @@ import {
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lookup } from 'node:dns/promises';
+import * as semver from 'semver';
 import { z } from 'zod';
 import type { DeleteReport } from '../../../../../../src/cli/services/seed-delete.js';
 
@@ -17,21 +17,13 @@ import {
   clusterSummarySchema,
   type ClusterSummary,
 } from '../../../../../../src/shared/api-contract/clusters-schemas.js';
-import type { CloudCredential } from '../../../../../../src/shared/api-contract/credentials-schemas.js';
 import { seedInstallation, type SeedInstallation } from './seed.js';
 import { CloudType } from '../../../../../../src/shared/cloud.js';
-import {
-  JOIN_REVISION_NODE_LABEL,
-  NODE_POOL_JOIN_REVISION,
-  NODE_POOL_MEMBER_LABEL,
-  nodePoolNamespace,
-} from '../../../../../../src/api/services/kubernetes/node-pool-scheduling.js';
 import { WorkloadState } from '../../../../../../src/shared/workload.js';
 import type { ArtifactStore } from '../../artifacts.js';
 import type { CleanupStack } from '../../cleanup.js';
 import type { CliClient } from '../../cli.js';
 import { cliArgs, type CliPath } from '../../cli-surface.js';
-import { CliDatabase, escapedSql } from '../../database.js';
 import type { ProcessRunner } from '../../process.js';
 import type { VmProfile } from '../../profiles.js';
 import type { TargetHttpClient } from '../../transports/http.js';
@@ -54,64 +46,60 @@ import {
 } from '../../../../../../src/api/services/gateways/cloud.js';
 import { clusterApiUrl } from '../../../../../../src/shared/api-ingress.js';
 import { SERVICE_ACCOUNT_ISSUER_DISCOVERY_PATH } from '../../../../../../src/api/services/kubernetes/service-account-issuer.js';
-import { NVIDIA_DEVICE_PLUGIN_NAME } from '../../../../../../src/api/services/kubernetes/nvidia-device-plugin.js';
 import type {
   DeadApiDeleteRecord,
   KeptBucketRecord,
   ServiceAccountIssuerRecord,
 } from '../../contracts/cluster-cloud.js';
-import type { PoolColdStartTimes } from '../../contracts/gpu-cold-start.js';
 import { AzurePoolInventory } from './azure-pool.js';
-import { poolColdStartTimes } from './cold-start.js';
 import { GcpPoolInventory } from './gcp-pool.js';
-import { LambdaPoolInventory } from './lambda-pool.js';
 import { E2E_CLUSTER_NAME_PREFIX } from './names.js';
-import { credentialsNewArgs, STORAGE_CREDENTIAL } from './hosted-stage.js';
 import {
-  hostedKubeConfig,
   readHelmState,
   readHostedPodLogs,
-  secretsMatching,
   withinDeadline,
 } from './hosted-pod-logs.js';
 
-type PoolProvider = 'aws' | 'gcp' | 'azure' | 'lambda';
+type ClusterProvider = 'aws' | 'gcp' | 'azure';
 
 /**
- * The management VM's resource scope (`clusters-domain.ts` clusterScope): its
- * VM and network carry `anycloud_resource=<scope>` on GCP and Azure, as a
- * pool's carry the pool id, so the pool inventories read them too.
+ * The management VM's resource scope (`clusterNetworkScope`): its
+ * VM and network carry `anycloud_resource=<scope>` on GCP and Azure, which
+ * the GCP and Azure inventories read.
  */
 export function managementScope(clusterId: string): string {
   return `anycloud-cluster-${clusterId}`.slice(0, 63);
 }
 
-function providerOf(cloud: CloudType): PoolProvider {
+function providerOf(cloud: CloudType): ClusterProvider | null {
   return cloud === CloudType.GCP
     ? 'gcp'
     : cloud === CloudType.Azure
       ? 'azure'
-      : cloud === CloudType.Lambda
-        ? 'lambda'
-        : 'aws';
+      : cloud === CloudType.AWS
+        ? 'aws'
+        : null;
 }
 
-type PoolInventory = Pick<
+type ClusterInventory = Pick<
   GcpPoolInventory,
-  'liveInstances' | 'networkLeftovers' | 'terminateInstance'
-> &
-  Partial<Pick<GcpPoolInventory, 'spotEviction' | 'instanceLaunches'>>;
+  'liveInstances' | 'networkLeftovers'
+>;
 
 /**
- * Every `anycloud cluster …` verb the member drives lives here, typed against
+ * Every create and delete verb this tree's CLI runs lives here, typed against
  * the generated CLI surface, so a renamed verb is a compile error in this
  * file alone.
  */
-const CLUSTER_CREATE = 'cluster create' satisfies CliPath;
-const CLUSTER_DELETE = 'cluster delete' satisfies CliPath;
+const API_CREATE = 'api create' satisfies CliPath;
+const API_DELETE = 'api delete' satisfies CliPath;
+
+/** The group a `from_release` CLI creates and deletes with: 0.1.80 and earlier had `cluster create|delete`. */
+const releasedLifecycleGroup = (version: string): 'cluster' | 'api' =>
+  semver.lte(version, '0.1.80') ? 'cluster' : 'api';
 
 /**
- * Lane S6's `cluster delete --json` report (`DeleteReport`): what was deleted
+ * Lane S6's `api delete --json` report (`DeleteReport`): what was deleted
  * and what remains (RFC 0049 C26 (d), C28), each resource once.
  */
 const deleteEntrySchema = z.discriminatedUnion('kind', [
@@ -172,18 +160,10 @@ function entryName(entry: ParsedDeleteReport['deleted'][number]): string {
 }
 
 const CLUSTER_LIST = 'cluster list' satisfies CliPath;
-const API_UPGRADE = 'api upgrade' satisfies CliPath;
 
 /** Tags the product puts on the AWS resources this member creates. */
 const CLUSTER_TAG = 'anycloud_cluster';
-const RESOURCE_SCOPE_TAG = 'anycloud_resource';
 const BACKUP_OBJECT_KEY = 'anycloud-api/database.sqlite';
-/**
- * Every installer inventory read owns this budget, independent of the time an
- * outer wait has left: a read that fails must report how it failed, and the
- * wait that runs out reports that in its own words.
- */
-const INVENTORY_READ_BUDGET_MS = 30_000;
 /** The hosted Pod log capture's bound, so a hung read never holds the cleanup. */
 const HOSTED_LOGS_DEADLINE_MS = 60_000;
 
@@ -192,51 +172,36 @@ export interface CloudClusterEnvironmentOptions {
   readonly cleanup: CleanupStack;
   readonly cli: Pick<CliClient, 'run'>;
   /**
-   * `from_release`: the installer runs this published release, whose CLI
-   * saves the credentials and creates the cluster; this tree's `api upgrade`
-   * then moves the installer (its data in `installerDirectory`) to this tree.
+   * `from_release`: this published release's CLI creates the cluster, reads
+   * and deletes it until the hosted stage's `api upgrade` moves its hosted
+   * API to this tree.
    */
   readonly fromRelease?: {
     readonly cli: Pick<CliClient, 'run'>;
     readonly version: string;
-    readonly installerDirectory: string;
   };
-  readonly database: CliDatabase;
-  /** `from_release`: the installer's data directory, whose cipher key opens its cluster connection. */
-  readonly installerDirectory?: string;
   readonly http: Pick<TargetHttpClient, 'get'>;
   /**
    * The management VM's cloud credential; AWS, GCP or Azure. The runner's
-   * cloud CLI is signed in as it, and this tree's `cluster create` and
-   * `cluster delete` drive that CLI as the user's session (RFC 0049 C26 (e));
-   * only a released installer saves it.
+   * cloud CLI is signed in as it, and this tree's `api create` and
+   * `api delete` (a `from_release` CLI's `cluster create` and `delete`)
+   * drive that CLI as the user's session (RFC 0049 C26 (e)).
    */
   readonly profile: VmProfile;
   readonly region: string;
   readonly managementVmType: string;
   /** Test seams for a GCP or Azure management VM: its VM and network, and its checkpoint buckets. */
-  readonly clusterInventory?: PoolInventory;
+  readonly clusterInventory?: ClusterInventory;
   readonly clusterStorage?: CloudBucketLister;
   /** Tests: removes the bucket a delete kept, instead of the storage gateway. */
   readonly clusterBucketDeleter?: { deleteBucket(name: string): Promise<void> };
-  /** Where the node pool's VMs run: AWS, or GCP or Azure for the cross-cloud run. `inventory` is a test seam. */
-  readonly pool: {
-    readonly profile: VmProfile;
-    /** Null for an unpinned pool. */
-    readonly region: string | null;
-    readonly vmTypes: readonly string[];
-    readonly spot?: boolean;
-    readonly inventory?: PoolInventory;
-  };
   readonly runId: string;
   readonly runner: Pick<ProcessRunner, 'run'>;
   readonly wait: Pick<Waiter, 'for'>;
-  /** The account that published the installation's DNS record; `fetch`, the resolution and `lookup4` are test seams. */
+  /** The account that published the installation's DNS record; `fetch` and the resolution are test seams. */
   readonly dns: DnsResolutionOptions & {
     readonly token: string;
     readonly fetch?: typeof fetch;
-    /** The runner's own resolver, IPv4 only, as the CLI's fetch sees it. */
-    readonly lookup4?: (hostname: string) => Promise<unknown>;
   };
 }
 
@@ -256,16 +221,14 @@ export interface NativeLeftovers {
 export interface CloudClusterRunRecord {
   readonly runId: string;
   readonly region: string;
-  readonly clusterProvider: Exclude<PoolProvider, 'lambda'>;
-  readonly poolProvider: PoolProvider;
+  readonly clusterProvider: ClusterProvider;
   readonly installationId: string | null;
   /**
    * The hosted API's `anycloud_owner_api` tag value, known once bootstrap
-   * returns: every pool and Job VM that API creates carries it. Absent with an
+   * returns: every VM that API creates carries it. Absent with an
    * installation id, the cluster never reached running.
    */
   readonly hostedApiIdentity: string | null;
-  readonly nodePoolIds: readonly string[];
 }
 
 const versionSchema = z.object({ version: z.string().min(1) }).loose();
@@ -275,59 +238,21 @@ const issuerDiscoverySchema = z
 const jwksSchema = z
   .object({ keys: z.array(z.object({ kid: z.string() }).loose()) })
   .loose();
-/** A released installer's cluster, read only for its id. */
-const createdSchema = z.object({ id: z.string().min(1) }).loose();
-/**
- * A released installer's cluster record, read loosely: 0.1.65 reports
- * `bootstrapping`, `ready`, `failed` and `destroyed`; 0.1.66 the workload
- * states, from `provisioning` to `running`, `failed` and `terminated`.
- */
-const releasedClusterSchema = z
-  .object({
-    name: z.string(),
-    state: z.string(),
-    releasing: z.boolean().optional(),
-    lastError: z.string().nullable().optional(),
-    apiImage: z.string().nullable().optional(),
-    release: z.object({ apiImage: z.string() }).loose().nullable().optional(),
-  })
-  .loose();
-type ReleasedCluster = z.output<typeof releasedClusterSchema>;
-/**
- * Creation still running (0.1.65's `bootstrapping`, then the workload states
- * a released or this tree's installer reports); `cluster delete` is refused
- * until it settles.
- */
-const CLUSTER_CREATING: readonly string[] = [
-  'bootstrapping',
-  'provisioning',
-  'initializing',
-  'starting',
-];
-const RELEASED_CLUSTER_UP: readonly string[] = ['ready', 'running'];
-/**
- * An installer released before this fix looks its host up before Cloudflare
- * serves it, and the runner's resolver caches that NXDOMAIN for the zone's
- * 1800 s negative TTL. Both bounds run from the Release step
- * (`starting`). Until the floor some caches behind the resolver still serve
- * that NXDOMAIN while others answer A, so no lookup can end the wait sooner.
- */
-const RELEASED_NXDOMAIN_FLOOR_MS = (1800 + 90) * 1000;
-const RELEASED_NXDOMAIN_DEADLINE_MS = 35 * 60_000;
-const RELEASED_DNS_INTERVAL_MS = 15_000;
-const CLUSTER_GONE: readonly string[] = ['destroyed', 'terminated'];
 /**
  * Cleanup's own bound for a running creation to settle before delete. With
  * the 40-minute bootstrap and the 15-minute delete it leaves five minutes of
  * the 65-minute test budget (130 with from_release) for the sweeps.
  */
 const CLEANUP_SETTLE_MS = 300_000;
+/**
+ * A cluster as a `from_release` CLI prints it, unknown fields dropped: it
+ * prints fields this tree removed (0.1.80's `activeNodePoolCount`).
+ */
+const releasedClusterSchema = z.object(clusterSummarySchema.shape);
 /** Create prints the cluster's id once it is recorded, before any cloud mutation. */
 const CREATED_ID = /\(ID: (?<id>[^)\s]+)\)/u;
 /** This tree's delete of a cluster the hosted API doesn't know: create failed before the API answered. */
 const NO_LEDGER = /create ledgers nor the active API know cluster/u;
-/** The installer refuses a CLI of another version. */
-const INSTALLER_VERSION_MISMATCH = /must exactly match API version/u;
 /** Delete asks the hosted API for its node pools, and an older one refuses this CLI. */
 const HOSTED_API_OLDER =
   /hosted API at (?<url>\S+) refused this CLI's version: the hosted API \([^)]+\) is older than this CLI \((?<cli>[^)]+)\)/u;
@@ -364,39 +289,31 @@ function parseJson(result: CommandResult, operation: string): unknown {
 }
 
 /**
- * Real-cloud sibling of the local cluster: this tree's CLI bootstraps the
- * management VM in its own process (a `from_release` run, the released
- * installer), node pools join it through the hosted API and the production
- * join path, and every resource is swept natively afterwards.
+ * Real-cloud sibling of the local cluster: this tree's CLI (a `from_release`
+ * run's released CLI) bootstraps the management VM through the runner's
+ * cloud CLI session, and every resource is swept natively afterwards.
  */
 export class CloudClusterEnvironment {
   readonly #options: CloudClusterEnvironmentOptions;
-  readonly #nodePoolIds = new Set<string>();
   readonly #clusterName: string;
-  readonly #poolInventory: PoolInventory | null;
   /** A GCP or Azure management VM's VM and network; null on AWS, which reads them with the AWS CLI. */
-  readonly #clusterInventory: PoolInventory | null;
+  readonly #clusterInventory: ClusterInventory | null;
   #cluster: ClusterSummary | undefined;
   #destroyed = false;
-  /** What this tree's `cluster delete` deleted and kept (RFC 0049 C26 (d), C28). */
+  /** What this tree's `api delete` deleted and kept (RFC 0049 C26 (d), C28). */
   #deleteResult: ParsedDeleteReport | undefined;
   #keptBucketRemoved = false;
-  /** `from_release`: set once this CLI's `api upgrade` has moved the installer to this tree. */
-  #installerUpgraded = false;
   /** The hosted stage sent `api upgrade`: an older hosted API may still be rolling out. */
   #hostedUpgradeRequested = false;
-  /** This run's installation id, known once `cluster create` returns it. */
+  /** This run's installation id, known once `api create` returns it. */
   #installationId: string | undefined;
-  /** Bootstrap waited out its budget for creation to settle: cleanup does not wait again. */
-  #creationStuck = false;
-  /** This tree's `cluster create` ran: its installation may need deleting. */
+  /** This tree's `api create` ran: its installation may need deleting. */
   #createStarted = false;
   /** The runner's cloud CLI session, signed in once per run. */
   #session: Promise<Record<string, string | undefined>> | undefined;
   /** The e2e access kubeconfig, read from the checkpoint bucket after create. */
   #accessKubeConfig: string | undefined;
   #objectFile: Promise<string> | undefined;
-  #prepared = false;
 
   constructor(options: CloudClusterEnvironmentOptions) {
     this.#options = options;
@@ -409,31 +326,15 @@ export class CloudClusterEnvironment {
           ? (options.clusterInventory ??
             new AzurePoolInventory(cluster.credential, options.region))
           : null;
-    const pool = options.pool;
-    if (pool.profile.provider === CloudType.GCP) {
-      this.#poolInventory =
-        pool.inventory ?? new GcpPoolInventory(pool.profile.credential);
-    } else if (pool.profile.provider === CloudType.Azure) {
-      this.#poolInventory =
-        pool.inventory ??
-        new AzurePoolInventory(pool.profile.credential, pool.region!);
-    } else if (pool.profile.provider === CloudType.Lambda) {
-      this.#poolInventory =
-        pool.inventory ?? new LambdaPoolInventory(pool.profile.credential);
-    } else {
-      this.#poolInventory = pool.inventory ?? null;
-    }
-  }
-
-  get poolProvider(): PoolProvider {
-    return providerOf(this.#options.pool.profile.provider);
   }
 
   /** The management VM's cloud; everything cluster-side is read there. */
-  get clusterProvider(): Exclude<PoolProvider, 'lambda'> {
+  get clusterProvider(): ClusterProvider {
     const provider = providerOf(this.#options.profile.provider);
-    if (provider === 'lambda') {
-      throw new Error('The live cluster member runs no cluster on Lambda');
+    if (!provider) {
+      throw new Error(
+        `The live cluster member runs no cluster on ${this.#options.profile.provider}`,
+      );
     }
     return provider;
   }
@@ -444,32 +345,6 @@ export class CloudClusterEnvironment {
    */
   get bucket(): string {
     return this.cluster().id;
-  }
-
-  /**
-   * `from_release`: the released installer's `cluster create --credentials`
-   * reads the cluster's credential and its local API the pool's, which its
-   * own CLI saves (it refuses this tree's client version). This tree's create
-   * drives the runner's signed-in cloud CLI instead, and its pools are the
-   * hosted API's.
-   */
-  async prepare(): Promise<void> {
-    if (this.#prepared) return;
-    this.#prepared = true;
-    const { profile, pool, fromRelease } = this.#options;
-    if (!fromRelease) return;
-    const saved = new Map<string, CloudCredential>([
-      [profile.credentialName, profile.credential],
-      [pool.profile.credentialName, pool.profile.credential],
-    ]);
-    for (const [name, material] of saved) {
-      successful(
-        await fromRelease.cli.run(credentialsNewArgs(name, material), {
-          label: 'released-credentials-new',
-        }),
-        'credentials new (released installer)',
-      );
-    }
   }
 
   /**
@@ -625,11 +500,10 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * `anycloud cluster create`, the seed: it drives the runner's cloud CLI,
+   * `anycloud api create`, the seed: it drives the runner's cloud CLI,
    * signed in as the cluster's credential, and returns once the hosted API
-   * answers; without `--checkpoint-bucket` the product manages the bucket. A
-   * released installer's create is polled to running instead. Destroy is
-   * registered before the request so a half-finished installation is still
+   * answers; without `--checkpoint-bucket` the product manages the bucket.
+   * Destroy is registered before the request so a half-finished installation is still
    * torn down through the product's own path.
    */
   async bootstrap(
@@ -637,110 +511,54 @@ export class CloudClusterEnvironment {
     destroyTimeoutMs = 900_000,
   ): Promise<ClusterSummary> {
     if (this.#cluster) throw new Error('Cluster already created');
-    const { fromRelease } = this.#options;
     // Cleanup runs newest first: the cloud CLI session is made before the
     // cluster's delete is registered, so that delete (this tree's, also after
     // a from_release upgrade) still has it.
     await this.#sessionEnvironment();
     this.#options.cleanup.defer(`cluster ${this.#clusterName}`, () =>
-      this.#destroyIfPresent(destroyTimeoutMs),
+      this.#destroyInProcess(destroyTimeoutMs),
     );
     // One budget for the whole bootstrap, however its steps divide it; a wait
     // never gets less than its 10 s poll interval.
     const deadline = Date.now() + timeoutMs;
     const remaining = () => Math.max(10_000, deadline - Date.now());
-    if (!fromRelease) return this.#bootstrapInProcess(remaining());
-    // The released `cluster create` waits for the cluster itself.
-    const result = successful(
-      // The released CLI's own surface: it creates through its local API.
-      await fromRelease.cli.run(
-        [
-          'cluster',
-          'create',
-          this.#clusterName,
-          '--credentials',
-          this.#options.profile.credentialName,
-          '--region',
-          this.#options.region,
-          '--vm-type',
-          this.#options.managementVmType,
-          '--json',
-        ],
-        { timeoutMs: remaining(), label: 'cluster-create' },
-      ),
-      'cluster create',
-    );
-    const { id } = createdSchema.parse(parseJson(result, 'cluster create'));
-    this.#installationId = id;
-    // Recorded before bootstrap runs: the workflow sweep scopes to this id.
-    await this.#recordRun();
-    let releasedAt: number | undefined;
-    const created = await this.#noteStuck(
-      this.#settled(
-        'released cluster creation settled',
-        async () => {
-          const released = await this.#releasedCluster(fromRelease.cli);
-          // From `starting` on, its Release step has published DNS.
-          const state = released?.state ?? 'bootstrapping';
-          if (state === 'starting' || !CLUSTER_CREATING.includes(state))
-            releasedAt ??= Date.now();
-          return released;
-        },
-        remaining(),
-        'fail',
-      ),
-    );
-    if (!created || !RELEASED_CLUSTER_UP.includes(created.state)) {
-      throw new Error(
-        `the ${fromRelease.version} installer's cluster is ${created?.state ?? 'absent'}: ${created?.lastError ?? ''}`,
-      );
-    }
-    // The operator's path: this CLI's `api upgrade` restarts the local API
-    // on its own release over the same data (`ANYCLOUD_UPDATE_BIN`).
-    const ran = await this.#options.cli.run(cliArgs(API_UPGRADE, {}), {
-      env: { ANYCLOUD_DIR: fromRelease.installerDirectory },
-      timeoutMs: 300_000,
-      label: 'installer-upgrade',
-    });
-    // From here the installer is presumed this tree's; cleanup falls back
-    // to the released CLI if it still refuses this one.
-    this.#installerUpgraded = true;
-    const upgraded = successful(ran, 'api upgrade (installer)');
-    if (
-      !upgraded.combined.includes(
-        `Local API server is on ${fromRelease.version};`,
-      )
-    ) {
-      throw new Error(
-        `api upgrade did not restart the ${fromRelease.version} installer: ${upgraded.combined}`,
-      );
-    }
-    // The upgraded installer holds the record, and this tree's `cluster list`
-    // reads hosted APIs: the cluster is read at its hosted API, with the
-    // pinned image the released installer reported.
-    const hosted = (
-      await this.#clusterList(
-        { API_URL: clusterApiUrl(id) },
-        'cluster-list-after-upgrade',
-      )
-    ).find((entry) => entry.id === id);
-    if (!hosted) {
-      throw new Error(`the hosted API of cluster ${id} does not list it`);
-    }
-    const cluster: ClusterSummary = {
-      ...hosted,
-      apiImage: created.apiImage ?? created.release?.apiImage ?? null,
-    };
-    await this.#resolvesAtRunner(cluster.managementApiUrl!, releasedAt!);
-    this.#cluster = cluster;
-    await this.#recordRun();
-    return cluster;
+    return this.#bootstrapInProcess(remaining());
   }
 
   /**
-   * This tree's create: the CLI prints the cluster's id first, which is
-   * recorded for the workflow's sweep even when create then fails or runs out
-   * of time, and on failure prints the failed cluster.
+   * The CLI that creates, lists and deletes the cluster: a `from_release`
+   * run's released CLI until the hosted stage asks for this tree's release,
+   * whose hosted API then refuses that CLI; this tree's otherwise.
+   */
+  #lifecycle(): {
+    cli: Pick<CliClient, 'run'>;
+    /** The command for argv built from this tree's `api` surface. */
+    argv: (args: string[]) => string[];
+    /** How a cluster it prints is read. */
+    cluster: z.ZodType<ClusterSummary>;
+  } {
+    const released = this.#options.fromRelease;
+    if (!released || this.#hostedUpgradeRequested) {
+      return {
+        cli: this.#options.cli,
+        argv: (args) => args,
+        cluster: clusterSummarySchema,
+      };
+    }
+    const group = releasedLifecycleGroup(released.version);
+    return {
+      cli: released.cli,
+      cluster: releasedClusterSchema,
+      argv: ([command, ...rest]) =>
+        command === 'api' ? [group, ...rest] : [command, ...rest],
+    };
+  }
+
+  /**
+   * The create (the released CLI's on a `from_release` run): the CLI prints
+   * the cluster's id first, which is recorded for the workflow's sweep even
+   * when create then fails or runs out of time, and on failure prints the
+   * failed cluster.
    */
   async #bootstrapInProcess(timeoutMs: number): Promise<ClusterSummary> {
     const deadline = Date.now() + timeoutMs;
@@ -750,16 +568,19 @@ export class CloudClusterEnvironment {
       rm(access, { recursive: true, force: true }),
     );
     this.#accessKubeConfig = join(access, 'kubeconfig');
-    const result = await this.#options.cli.run(
-      cliArgs(
-        CLUSTER_CREATE,
-        {
-          cloud: this.clusterProvider,
-          region: this.#options.region,
-          'vm-type': this.#options.managementVmType,
-          json: true,
-        },
-        [this.#clusterName],
+    const { cli, argv, cluster: printedClusterSchema } = this.#lifecycle();
+    const result = await cli.run(
+      argv(
+        cliArgs(
+          API_CREATE,
+          {
+            cloud: this.clusterProvider,
+            region: this.#options.region,
+            'vm-type': this.#options.managementVmType,
+            json: true,
+          },
+          [this.#clusterName],
+        ),
       ),
       {
         env: {
@@ -769,12 +590,12 @@ export class CloudClusterEnvironment {
           ANYCLOUD_E2E_ACCESS: '1',
         },
         timeoutMs,
-        label: 'cluster-create',
+        label: 'api-create',
       },
     );
     // A running cluster is the one JSON document; a failed or cut-short
     // create leaves only its printed id.
-    const printed = clusterSummarySchema.safeParse(
+    const printed = printedClusterSchema.safeParse(
       (() => {
         try {
           return JSON.parse(result.stdout) as unknown;
@@ -787,7 +608,6 @@ export class CloudClusterEnvironment {
     this.#installationId =
       cluster?.id ?? CREATED_ID.exec(result.combined)?.groups?.id;
     if (this.#installationId) await this.#recordRun();
-    if (result.timedOut) this.#creationStuck = true;
     if (
       !cluster ||
       cluster.state !== WorkloadState.Running ||
@@ -797,7 +617,7 @@ export class CloudClusterEnvironment {
     ) {
       await this.#captureConsole();
       throw new Error(
-        `cluster create failed (exit ${String(result.exitCode)}, timeout ${String(result.timedOut)}): ${cluster ? `${cluster.state}: ${cluster.lastError ?? ''}` : result.combined}`,
+        `api create failed (exit ${String(result.exitCode)}, timeout ${String(result.timedOut)}): ${cluster ? `${cluster.state}: ${cluster.lastError ?? ''}` : result.combined}`,
       );
     }
     this.#installationId = cluster.id;
@@ -855,41 +675,6 @@ export class CloudClusterEnvironment {
     await writeFile(this.#accessKubeConfig!, kubeconfig!, { mode: 0o600 });
   }
 
-  /** Waits out the cached NXDOMAIN, then for the runner's resolver to answer an A record for the hosted API. */
-  async #resolvesAtRunner(url: string, releasedAt: number): Promise<void> {
-    const host = new URL(url).hostname;
-    const lookup4 =
-      this.#options.dns.lookup4 ??
-      ((hostname: string) => lookup(hostname, { family: 4 }));
-    const floor = new Date(releasedAt + RELEASED_NXDOMAIN_FLOOR_MS);
-    process.stderr.write(
-      `Waiting until ${floor.toISOString()}, when ${host}'s cached NXDOMAIN has expired, then for the runner's resolver to answer an A record\n`,
-    );
-    await this.#options.wait.for(
-      `${host} A record at the runner's resolver`,
-      async () =>
-        Date.now() < floor.getTime()
-          ? `the cached NXDOMAIN may be served until ${floor.toISOString()}`
-          : lookup4(host).then(
-              () => undefined,
-              (error: unknown) =>
-                `no A record: ${(error as { code?: string }).code ?? errorMessage(error)}`,
-            ),
-      {
-        timeoutMs: Math.max(
-          RELEASED_DNS_INTERVAL_MS,
-          releasedAt + RELEASED_NXDOMAIN_DEADLINE_MS - Date.now(),
-        ),
-        intervalMs: RELEASED_DNS_INTERVAL_MS,
-        probeError: 'fail',
-        unmet: (failure) => failure,
-      },
-    );
-    process.stderr.write(
-      `${host} answered an A record at ${new Date().toISOString()}\n`,
-    );
-  }
-
   cluster(): ClusterSummary {
     if (!this.#cluster) throw new Error('Cluster is not created');
     return this.#cluster;
@@ -907,11 +692,12 @@ export class CloudClusterEnvironment {
     env: Record<string, string>,
     label: string,
   ): Promise<readonly ClusterSummary[]> {
+    const { cli, cluster } = this.#lifecycle();
     // `cluster list --json` prints the array, not the API response.
-    return z.array(clusterSummarySchema).parse(
+    return z.array(cluster).parse(
       parseJson(
         successful(
-          await this.#options.cli.run(cliArgs(CLUSTER_LIST, { json: true }), {
+          await cli.run(cliArgs(CLUSTER_LIST, { json: true }), {
             env,
             timeoutMs: 60_000,
             label,
@@ -1018,49 +804,7 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * `cluster delete` while the hosted API still manages a node pool: refused
-   * before anything is touched, naming the `node-pool delete` step. Returns
-   * the refusal text; throws when deletion was accepted instead.
-   */
-  async destroyRefused(): Promise<string> {
-    const result = await this.#options.cli.run(
-      cliArgs(CLUSTER_DELETE, {}, [this.#clusterName]),
-      {
-        env: {
-          ...(await this.#sessionEnvironment()),
-          ...this.#clusterApiEnvironment(),
-        },
-        timeoutMs: 120_000,
-        label: 'cluster-delete-refused',
-      },
-    );
-    if (result.exitCode === 0) {
-      throw new Error(
-        `cluster delete was accepted while the hosted API still manages a node pool: ${result.combined}`,
-      );
-    }
-    if (
-      !/anycloud node-pool delete <name>, then anycloud cluster delete [^ ]+ again/u.test(
-        result.combined,
-      )
-    ) {
-      throw new Error(
-        `cluster delete was refused without naming the steps: ${result.combined}`,
-      );
-    }
-    const cluster = (await this.clusters()).find(
-      (entry) => entry.id === this.cluster().id,
-    );
-    if (cluster?.state !== WorkloadState.Running) {
-      throw new Error(
-        `a refused destroy changed the cluster to ${cluster?.state ?? 'absent'}`,
-      );
-    }
-    return result.combined;
-  }
-
-  /**
-   * `cluster delete`, through the runner's signed-in cloud CLI as the
+   * `api delete`, through the runner's signed-in cloud CLI as the
    * user's session; it returns once the cluster is gone. It keeps the managed
    * checkpoint bucket after a final backup unless `deleteBuckets` (RFC 0049
    * C28), which needs `--confirm` without a terminal.
@@ -1080,22 +824,25 @@ export class CloudClusterEnvironment {
   /** The delete itself, also for cleanup, when create may have recorded no cluster. */
   async #delete(timeoutMs: number, deleteBuckets: boolean): Promise<void> {
     const id = this.#installationId ?? this.#clusterName;
+    const { cli, argv } = this.#lifecycle();
     const result = deleteReportSchema.parse(
       parseJson(
         successful(
-          await this.#options.cli.run(
-            cliArgs(
-              CLUSTER_DELETE,
-              {
-                json: true,
-                // Used only when the hosted API no longer answers.
-                cloud: this.clusterProvider,
-                region: this.#options.region,
-                ...(deleteBuckets
-                  ? { 'delete-buckets': true, confirm: id }
-                  : {}),
-              },
-              [id],
+          await cli.run(
+            argv(
+              cliArgs(
+                API_DELETE,
+                {
+                  json: true,
+                  // Used only when the hosted API no longer answers.
+                  cloud: this.clusterProvider,
+                  region: this.#options.region,
+                  ...(deleteBuckets
+                    ? { 'delete-buckets': true, confirm: id }
+                    : {}),
+                },
+                [id],
+              ),
             ),
             {
               env: {
@@ -1103,12 +850,12 @@ export class CloudClusterEnvironment {
                 ...this.#clusterApiEnvironment(),
               },
               timeoutMs,
-              label: 'cluster-delete',
+              label: 'api-delete',
             },
           ),
-          'cluster delete',
+          'api delete',
         ),
-        'cluster delete',
+        'api delete',
       ),
     );
     if (
@@ -1117,7 +864,7 @@ export class CloudClusterEnvironment {
         result.clusterId !== this.#installationId)
     ) {
       throw new Error(
-        `cluster delete reported ${result.outcome} for ${result.clusterId}: ${JSON.stringify(result.remaining)}`,
+        `api delete reported ${result.outcome} for ${result.clusterId}: ${JSON.stringify(result.remaining)}`,
       );
     }
     this.#destroyed = true;
@@ -1128,7 +875,7 @@ export class CloudClusterEnvironment {
    * The cluster deleted as from a second machine once its API is gone (RFC
    * 0049 C26 (c), lane S6): the runner's cloud CLI stops the management VM,
    * and once `https://<id>.anycloud.sh` no longer answers, this tree's CLI,
-   * in a fresh home that knows only the cluster's hostname, runs `cluster delete
+   * in a fresh home that knows only the cluster's hostname, runs `api delete
    * <id> --cloud --region`, which plans and deletes nothing, then with
    * `--delete-vms`, `--delete-buckets` and `--skip-cloud`.
    */
@@ -1143,7 +890,7 @@ export class CloudClusterEnvironment {
     const run = async (flags: string[], expected: string | undefined) => {
       const result = await this.#options.cli.run(
         cliArgs(
-          CLUSTER_DELETE,
+          API_DELETE,
           {
             cloud: this.clusterProvider,
             region: this.#options.region,
@@ -1164,15 +911,15 @@ export class CloudClusterEnvironment {
             API_URL: cluster.managementApiUrl!,
           },
           timeoutMs,
-          label: `cluster-delete-dead-api${flags[0] ?? ''}`,
+          label: `api-delete-dead-api${flags[0] ?? ''}`,
         },
       );
       const report = deleteReportSchema.parse(
-        parseJson(successful(result, 'cluster delete'), 'cluster delete'),
+        parseJson(successful(result, 'api delete'), 'api delete'),
       );
       if (expected !== undefined && report.outcome !== expected) {
         throw new Error(
-          `cluster delete ${flags.join(' ')} with the API gone: ${report.outcome}, not ${expected}`,
+          `api delete ${flags.join(' ')} with the API gone: ${report.outcome}, not ${expected}`,
         );
       }
       const deleted = report.deleted.map(entryName);
@@ -1216,7 +963,7 @@ export class CloudClusterEnvironment {
       },
     );
     if ((await run([], 'planned')).deleted.length > 0) {
-      throw new Error('cluster delete without --delete-vms deleted something');
+      throw new Error('api delete without --delete-vms deleted something');
     }
     await run(['--delete-vms', '--confirm', id], 'destroyed');
     const buckets = await run(
@@ -1226,7 +973,7 @@ export class CloudClusterEnvironment {
     // The sweep reads the cloud for the bucket, after its own settle wait.
     if (!deletedBucket(buckets, id)) {
       throw new Error(
-        `cluster delete --delete-buckets did not report the bucket ${id} deleted`,
+        `api delete --delete-buckets did not report the bucket ${id} deleted`,
       );
     }
     // Nothing left in the cloud: cleanup's fallback would only be refused.
@@ -1243,7 +990,7 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * The kept bucket deleted once its API is gone (lane S6): `cluster delete
+   * The kept bucket deleted once its API is gone (lane S6): `api delete
    * <id> --delete-buckets --confirm <id>` with `--cloud` and `--region`, which
    * the CLI needs when no hosted API can name them.
    */
@@ -1254,7 +1001,7 @@ export class CloudClusterEnvironment {
         successful(
           await this.#options.cli.run(
             cliArgs(
-              CLUSTER_DELETE,
+              API_DELETE,
               {
                 'delete-buckets': true,
                 confirm: id,
@@ -1271,17 +1018,17 @@ export class CloudClusterEnvironment {
                 API_URL: this.cluster().managementApiUrl!,
               },
               timeoutMs: 300_000,
-              label: 'cluster-delete-kept-bucket',
+              label: 'api-delete-kept-bucket',
             },
           ),
-          'cluster delete --delete-buckets (kept bucket)',
+          'api delete --delete-buckets (kept bucket)',
         ),
-        'cluster delete --delete-buckets (kept bucket)',
+        'api delete --delete-buckets (kept bucket)',
       ),
     );
     if (!deletedBucket(report, id)) {
       throw new Error(
-        `cluster delete --delete-buckets did not delete the kept bucket ${id}: ${JSON.stringify(report)}`,
+        `api delete --delete-buckets did not delete the kept bucket ${id}: ${JSON.stringify(report)}`,
       );
     }
     this.#keptBucketRemoved = true;
@@ -1300,20 +1047,20 @@ export class CloudClusterEnvironment {
       this.#deleteResult?.finalBackup !== 'taken'
     ) {
       throw new Error(
-        `cluster delete did not keep the managed bucket ${id} after a final backup: ${JSON.stringify(kept ?? null)}`,
+        `api delete did not keep the managed bucket ${id} after a final backup: ${JSON.stringify(kept ?? null)}`,
       );
     }
     if (!(await this.#checkpointBuckets()).includes(id)) {
-      throw new Error(`cluster delete deleted the kept bucket ${id}`);
+      throw new Error(`api delete deleted the kept bucket ${id}`);
     }
     return { name: id, kept: true, finalBackup: 'taken' };
   }
 
   /**
    * RFC 0049 C28's restore, on the seed: after the delete that kept the
-   * managed bucket, `cluster create --checkpoint-bucket <id>` brings the
+   * managed bucket, `api create --checkpoint-bucket <id>` brings the
    * cluster back from it under the same ID and hostname, its record read
-   * back from the restored database, then `cluster delete --delete-buckets`
+   * back from the restored database, then `api delete --delete-buckets`
    * removes it with the bucket.
    */
   async restoreFromKeptBucket(
@@ -1326,7 +1073,7 @@ export class CloudClusterEnvironment {
     this.#destroyed = false;
     const result = await this.#options.cli.run(
       cliArgs(
-        CLUSTER_CREATE,
+        API_CREATE,
         {
           cloud: this.clusterProvider,
           region: this.#options.region,
@@ -1351,8 +1098,8 @@ export class CloudClusterEnvironment {
     }
     const restored = clusterSummarySchema.parse(
       parseJson(
-        successful(result, 'cluster create --checkpoint-bucket (restore)'),
-        'cluster create --checkpoint-bucket (restore)',
+        successful(result, 'api create --checkpoint-bucket (restore)'),
+        'api create --checkpoint-bucket (restore)',
       ),
     );
     if (
@@ -1396,7 +1143,7 @@ export class CloudClusterEnvironment {
     ) {
       return Promise.reject(
         new Error(
-          `cluster delete --delete-buckets left ${JSON.stringify(result?.remaining ?? null)} and deleted ${JSON.stringify(result?.deleted ?? null)}`,
+          `api delete --delete-buckets left ${JSON.stringify(result?.remaining ?? null)} and deleted ${JSON.stringify(result?.deleted ?? null)}`,
         ),
       );
     }
@@ -1424,13 +1171,13 @@ export class CloudClusterEnvironment {
 
   /**
    * Native sweep by the product's own tags: nothing tagged for this run's
-   * installation, installer node pools or hosted API may remain. The
+   * installation or hosted API may remain. The
    * checkpoint bucket is named after the installation id; before create
    * returns one there is none of this run's, and every other `e2e-clust-`
    * bucket may be a concurrent run's.
    */
   async sweep(): Promise<NativeLeftovers> {
-    // A GCP or Azure management VM (and so its pool) has no EC2 resources.
+    // A GCP or Azure management VM has no EC2 resources.
     const aws = !this.#clusterInventory;
     const filters = [
       ...(this.#installationId && aws
@@ -1441,11 +1188,6 @@ export class CloudClusterEnvironment {
             `Name=tag:${OWNER_API_TAG},Values=${hostedApiIdentity(this.#cluster.id)}`,
           ]
         : []),
-      ...(this.#poolInventory || !aws
-        ? []
-        : [...this.#nodePoolIds].map(
-            (id) => `Name=tag:${RESOURCE_SCOPE_TAG},Values=${id}`,
-          )),
     ];
     const leftovers = {
       instances: [] as string[],
@@ -1524,26 +1266,10 @@ export class CloudClusterEnvironment {
         ),
       );
     }
-    // A GCP or Azure pool's leftovers come from its own cloud, by the same identities.
-    if (this.#poolInventory) {
-      const cloud = this.poolProvider;
-      for (const nodePoolId of this.#nodePoolIds) {
-        leftovers.instances.push(
-          ...(await this.#poolInventory.liveInstances(nodePoolId)).map(
-            (id) => `${cloud}:${id}`,
-          ),
-        );
-        leftovers.securityGroups.push(
-          ...(await this.#poolInventory.networkLeftovers(nodePoolId)).map(
-            (id) => `${cloud}:${id}`,
-          ),
-        );
-      }
-    }
     // The Worker's delete is idempotent (2xx proves nothing): it purges; DNS
     // answers whether the destroy left the record. Only once the cluster is
     // destroyed: on a failed journey the sweep runs before the cleanup stack,
-    // whose `cluster delete` still needs `https://<id>.anycloud.sh` — the
+    // whose `api delete` still needs `https://<id>.anycloud.sh` — the
     // workflow's own DNS sweep step covers that path after teardown.
     const dnsRecords: string[] = [];
     if (!this.#cluster || this.#destroyed) {
@@ -1576,94 +1302,10 @@ export class CloudClusterEnvironment {
       runId: this.#options.runId,
       region: this.#options.region,
       clusterProvider: this.clusterProvider,
-      poolProvider: this.poolProvider,
       filters,
-      nodePoolIds: [...this.#nodePoolIds],
       ...swept,
     });
     return swept;
-  }
-
-  /** Pending or running instances tagged for the node pool (host loss). */
-  poolInstances(nodePoolId: string): Promise<string[]> {
-    return this.#poolInventory
-      ? this.#poolInventory.liveInstances(nodePoolId)
-      : this.#liveInstances(
-          `Name=tag:${RESOURCE_SCOPE_TAG},Values=${nodePoolId}`,
-          'pending,running',
-        );
-  }
-
-  /** Host loss, natively: the pool's one instance goes behind the product's back. */
-  async terminatePoolInstance(
-    nodePoolId: string,
-    expectedCount = 1,
-  ): Promise<string> {
-    const running = await this.poolInstances(nodePoolId);
-    if (running.length !== expectedCount) {
-      throw new Error(
-        `Node pool ${nodePoolId} has ${running.length} running instances, expected ${expectedCount}`,
-      );
-    }
-    if (this.#poolInventory) {
-      await this.#poolInventory.terminateInstance(running[0]);
-    } else {
-      await this.#aws(
-        ['ec2', 'terminate-instances', '--instance-ids', running[0]],
-        'terminate pool instance',
-      );
-    }
-    return running[0];
-  }
-
-  /**
-   * A spot pool's VMs must be deleted on eviction, not stopped; a no-op for
-   * an on-demand pool. Reads only, so it runs on every journey's pool.
-   */
-  async proveSpotEviction(nodePoolId: string): Promise<void> {
-    if (!this.#options.pool.spot) return;
-    const instances = await this.poolInstances(nodePoolId);
-    // A ready pool runs at least one: none read proves nothing.
-    if (instances.length === 0) {
-      throw new Error(
-        `Spot pool ${nodePoolId} has no running instance to check`,
-      );
-    }
-    for (const instance of instances) {
-      await this.#deletedOnEviction(instance);
-    }
-  }
-
-  async #deletedOnEviction(instance: string): Promise<void> {
-    const eviction = this.#poolInventory
-      ? await this.#poolInventory.spotEviction?.(instance)
-      : stringList(
-          parseJson(
-            await this.#aws(
-              [
-                'ec2',
-                'describe-spot-instance-requests',
-                '--filters',
-                `Name=instance-id,Values=${instance}`,
-                '--query',
-                'SpotInstanceRequests[0].[Type,InstanceInterruptionBehavior]',
-              ],
-              'spot request lookup',
-            ),
-            'spot request lookup',
-          ),
-        ).join('/');
-    if (!['DELETE', 'Delete', 'one-time/terminate'].includes(eviction ?? '')) {
-      throw new Error(
-        `Spot pool VM ${instance} is not deleted on eviction: ${eviction || 'not spot'}`,
-      );
-    }
-  }
-
-  recordNodePool(nodePoolId: string): void {
-    if (!nodePoolId.trim()) throw new Error('Node pool ID cannot be empty');
-    this.#nodePoolIds.add(nodePoolId);
-    void this.#recordRun();
   }
 
   async #liveInstances(
@@ -1741,63 +1383,8 @@ export class CloudClusterEnvironment {
   }
 
   /**
-   * What the hosted API reports about this run's node pools, written before
-   * the cleanup tears them down: each pool as `node-pool status` shows it
-   * (state, last error, capacity), and the cluster. Every read is
-   * independent: one failing read must not hide the others or the failure
-   * that triggered the capture.
-   */
-  async captureNodePoolDiagnostics(): Promise<void> {
-    const attempt = async (read: () => Promise<unknown>): Promise<unknown> => {
-      try {
-        return await read();
-      } catch (error) {
-        return {
-          unavailable: error instanceof Error ? error.message : String(error),
-        };
-      }
-    };
-    const record = {
-      runId: this.#options.runId,
-      capturedAt: new Date().toISOString(),
-      clusters: await attempt(() => this.clusters()),
-      nodePools: await Promise.all(
-        [...this.#nodePoolIds].map(async (nodePoolId) => ({
-          nodePoolId,
-          status: await attempt(async () =>
-            parseJson(
-              successful(
-                await this.#options.cli.run(
-                  cliArgs('node-pool status', { json: true }, [nodePoolId]),
-                  {
-                    timeoutMs: 60_000,
-                    label: 'node-pool-status-diagnostic',
-                    env: this.#clusterApiEnvironment(),
-                  },
-                ),
-                'node pool status',
-              ),
-              'node pool status',
-            ),
-          ),
-        })),
-      ),
-    };
-    process.stderr.write(
-      `--- live management Node pool diagnostics ---\n${JSON.stringify(record, null, 2)}\n`,
-    );
-    await this.#options.artifacts
-      .json('e2e-cluster-cloud-node-pool-diagnostics', record)
-      .catch((error: unknown) => {
-        process.stderr.write(
-          `node pool diagnostics artifact not written: ${error instanceof Error ? error.message : String(error)}\n`,
-        );
-      });
-  }
-
-  /**
    * After a hosted-stage failure, while the cluster still runs, through the
-   * installer's own cluster connection: the hosted API's, Traefik's and the
+   * e2e access kubeconfig: the hosted API's, Traefik's and the
    * `helm-install-*` Pods' logs, current and previous, and the Helm Jobs and
    * HelmCharts. Each part has its own minute, so a hung log read keeps the
    * Helm state. It records why it couldn't, and never throws over the failure
@@ -1834,154 +1421,12 @@ export class CloudClusterEnvironment {
       });
   }
 
-  /** The node pool namespace's Secrets holding a SAS signature or account key. */
-  async poolSecretsWithCredential(
-    nodePoolId: string,
-  ): Promise<readonly string[]> {
-    return secretsMatching(
-      await this.#hostedCore(),
-      nodePoolNamespace(nodePoolId),
-      STORAGE_CREDENTIAL,
-    );
-  }
-
-  async poolNodesOutdated(nodePoolId: string): Promise<boolean> {
-    const { items } = await (
-      await this.#hostedCore()
-    ).listNode({
-      labelSelector: `${NODE_POOL_MEMBER_LABEL}=${nodePoolId}`,
-    });
-    return items.some(
-      (node) =>
-        node.metadata?.labels?.[JOIN_REVISION_NODE_LABEL] !==
-        NODE_POOL_JOIN_REVISION,
-    );
-  }
-
-  async deletePoolPod(nodePoolId: string, podUid: string): Promise<void> {
-    const core = await this.#hostedCore();
-    const namespace = nodePoolNamespace(nodePoolId);
-    const pod = (await core.listNamespacedPod({ namespace })).items.find(
-      (candidate) => candidate.metadata?.uid === podUid,
-    );
-    if (!pod?.metadata?.name)
-      throw new Error(`no Pod ${podUid} in ${namespace}`);
-    await core.deleteNamespacedPod({
-      namespace,
-      name: pod.metadata.name,
-      body: { preconditions: { uid: podUid } },
-    });
-  }
-
-  /** A replica Pod's way from its VM's launch to its container's start. */
-  async poolColdStart(
-    nodePoolId: string,
-    podUid: string,
-  ): Promise<PoolColdStartTimes> {
-    const core = await this.#hostedCore();
-    const namespace = nodePoolNamespace(nodePoolId);
-    const pod = (await core.listNamespacedPod({ namespace })).items.find(
-      (candidate) => candidate.metadata?.uid === podUid,
-    );
-    const nodeName = pod?.spec?.nodeName;
-    if (!pod || !nodeName)
-      throw new Error(`no scheduled Pod ${podUid} in ${namespace}`);
-    const plugins = await core.listNamespacedPod({
-      namespace: 'kube-system',
-      fieldSelector: `spec.nodeName=${nodeName}`,
-    });
-    const launches = this.#poolInventory
-      ? ((await this.#poolInventory.instanceLaunches?.(nodePoolId)) ?? [])
-      : (
-          await this.#awsList(
-            [
-              'ec2',
-              'describe-instances',
-              '--filters',
-              `Name=tag:${RESOURCE_SCOPE_TAG},Values=${nodePoolId}`,
-              '--query',
-              'Reservations[].Instances[].LaunchTime',
-            ],
-            'describe instance launches',
-          )
-        ).map((at) => Date.parse(at));
-    const pulled = await core.listNamespacedEvent({
-      namespace,
-      fieldSelector: `involvedObject.uid=${podUid},reason=Pulled`,
-    });
-    return poolColdStartTimes(
-      pod,
-      await core.readNode({ name: nodeName }),
-      plugins.items.find((p) =>
-        p.metadata?.name?.startsWith(NVIDIA_DEVICE_PLUGIN_NAME),
-      ),
-      launches,
-      pulled.items,
-    );
-  }
-
-  async #hostedCore() {
-    return (await this.hostedKubeConfig()).makeApiClient(CoreV1Api);
-  }
-
-  /**
-   * The harness's connection to the cluster, for the live checks:
-   * the e2e access identity this tree's create made, or the connection a
-   * `from_release` installer still holds.
-   */
+  /** The harness's connection to the cluster, for the live checks: the e2e access identity create made. */
   async hostedKubeConfig(): Promise<KubeConfig> {
-    if (this.#accessKubeConfig) {
-      const config = new KubeConfig();
-      config.loadFromString(await readFile(this.#accessKubeConfig, 'utf8'));
-      return config;
-    }
-    const directory = this.#options.installerDirectory;
-    if (!directory)
-      throw new Error('no installer directory for its cipher key');
-    const [row] = await this.#inventory(
-      `SELECT encrypted_connection AS connection FROM clusters WHERE id = '${escapedSql(this.cluster().id)}'`,
-      'cluster connection',
-    );
-    if (typeof row?.connection !== 'string') {
-      throw new Error('the cluster has no stored connection');
-    }
-    return hostedKubeConfig(
-      row.connection,
-      await readFile(join(directory, 'cipher.key'), 'utf8'),
-    );
-  }
-
-  #inventory(
-    sql: string,
-    label: string,
-  ): Promise<readonly Record<string, unknown>[]> {
-    return this.#options.database.queryComplete(
-      sql,
-      label,
-      Date.now() + INVENTORY_READ_BUDGET_MS,
-    );
-  }
-
-  /** This run's cluster as the released installer reports it, if it lists one. */
-  async #releasedCluster(
-    cli: Pick<CliClient, 'run'>,
-  ): Promise<ReleasedCluster | undefined> {
-    const label = 'cluster list (released)';
-    return z
-      .array(releasedClusterSchema)
-      .parse(
-        parseJson(
-          successful(
-            await cli.run(cliArgs(CLUSTER_LIST, { json: true }), {
-              timeoutMs: 60_000,
-              label: 'released-cluster-list',
-            }),
-            label,
-          ),
-          label,
-        ),
-      )
-      .find((cluster) => cluster.name === this.#clusterName);
+    if (!this.#accessKubeConfig) throw new Error('no e2e access kubeconfig');
+    const config = new KubeConfig();
+    config.loadFromString(await readFile(this.#accessKubeConfig, 'utf8'));
+    return config;
   }
 
   /** Waits until the hosted API at `url` serves `version`. */
@@ -2012,72 +1457,6 @@ export class CloudClusterEnvironment {
     );
   }
 
-  /** Marks a bootstrap that waited out its budget for creation to settle. */
-  async #noteStuck<T>(waiting: Promise<T>): Promise<T> {
-    try {
-      return await waiting;
-    } catch (error) {
-      if (error instanceof WaitTimeoutError) this.#creationStuck = true;
-      throw error;
-    }
-  }
-
-  /** Waits until this run's cluster is no longer being created: up, failed or gone. */
-  #settled<T extends { readonly state: string } | undefined>(
-    label: string,
-    read: () => Promise<T>,
-    timeoutMs: number,
-    probeError: 'fail' | typeof retryTransientProbeError,
-  ): Promise<T> {
-    return this.#options.wait.for(label, read, {
-      timeoutMs,
-      intervalMs: 10_000,
-      probeError,
-      unmet: (cluster) =>
-        cluster && CLUSTER_CREATING.includes(cluster.state)
-          ? `cluster is ${cluster.state}`
-          : undefined,
-    });
-  }
-
-  /**
-   * This tree's cluster is deleted through its hosted API's record. A released
-   * installer's runs the released API, which refuses this CLI (versions must
-   * match exactly), so the released CLI deletes it until this CLI's
-   * `api upgrade` moves the installer; after that, a cluster a released
-   * local API created is deleted through the hosted API's record (RFC 0049
-   * C26 (a)) and the released CLI
-   * is the fallback. A refusal sends the delete through the other CLI once.
-   */
-  async #destroyIfPresent(destroyTimeoutMs: number): Promise<void> {
-    const released = this.#options.fromRelease?.cli;
-    if (!released) {
-      await this.#destroyInProcess(destroyTimeoutMs);
-      return;
-    }
-    const first = !this.#installerUpgraded ? released : undefined;
-    try {
-      await this.#destroyThrough(first, destroyTimeoutMs);
-    } catch (error) {
-      const message = errorMessage(error);
-      if (
-        !INSTALLER_VERSION_MISMATCH.test(message) &&
-        !(first === undefined && NO_LEDGER.test(message))
-      ) {
-        throw error;
-      }
-      await this.#destroyThrough(
-        first ? undefined : released,
-        destroyTimeoutMs,
-      ).catch((fallback: unknown) => {
-        throw new Error(
-          `${errorMessage(error)}; through the other CLI: ${errorMessage(fallback)}`,
-          { cause: error },
-        );
-      });
-    }
-  }
-
   /**
    * This tree's delete. Create ran to its end in a process of its own, so
    * nothing is still running here; a create that failed before the hosted API
@@ -2094,7 +1473,7 @@ export class CloudClusterEnvironment {
         await this.#removeKeptBucket();
       return;
     }
-    if (!this.#createStarted && !this.#installerUpgraded) return;
+    if (!this.#createStarted) return;
     // A failed run's delete takes the bucket too: nothing else removes it.
     try {
       await this.#delete(destroyTimeoutMs, true);
@@ -2124,59 +1503,6 @@ export class CloudClusterEnvironment {
       );
       await this.destroy(destroyTimeoutMs, true);
     }
-  }
-
-  /**
-   * Deletes a released installer's cluster through the released CLI, after a
-   * short wait for a running creation to settle (unless bootstrap already
-   * waited out its own budget; the workflow's sweep removes what a stuck
-   * creation made), or through this one.
-   */
-  async #destroyThrough(
-    released: Pick<CliClient, 'run'> | undefined,
-    destroyTimeoutMs: number,
-  ): Promise<void> {
-    if (!released) {
-      await this.#destroyInProcess(destroyTimeoutMs);
-      return;
-    }
-    const read = () => this.#releasedCluster(released);
-    const cluster = this.#creationStuck
-      ? await read()
-      : await this.#settled(
-          'cluster creation settled before delete',
-          read,
-          Math.min(destroyTimeoutMs, CLEANUP_SETTLE_MS),
-          retryTransientProbeError,
-        );
-    if (
-      !cluster ||
-      (CLUSTER_GONE.includes(cluster.state) && !cluster.releasing)
-    ) {
-      return;
-    }
-    if (CLUSTER_CREATING.includes(cluster.state)) {
-      throw new Error(
-        `cluster ${this.#clusterName} is still ${cluster.state}; delete is refused while its creation runs, and the workflow's sweep removes what it made`,
-      );
-    }
-    successful(
-      // The released CLI's own surface: it waits for `destroyed` within
-      // a budget inside the process timeout.
-      await released.run(
-        [
-          'cluster',
-          'delete',
-          this.#clusterName,
-          '--json',
-          '--timeout',
-          String(Math.max(60, Math.floor(destroyTimeoutMs / 1000) - 60)),
-        ],
-        { timeoutMs: destroyTimeoutMs, label: 'released-cluster-delete' },
-      ),
-      'cluster delete (released)',
-    );
-    this.#destroyed = true;
   }
 
   /**
@@ -2236,10 +1562,8 @@ export class CloudClusterEnvironment {
       runId: this.#options.runId,
       region: this.#options.region,
       clusterProvider: this.clusterProvider,
-      poolProvider: this.poolProvider,
       installationId: this.#installationId ?? null,
       hostedApiIdentity: this.#hostedApiIdentity(),
-      nodePoolIds: [...this.#nodePoolIds],
     };
     await this.#options.artifacts.json('e2e-cluster-cloud-resources', record);
   }

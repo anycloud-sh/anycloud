@@ -82,17 +82,16 @@ API.
 
 A hosted API runs in your cloud account and gives it a stable URL for use from
 multiple machines or by a trusted team. Create the installation's Kubernetes
-cluster, which hosts the API and later runs node pools, Deployments and
-Services, through your cloud's own CLI (`aws`, `gcloud` or `az`) signed in on
+cluster, which hosts the API, through your cloud's own CLI (`aws`, `gcloud` or `az`) signed in on
 this machine:
 
 ```bash
-anycloud cluster create prod --cloud aws --region us-east-2 --vm-type t3.medium
+anycloud api create prod --cloud aws --region us-east-2 --vm-type t3.medium
 anycloud api use https://<cluster-id>.anycloud.sh
 ```
 
-[Clusters](/platform/clusters) walks that path end to end; [Hosted
-APIs](/platform/hosted-apis) covers sharing and updating the API.
+[Hosted APIs](/platform/hosted-apis) walks that path end to end and covers
+sharing, upgrading and deleting the API.
 
 If you already own or have access to a hosted API, select it instead:
 

@@ -10,16 +10,9 @@ import {
 import { validatedClientVersion } from '../middleware/client-version.js';
 import { authenticatedUser } from '../middleware/validation.js';
 import { resolveOwnershipScope } from '../services/repositories/api-access-policy.js';
-import {
-  getDeploymentStore,
-  getWorkloadQueryStore,
-} from '../services/persistence.js';
+import { getWorkloadQueryStore } from '../services/persistence.js';
 import type { User } from '../services/entities.js';
-import {
-  getDefaultWorkloadOperations,
-  prepareDeploymentExec,
-  prepareDeploymentLogs,
-} from '../services/job/default-operations.js';
+import { getDefaultWorkloadOperations } from '../services/job/default-operations.js';
 import type {
   JobExecPreparation,
   JobLogsPreparation,
@@ -205,50 +198,32 @@ export function createCliRouter(requests: ApiRequestTracker): Router {
       );
       if (!input) return;
       const { id } = input.params;
-      const { command, replica } = input.body;
+      const { command } = input.body;
 
       try {
         user = authenticatedUser(req);
         const store = getWorkloadQueryStore();
         const scope = await resolveOwnershipScope();
         const workload = await store.getWorkloadForScope(id, scope);
-        // A Deployment record is not a Workload, but `exec` reaches its Pods too.
-        const deployment = workload
-          ? null
-          : await getDeploymentStore().getForScope(id, scope);
-        if (workload && replica) {
-          sendNativeApiError(
-            res,
-            400,
-            'EXEC_REQUEST_INVALID',
-            '--replica applies only to a Deployment.',
-          );
-          error = 'Replica for a Workload';
-          return;
-        }
-        let prepared: JobExecPreparation;
-        if (workload) {
-          loadedWorkload = workload;
-          workloadState = workload.state;
-          prepared = await getDefaultWorkloadOperations(workload).prepareExec({
-            workload,
-            allVms: await store.listVms(id),
-            command,
-          });
-        } else if (deployment) {
-          workloadState = 'deployment';
-          prepared = await prepareDeploymentExec(deployment, command, replica);
-        } else {
+        if (!workload) {
           sendNativeApiError(
             res,
             404,
             'WORKLOAD_MANAGEMENT_NOT_FOUND',
-            'Workload or Deployment not found',
+            'Workload not found',
           );
           error = 'Workload not found';
           workloadState = 'not_found';
           return;
         }
+        loadedWorkload = workload;
+        workloadState = workload.state;
+        const prepared: JobExecPreparation =
+          await getDefaultWorkloadOperations().prepareExec({
+            workload,
+            allVms: await store.listVms(id),
+            command,
+          });
         if (!prepared.ok) {
           sendNativeApiError(
             res,
@@ -323,33 +298,25 @@ export function createCliRouter(requests: ApiRequestTracker): Router {
         const store = getWorkloadQueryStore();
         const scope = await resolveOwnershipScope();
         const workload = await store.getWorkloadForScope(id, scope);
-        // A Deployment record is not a Workload, but `logs` reads its Pods too.
-        const deployment = workload
-          ? null
-          : await getDeploymentStore().getForScope(id, scope);
-        let prepared: JobLogsPreparation;
-        if (workload) {
-          loadedWorkload = workload;
-          workloadState = workload.state;
-          prepared = await getDefaultWorkloadOperations(workload).prepareLogs({
-            workload,
-            allVms: await store.listVms(id),
-            follow: Boolean(follow),
-          });
-        } else if (deployment) {
-          workloadState = 'deployment';
-          prepared = await prepareDeploymentLogs(deployment, Boolean(follow));
-        } else {
+        if (!workload) {
           sendNativeApiError(
             res,
             404,
             'WORKLOAD_MANAGEMENT_NOT_FOUND',
-            'Workload or Deployment not found',
+            'Workload not found',
           );
           error = 'Workload not found';
           workloadState = 'not_found';
           return;
         }
+        loadedWorkload = workload;
+        workloadState = workload.state;
+        const prepared: JobLogsPreparation =
+          await getDefaultWorkloadOperations().prepareLogs({
+            workload,
+            allVms: await store.listVms(id),
+            follow: Boolean(follow),
+          });
 
         logsProbeCount = prepared.probeCount;
         logsTargetContainerStatus = prepared.targetContainerStatus;

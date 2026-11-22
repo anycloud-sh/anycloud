@@ -48,19 +48,6 @@ export const systemReleaseRouter = {
         ],
       ),
   ),
-  drain: authenticated.systemRelease.drain.handler(
-    ({ context, input, errors }) =>
-      mapDeclaredErrors(
-        () => context.domains.systemRelease.drain(context.actor, input),
-        [
-          declaredAs(SystemReleaseRefusedError, errors.SYSTEM_RELEASE_REFUSED),
-          declaredAs(
-            SystemReleaseUnavailableError,
-            errors.SYSTEM_RELEASE_UNAVAILABLE,
-          ),
-        ],
-      ),
-  ),
   kubernetes: authenticated.systemRelease.kubernetes.handler(
     ({ context, input, errors }) =>
       mapDeclaredErrors(

@@ -1,7 +1,6 @@
 import { ApiAccessDeniedError } from '../../shared/errors.js';
 import {
   ApiAccessAccountNotUserError,
-  ApiAccessManagedDeploymentError,
   ApiAccessNameTakenError,
   ApiAccessNotHostedError,
   ApiAccessOwnerCannotBeRemovedError,
@@ -53,11 +52,6 @@ export const apiAccessRouter = {
             ApiAccessAccountNotUserError,
             errors.API_ACCESS_ACCOUNT_NOT_USER,
           ),
-          declaredAs(
-            ApiAccessManagedDeploymentError,
-            errors.API_ACCESS_MANAGED_DEPLOYMENT,
-          ),
-          declaredAs(ApiAccessNameTakenError, errors.API_ACCESS_NAME_TAKEN),
         ],
       ),
   ),

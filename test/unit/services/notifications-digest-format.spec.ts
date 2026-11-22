@@ -55,13 +55,6 @@ describe('digest text rendering', () => {
         jobs,
         services,
         vms,
-        deployments: {
-          presentAtEnd: 0,
-          created: 0,
-          deleted: 0,
-          hasActivity: false,
-        },
-        deploymentJobs: [],
       },
     ];
     return {
@@ -75,13 +68,6 @@ describe('digest text rendering', () => {
           jobs: typeSummary(user.jobs),
           services: typeSummary(user.services),
           vms: typeSummary(user.vms),
-          deployments: {
-            presentAtEnd: 0,
-            created: 0,
-            deleted: 0,
-            hasActivity: false,
-          },
-          deploymentJobs: [],
         })) ?? defaultUsers,
     };
   };

@@ -80,7 +80,6 @@ function harness(
     connects?: Error[];
     /** Results of the 1.1.1.1 lookup, in order; then it finds the record. */
     lookups?: Array<boolean | Error>;
-    capacityFaultPool?: string;
     e2eAccess?: boolean;
   } = {},
 ) {
@@ -120,7 +119,6 @@ function harness(
       clock += ms;
     }),
     now: () => clock,
-    capacityFaultPool: options.capacityFaultPool,
     e2eAccess: options.e2eAccess ?? false,
     bootstrapCatalog: vi.fn(async () => {
       events.push('catalog');
@@ -155,7 +153,7 @@ function bootValues(script: string): string {
   return gunzipSync(Buffer.from(body.replace(/\n/g, ''), 'base64')).toString();
 }
 
-describe('cluster create through the seed', () => {
+describe('api create through the seed', () => {
   it('checks rights, deploys with the resolved release, publishes DNS for bootstrap, and waits for the first backup', async () => {
     const { seed, deployed, events, dependencies, input, status } = harness({
       statuses: [
@@ -433,23 +431,6 @@ describe('cluster create through the seed', () => {
     await expect(
       runSeedCreate(silent.input, silent.dependencies),
     ).rejects.toMatchObject({ code: 'API_NOT_READY' });
-  });
-
-  it('adds the test-only capacity fault only when it is set, leaving the values identical otherwise', async () => {
-    const plain = harness({
-      seed: { findByName: vi.fn(async () => 'production-1') },
-    });
-    await runSeedCreate(plain.input, plain.dependencies);
-    const armed = harness({
-      seed: { findByName: vi.fn(async () => 'production-1') },
-      capacityFaultPool: 'p-capfault-1',
-    });
-    await runSeedCreate(armed.input, armed.dependencies);
-    const { e2e, ...rest } = armed.deployed[0]!.releaseValues;
-    expect(e2e).toEqual({ capacityFaultPool: 'p-capfault-1' });
-    expect(JSON.stringify(rest)).toBe(
-      JSON.stringify(plain.deployed[0]!.releaseValues),
-    );
   });
 
   it('lists the GitHub Apps whose user tokens the API exchanges in its values', async () => {

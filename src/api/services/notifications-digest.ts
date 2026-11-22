@@ -7,7 +7,6 @@ import { log } from './logger.js';
 import {
   getWorkloadQueryStore,
   getWorkloadSpendStore,
-  getDeploymentStore,
   getNotificationsStore,
 } from './persistence.js';
 import {
@@ -15,13 +14,10 @@ import {
   type WorkloadTypeStarts,
   type UserWorkloadStarts,
 } from './repositories/workload-spend.js';
-import type { DeploymentDigestMetadata } from './deployment-store.js';
 import { sendToNotifiers } from './notify.js';
 import {
   formatDigestNotification,
   typeHasActivity,
-  type DigestDeploymentInventory,
-  type DigestDeploymentJobSummary,
   type DigestSummary,
   type DigestTypeSummary,
 } from './notifications-digest-format.js';
@@ -76,12 +72,8 @@ export async function runNotificationsDigestOnce(): Promise<void> {
     yesterday.startMs,
     yesterday.endMs,
   );
-  const deployments = await getDeploymentStore().listDigestMetadataInWindow(
-    yesterday.startMs,
-    yesterday.endMs,
-  );
   const { summary, spend } = foldLocalApiOwners(
-    aggregateDigest(rows, starts, deployments),
+    aggregateDigest(rows, starts),
     vmSpend,
   );
   // A long-running workload may not end yesterday while still accruing
@@ -90,8 +82,7 @@ export async function runNotificationsDigestOnce(): Promise<void> {
   if (
     !typeHasActivity(summary.jobs, spend.jobs) &&
     !typeHasActivity(summary.services, spend.services) &&
-    !typeHasActivity(summary.vms, spend.vms) &&
-    !summary.users.some((user) => user.deployments.hasActivity)
+    !typeHasActivity(summary.vms, spend.vms)
   ) {
     // Still mark the day as handled so we don't re-query every 15 min.
     await writeDigestSentinel(yesterday.label);
@@ -111,7 +102,6 @@ interface DigestOutcome {
   completedAt: number | null;
   userId: string;
   ownerUserId: string | null;
-  deploymentId: string | null;
   wasPreempted: boolean;
 }
 
@@ -123,7 +113,6 @@ export function aggregateDigest(
     vms: WorkloadTypeStarts;
     users: UserWorkloadStarts[];
   },
-  deployments: DeploymentDigestMetadata[] = [],
 ): DigestSummary {
   const rowsByUser = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -138,25 +127,7 @@ export function aggregateDigest(
       user,
     ]),
   );
-  const activeDeploymentIds = new Set<string>();
-  for (const row of rows) {
-    if (row.deploymentId !== null) activeDeploymentIds.add(row.deploymentId);
-  }
-  for (const user of starts.users) {
-    for (const target of user.deploymentJobs) {
-      activeDeploymentIds.add(target.deploymentId);
-    }
-  }
-  const inventoryByUser = aggregateDeploymentInventory(
-    deployments,
-    activeDeploymentIds,
-  );
-  const deploymentsById = new Map(deployments.map((row) => [row.id, row]));
-  const userIds = new Set([
-    ...rowsByUser.keys(),
-    ...startsByUser.keys(),
-    ...inventoryByUser.keys(),
-  ]);
+  const userIds = new Set([...rowsByUser.keys(), ...startsByUser.keys()]);
   return {
     jobs: aggregateDigestType(
       rows.filter((r) => r.workloadType === WorkloadType.Job),
@@ -174,17 +145,13 @@ export function aggregateDigest(
       .map((userKey) => {
         const userRows = rowsByUser.get(userKey) ?? [];
         const userStarts = startsByUser.get(userKey);
-        const owner = inventoryByUser.get(userKey);
         return {
           userId:
-            owner?.username ??
             userStarts?.userId ??
             userRows[0]?.userId ??
             `GitHub user ${userKey}`,
           ownerUserId:
-            userStarts?.ownerUserId ??
-            userRows[0]?.ownerUserId ??
-            (owner ? userKey : null),
+            userStarts?.ownerUserId ?? userRows[0]?.ownerUserId ?? null,
           jobs: aggregateDigestType(
             userRows.filter((row) => row.workloadType === WorkloadType.Job),
             userStarts?.jobs ?? emptyWorkloadTypeStarts(),
@@ -197,82 +164,10 @@ export function aggregateDigest(
             userRows.filter((row) => row.workloadType === WorkloadType.Vm),
             userStarts?.vms ?? emptyWorkloadTypeStarts(),
           ),
-          deployments: owner?.inventory ?? emptyDigestDeploymentInventory(),
-          deploymentJobs: aggregateDeploymentJobs(
-            userRows,
-            userStarts?.deploymentJobs ?? [],
-            deploymentsById,
-          ),
         };
       })
       .sort((a, b) => a.userId.localeCompare(b.userId)),
   };
-}
-
-function aggregateDeploymentInventory(
-  deployments: DeploymentDigestMetadata[],
-  activeDeploymentIds: Set<string>,
-): Map<
-  string,
-  { username: string | null; inventory: DigestDeploymentInventory }
-> {
-  const owners = new Map<
-    string,
-    { username: string | null; inventory: DigestDeploymentInventory }
-  >();
-  for (const deployment of deployments) {
-    let owner = owners.get(deployment.ownerUserId);
-    if (!owner) {
-      owner = {
-        username: deployment.ownerUsername,
-        inventory: emptyDigestDeploymentInventory(),
-      };
-      owners.set(deployment.ownerUserId, owner);
-    }
-    owner.inventory.presentAtEnd += Number(deployment.presentAtEnd);
-    owner.inventory.created += Number(deployment.createdInWindow);
-    owner.inventory.deleted += Number(deployment.deletedInWindow);
-    owner.inventory.hasActivity ||=
-      deployment.createdInWindow ||
-      deployment.deletedInWindow ||
-      deployment.hasVmUsage ||
-      activeDeploymentIds.has(deployment.id);
-  }
-  return owners;
-}
-
-function aggregateDeploymentJobs(
-  rows: DigestOutcome[],
-  starts: UserWorkloadStarts['deploymentJobs'],
-  deployments: Map<string, DeploymentDigestMetadata>,
-): DigestDeploymentJobSummary[] {
-  const rowsByDeployment = new Map<string, DigestOutcome[]>();
-  for (const row of rows) {
-    if (row.deploymentId === null) continue;
-    const targetRows = rowsByDeployment.get(row.deploymentId) ?? [];
-    targetRows.push(row);
-    rowsByDeployment.set(row.deploymentId, targetRows);
-  }
-  const startsByDeployment = new Map(
-    starts.map((target) => [target.deploymentId, target]),
-  );
-  const ids = new Set([
-    ...rowsByDeployment.keys(),
-    ...startsByDeployment.keys(),
-  ]);
-  return [...ids].map((deploymentId) => {
-    const deployment = deployments.get(deploymentId);
-    const targetStarts = startsByDeployment.get(deploymentId);
-    return {
-      ...aggregateDigestType(
-        rowsByDeployment.get(deploymentId) ?? [],
-        targetStarts ?? emptyWorkloadTypeStarts(),
-      ),
-      deploymentId,
-      name: deployment?.name ?? deploymentId,
-      nodePoolName: deployment?.nodePoolName ?? null,
-    };
-  });
 }
 
 function emptyWorkloadTypeStarts(): WorkloadTypeStarts {
@@ -315,10 +210,6 @@ function aggregateDigestType(
     preempted,
     p50RuntimeMs: runtimes.length > 0 ? median(runtimes) : null,
   };
-}
-
-function emptyDigestDeploymentInventory(): DigestDeploymentInventory {
-  return { presentAtEnd: 0, created: 0, deleted: 0, hasActivity: false };
 }
 
 function median(nums: number[]): number {

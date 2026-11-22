@@ -95,7 +95,7 @@ describe('Workload admission RPC', () => {
     [
       400,
       'WORKLOAD_ADMISSION_REJECTED',
-      new InvalidAnycloudConfigError('Deployment "deployment" is draining'),
+      new InvalidAnycloudConfigError('Unknown region "mars-1"'),
     ],
     [409, 'WORKLOAD_ID_CONFLICT', new WorkloadIdExistsError()],
     [
@@ -111,7 +111,7 @@ describe('Workload admission RPC', () => {
       createApiClient(actor.token, {
         apiUrl,
         retryDelayMs: 0,
-      }).admission.submit({ deployment: 'deployment' }),
+      }).admission.submit({ image: 'alpine:3.20', cloudConfig: {} }),
     ).rejects.toMatchObject({
       status,
       code,

@@ -25,21 +25,7 @@ export interface DockerOptions {
   runtime?: string;
   binds?: string[];
   network?: string;
-  /** `name:/path` Node cache volumes; a pool Job's replica only (RFC 0049 C12). */
-  caches?: string[];
-  /**
-   * A pool Job's replica runs as root of its own user namespace (RFC 0049
-   * C32); set by admission, never on the wire.
-   */
-  userNamespace?: boolean;
 }
-
-/**
- * A user-namespace replica's runner exits with this, distinct from its own 1
- * and 143 and tini's 126 and 127, when it can't delegate the replica's
- * cgroup (RFC 0049 C32); its termination message says why.
- */
-export const USER_NAMESPACE_RUNNER_EXIT_CODE = 78;
 
 /** Docker container states from `docker inspect .State.Status`. */
 export enum ContainerState {

@@ -11,7 +11,7 @@ export function completedStorageTarget(now = Date.now()) {
 
 export function artifactKind(name) {
   if (
-    /^(managed-gpu-cleanup-authority|managed-gpu-recovery|managed-kubernetes-qualification|managed-kubernetes-records|e2e-(?:cluster|claim-burst)-local-records|e2e-cluster-cloud|lambda-boot-failover|conversation-capture|recovery-evidence|vm-comparison-evidence|service-comparison-evidence|job-comparison-evidence|implementation-evidence)-/.test(
+    /^(managed-gpu-cleanup-authority|managed-gpu-recovery|managed-kubernetes-qualification|managed-kubernetes-records|e2e-cluster-local-records|e2e-cluster-cloud|lambda-boot-failover|conversation-capture|recovery-evidence|vm-comparison-evidence|service-comparison-evidence|job-comparison-evidence|implementation-evidence)-/.test(
       name,
     )
   )

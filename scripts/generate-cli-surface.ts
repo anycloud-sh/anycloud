@@ -14,8 +14,6 @@ import { createSubmitCommand } from '../src/cli/commands/submit.js';
 import { createServeCommand } from '../src/cli/commands/serve.js';
 import { createVmCommand } from '../src/cli/commands/vm.js';
 import { createClusterCommand } from '../src/cli/commands/cluster.js';
-import { createNodePoolCommand } from '../src/cli/commands/node-pool.js';
-import { createDeploymentCommand } from '../src/cli/commands/deployment.js';
 import { createStatusCommand } from '../src/cli/commands/status.js';
 import { createWaitCommand } from '../src/cli/commands/wait.js';
 import { createListCommand } from '../src/cli/commands/list.js';
@@ -57,8 +55,6 @@ const factories = {
   createServeCommand,
   createVmCommand,
   createClusterCommand,
-  createNodePoolCommand,
-  createDeploymentCommand,
   createStatusCommand,
   createWaitCommand,
   createListCommand,
@@ -111,7 +107,7 @@ function argumentSpec(argument: Argument): string {
 }
 
 /**
- * Every command reachable from `commands`, keyed by its path (`cluster create`);
+ * Every command reachable from `commands`, keyed by its path (`api create`);
  * a command's aliases are keys of their own at the same level.
  */
 export function cliSurfaceFromCommands(

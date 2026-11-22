@@ -118,19 +118,6 @@ On supported GPU hosts, the pull path can fetch several ranges of a large layer
 concurrently. Unsupported configurations and transfer failures fall back to a
 normal Docker pull. No workload flag is required.
 
-A new node pool Node starts pulling images once it joins: first the runner
-that pool Jobs start from, then up to four images, most recently used first,
-that Jobs ran on that pool in the last day. Only images that pull without a
-sign-in are included: public images, and `ghcr.io` images submitted without a
-GitHub sign-in. Nothing waits for these pulls. The Node becomes ready on its
-usual schedule, a Job whose image is still being pulled waits for that pull,
-and pulls still running 8 minutes after the Node joins are stopped. Pulls also
-stop once they reach the Node's image allowance, 30 GiB on GPU VMs, 10 GiB on
-CPU VMs, and 100 GiB on local NVMe, or leave less than 5% of the disk plus
-2 GiB free. Other images are pulled when a Job needs them. Each new Node makes
-these pulls anonymously, so a pool that adds many Nodes counts them against
-the registry's anonymous pull rate limit, such as Docker Hub's.
-
 Every image byte must reach a new VM before startup. To reduce cold starts:
 
 - Use runtime images instead of development images when compilers are not

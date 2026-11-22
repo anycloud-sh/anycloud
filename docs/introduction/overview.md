@@ -10,7 +10,7 @@ description: Run jobs, services, and persistent VMs across AWS, Azure, GCP, and 
 Anycloud runs containerized jobs, services, and persistent VMs in
 your own cloud accounts. Connect AWS, Azure, GCP, or Lambda, choose the hardware
 you need, and provision it from one CLI. The Python SDK lets you submit and
-monitor Jobs, run persistent Deployments, and manage credentials, storage, and other
+monitor Jobs, run Services and VMs, and manage credentials, storage, and other
 resources from your application.
 
 ```bash

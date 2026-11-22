@@ -11,7 +11,7 @@ import { printError } from './output.js';
 
 /**
  * Exit statuses of the lifecycle commands an embedding product drives
- * (`cluster create`, `node-pool create`, `node-pool delete`, `api upgrade`;
+ * (`api create`, `api delete`, `api upgrade`;
  * RFC 0049 C26 (d)), the same as `anycloud wait`'s: 0 done, 1 refused or
  * failed, 2 not run (a usage error, an unreachable API, or a sign-in it needs;
  * run it again), 4 a

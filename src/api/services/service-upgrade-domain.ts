@@ -105,13 +105,6 @@ export function createServiceUpgradeDomain(
             'Not a service workload',
           );
         }
-        if (found.nodePoolId !== null) {
-          throw new ServiceUpgradeError(
-            'Upgrading a Service on a node pool is not available yet; terminate it and create a new Service',
-            409,
-            'Node pool Service upgrades are not available yet',
-          );
-        }
         if (found.state !== WorkloadState.Running) {
           throw new ServiceUpgradeError(
             `Service workload must be running to upgrade; current state is ${found.state}`,
@@ -127,7 +120,7 @@ export function createServiceUpgradeDomain(
         assertVmHostContainerConfiguration(found);
         if (isHostedApiImage(found.image) || isHostedApiImage(input.image)) {
           throw new InvalidAnycloudConfigError(
-            'VM-hosted APIs are no longer supported. Use `anycloud cluster create` to host an API, then `anycloud api use` to select it.',
+            'VM-hosted APIs are no longer supported. Use `anycloud api create` to host an API, then `anycloud api use` to select it.',
           );
         }
         const effectiveDockerOptions =

@@ -18,8 +18,6 @@ const tables = [
   'vms',
   'workload_events',
   'credentials',
-  'deployments',
-  'node_pools',
 ];
 
 export function inspectFixture(db, previous) {

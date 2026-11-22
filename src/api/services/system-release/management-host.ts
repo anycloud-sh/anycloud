@@ -1,88 +1,26 @@
-import { generateStartupScript } from '../vm-startup-script.js';
 import {
   CONTROL_PLANE_TAINT_KEY,
   KUBELET_PREFERRED_ADDRESS_TYPES,
   MANAGEMENT_LABEL_ARGS,
   MANAGEMENT_NODE_NAME,
-  SYSTEM_RELEASE_KUBERNETES_PORT,
 } from '../../../shared/system-release.js';
-import type { ClusterConnectionDocument } from '../kubernetes/cluster-connection.js';
 import { SERVICE_ACCOUNT_ISSUER_JWKS_PATH } from '../../../shared/system-release.js';
 
 /**
- * Shell delivered to the management VM. The startup script only prepares the host
- * (SSH access, verified K3s binary, disabled unit); Kubernetes is configured
- * and started over SSH once the public address is known, so the server
- * certificate carries the address the installer and workers connect to.
- * Every command here is idempotent: a resumed bootstrap re-runs it safely.
+ * Shell run on the management VM to configure K3s: the server configuration
+ * carries the public address workers connect to. Every command here is
+ * idempotent: a resumed step re-runs it safely.
  */
 const CONTROL_PLANE_TAINT = `${CONTROL_PLANE_TAINT_KEY}=true:NoSchedule`;
 const MANAGEMENT_K3S_UNIT = 'k3s-anycloud.service';
-const INSTALLER_SERVICE_ACCOUNT = 'anycloud-installer';
-const INSTALLER_TOKEN_SECRET = 'anycloud-installer-token';
 const K3S_BINARY = '/usr/local/bin/k3s';
 const K3S_CONFIG = '/etc/rancher/k3s/config.yaml';
-const K3S_SERVER_CA = '/var/lib/rancher/k3s/server/tls/server-ca.crt';
 /** Present from a configuration change until K3s has restarted onto it. */
 const K3S_RESTART_PENDING = `${K3S_CONFIG}.restart-pending`;
 
 /** K3s's issuer when none is configured (`https://kubernetes.default.svc.<cluster-domain>`). */
 const K3S_DEFAULT_SERVICE_ACCOUNT_ISSUER =
   'https://kubernetes.default.svc.cluster.local';
-
-function shellQuote(value: string): string {
-  return `'${value.split("'").join(`'"'"'`)}'`;
-}
-
-export interface ManagementHostStartupInput {
-  sshPublicKey: string;
-  k3sVersion: string;
-  k3sSha256: string;
-}
-
-export function managementHostStartupScript(
-  input: ManagementHostStartupInput,
-): string {
-  if (!/^v\d+\.\d+\.\d+\+k3s\d+$/.test(input.k3sVersion)) {
-    throw new Error(`Unexpected K3s version ${input.k3sVersion}`);
-  }
-  if (!/^[a-f0-9]{64}$/.test(input.k3sSha256)) {
-    throw new Error('K3s SHA-256 must be 64 hex characters');
-  }
-  const download = `https://github.com/k3s-io/k3s/releases/download/${encodeURIComponent(input.k3sVersion)}/k3s`;
-  return `${generateStartupScript({ publicKey: input.sshPublicKey, privateKey: '' })}
-set -euo pipefail
-umask 077
-if ! echo ${shellQuote(`${input.k3sSha256}  ${K3S_BINARY}`)} | sha256sum -c - >/dev/null 2>&1; then
-  curl --fail --location --retry 5 --max-time 300 ${shellQuote(download)} -o ${K3S_BINARY}.download
-  echo ${shellQuote(`${input.k3sSha256}  ${K3S_BINARY}.download`)} | sha256sum -c -
-  chmod 755 ${K3S_BINARY}.download
-  mv -f ${K3S_BINARY}.download ${K3S_BINARY}
-fi
-mkdir -p /etc/rancher/k3s
-cat > /etc/systemd/system/${MANAGEMENT_K3S_UNIT} <<'UNIT'
-[Unit]
-Description=AnyCloud cluster
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=notify
-ExecStart=${K3S_BINARY} server
-KillMode=process
-Delegate=yes
-Restart=always
-RestartSec=5
-LimitNOFILE=1048576
-LimitNPROC=infinity
-TasksMax=infinity
-TimeoutStartSec=300
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-echo "management host prepared"
-`;
-}
 
 export interface ManagementKubernetesConfigureInput {
   serverToken: string;
@@ -114,7 +52,7 @@ export function managementKubernetesConfig(
   return `token: ${input.serverToken}\n${managementKubernetesConfigBody(input)}`;
 }
 
-/** The characters bootstrap's server token is drawn from. */
+/** The characters a server token is drawn from. */
 const SERVER_TOKEN_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
 /** The configuration after its `token:` line, which carries no secret. */
@@ -156,10 +94,7 @@ function managementKubernetesConfigBody(
     `  - service-account-issuer=${input.issuerUrl}`,
     `  - service-account-issuer=${K3S_DEFAULT_SERVICE_ACCOUNT_ISSUER}`,
     `  - service-account-jwks-uri=${input.issuerUrl}${SERVICE_ACCOUNT_ISSUER_JWKS_PATH}`,
-    // Pod traffic between the cluster and a pool in another cloud has to use the
-    // public addresses; that needs 8472/udp between cluster and pool public IPs
-    // only when Pods talk across clouds, which Jobs and node-pool Services do
-    // not today.
+    // Unchanged from when node pools joined, so an upgrade doesn't restart K3s.
     'flannel-external-ip: true',
     'tls-san:',
     `  - ${input.publicIp}`,
@@ -192,14 +127,14 @@ if [ -e ${K3S_RESTART_PENDING} ]; then
 fi`;
 
 /** Label the management Node with what only the API sets, as root. */
-export const MANAGEMENT_LABEL_COMMAND = `${K3S_BINARY} ${MANAGEMENT_LABEL_ARGS}`;
+const MANAGEMENT_LABEL_COMMAND = `${K3S_BINARY} ${MANAGEMENT_LABEL_ARGS}`;
 
 /**
  * Poll the API server's readiness endpoint through the local kubectl. Once it
- * answers, label the management Node, so create and every reconfigure set it
- * before a release depends on it.
+ * answers, label the management Node, so every reconfigure sets it before a
+ * release depends on it.
  */
-export const MANAGEMENT_KUBERNETES_READY_COMMAND = `set -eu
+const MANAGEMENT_KUBERNETES_READY_COMMAND = `set -eu
 if [ "$(${K3S_BINARY} kubectl get --raw=/readyz --request-timeout=10s 2>/dev/null)" = "ok" ]; then
   ${MANAGEMENT_LABEL_COMMAND} --request-timeout=10s >/dev/null
   ${K3S_BINARY} kubectl get node ${MANAGEMENT_NODE_NAME} --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
@@ -207,7 +142,7 @@ else
   echo NotReady
 fi`;
 
-/** How long the host-step reconfiguration waits for `/readyz`, as create does. */
+/** How long the host-step reconfiguration waits for `/readyz`. */
 const MANAGEMENT_RECONFIGURE_READY_SECONDS = 300;
 /** The server token in the host's configuration is missing or malformed. */
 const MANAGEMENT_RECONFIGURE_TOKEN_EXIT = 65;
@@ -265,85 +200,4 @@ export function parseManagementReconfigure(
 ): 'changed' | 'current' | null {
   const match = /^configuration=(changed|current)$/m.exec(output);
   return (match?.[1] as 'changed' | 'current' | undefined) ?? null;
-}
-
-/**
- * Create the installer's installer access identity and print the material for an
- * allow-listed kubeconfig: inline CA and an inline ServiceAccount token. The
- * cluster-admin client certificate K3s writes for its own kubectl never
- * leaves the host.
- */
-export const INSTALLER_ACCESS_READ_COMMAND = `set -euo pipefail
-${K3S_BINARY} kubectl apply -f - >/dev/null <<'ACCESS'
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: ${INSTALLER_SERVICE_ACCOUNT}
-  namespace: kube-system
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ${INSTALLER_TOKEN_SECRET}
-  namespace: kube-system
-  annotations:
-    kubernetes.io/service-account.name: ${INSTALLER_SERVICE_ACCOUNT}
-type: kubernetes.io/service-account-token
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: ${INSTALLER_SERVICE_ACCOUNT}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: ${INSTALLER_SERVICE_ACCOUNT}
-    namespace: kube-system
-ACCESS
-for attempt in $(seq 1 60); do
-  token=$(${K3S_BINARY} kubectl -n kube-system get secret ${INSTALLER_TOKEN_SECRET} -o jsonpath='{.data.token}' 2>/dev/null || true)
-  if [ -n "$token" ]; then break; fi
-  sleep 1
-done
-if [ -z "$token" ]; then echo 'installer access token was not issued' >&2; exit 65; fi
-printf '{"certificateAuthorityData":"%s","token":"%s"}\\n' "$(base64 -w0 < ${K3S_SERVER_CA})" "$(printf '%s' "$token" | base64 -d)"`;
-
-export interface InstallerAccessMaterial {
-  certificateAuthorityData: string;
-  token: string;
-}
-
-export function parseInstallerAccessMaterial(
-  stdout: string,
-): InstallerAccessMaterial {
-  const line = stdout.trim().split('\n').pop() ?? '';
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    throw new Error('Installer access material is not valid JSON');
-  }
-  const record = parsed as Record<string, unknown>;
-  const ca = record.certificateAuthorityData;
-  const token = record.token;
-  if (typeof ca !== 'string' || !ca || typeof token !== 'string' || !token) {
-    throw new Error('Installer access material is incomplete');
-  }
-  return { certificateAuthorityData: ca, token };
-}
-
-/** The installer's own connection: the public endpoint and the installer ServiceAccount token. */
-export function installerConnectionDocument(input: {
-  publicIp: string;
-  material: InstallerAccessMaterial;
-}): ClusterConnectionDocument {
-  return {
-    kind: 'installer',
-    server: `https://${input.publicIp}:${SYSTEM_RELEASE_KUBERNETES_PORT}`,
-    certificateAuthorityData: input.material.certificateAuthorityData,
-    credential: { kind: 'token', token: input.material.token },
-  };
 }

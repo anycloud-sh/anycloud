@@ -340,14 +340,8 @@ describe('untrusted pull requests and the runs they start', () => {
         expect(label, job.id).toMatch(/^ubuntu-[\w.-]+$/);
       }
       expect(job.environment ?? '', job.id).toBe('');
-      // The read-only fixture token is withheld from these runs, which skip
-      // the private clone that needs it.
-      const fixture =
-        job.id === 'integration.yml:e2e-cluster-local'
-          ? 'E2E_PRIVATE_REPO_TOKEN'
-          : undefined;
       expect(
-        job.secrets.filter((s) => s !== 'GITHUB_TOKEN' && s !== fixture),
+        job.secrets.filter((s) => s !== 'GITHUB_TOKEN'),
         job.id,
       ).toEqual([]);
     }
@@ -366,18 +360,6 @@ describe('untrusted pull requests and the runs they start', () => {
     }
     // The Local nuke needs a backmesh-kvm-16; a hosted runner can't hold it.
     expect(ids).not.toContain('local-smolvm-nuke > nuke.yml:nuke');
-  });
-
-  it('skips the private clone exactly where the fixture token is withheld', () => {
-    const { steps } = workflow('integration.yml').jobs[
-      'e2e-cluster-local'
-    ] as Job & { steps: { env?: Record<string, string> }[] };
-    const skip = steps.find((step) => step.env?.E2E_PRIVATE_REPO_SKIP)!.env!
-      .E2E_PRIVATE_REPO_SKIP;
-    const run = (github: Value) => evaluateField(skip, { github });
-    expect(run(FORK)).toBe('1');
-    expect(run(DEPENDABOT)).toBe('1');
-    expect(run(SAME_REPOSITORY)).toBe('');
   });
 
   it('leaves our own pull requests on backmesh, with secret jobs running', () => {

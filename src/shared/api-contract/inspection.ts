@@ -29,16 +29,6 @@ function isContractErrorItem(value: unknown): value is ContractErrorItem {
 
 const procedurePolicyCache = new Map<string, ApiContractProcedurePolicy>();
 
-/**
- * The validated policy of a procedure in hand, such as a middleware's: an
- * in-process call has no contract path to look it up by.
- */
-export function apiContractProcedureMeta(procedure: {
-  '~orpc': { meta: unknown };
-}): ApiContractMeta {
-  return apiContractMetaSchema.parse(procedure['~orpc'].meta);
-}
-
 /** Resolve and validate retry policy from the canonical contract once. */
 export function apiContractProcedurePolicy(
   path: readonly string[],

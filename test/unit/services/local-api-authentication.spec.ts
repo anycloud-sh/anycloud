@@ -5,15 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createLocalApiAuthentication,
-  githubOwner,
   readLocalApiToken,
 } from '../../../src/api/services/api-authentication.js';
-import Github from '../../../src/api/services/gateways/github.js';
-import {
-  DeployError,
-  GithubSignInRequiredError,
-  GithubUnavailableError,
-} from '../../../src/shared/errors.js';
+import { DeployError } from '../../../src/shared/errors.js';
 
 const TOKEN = 'a'.repeat(64);
 const OWNER = `local:${'1'.repeat(32)}`;
@@ -79,77 +73,5 @@ describe('local API token file', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
-});
-
-describe('githubOwner', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-  });
-
-  it('stops a local caller without a GitHub sign-in', async () => {
-    await expect(
-      githubOwner(
-        { id: OWNER, username: 'local', token: null },
-        'Clusters need',
-      ),
-    ).rejects.toBeInstanceOf(GithubSignInRequiredError);
-  });
-
-  it('resolves a local caller to the GitHub account behind its token', async () => {
-    vi.spyOn(Github, 'authenticate').mockResolvedValue({
-      id: '42',
-      username: 'octocat',
-      scopes: [],
-    });
-    await expect(
-      githubOwner(
-        { id: OWNER, username: 'local', token: 'gho_signed_in' },
-        'Clusters need',
-      ),
-    ).resolves.toEqual({
-      id: '42',
-      username: 'octocat',
-      token: 'gho_signed_in',
-    });
-  });
-
-  it.each([401, 403])(
-    'asks a local caller to sign in again when GitHub answers %i',
-    async (status) => {
-      vi.spyOn(Github, 'authenticate').mockRejectedValue(
-        Object.assign(new Error('Bad credentials'), { status }),
-      );
-      const refusal = githubOwner(
-        { id: OWNER, username: 'local', token: 'gho_expired' },
-        'Clusters need',
-      );
-      await expect(refusal).rejects.toBeInstanceOf(GithubSignInRequiredError);
-      await expect(refusal).rejects.toThrow('Your GitHub sign-in was rejected');
-    },
-  );
-
-  it('keeps a GitHub outage retryable', async () => {
-    vi.spyOn(Github, 'authenticate').mockRejectedValue(
-      new GithubUnavailableError(502),
-    );
-    await expect(
-      githubOwner(
-        { id: OWNER, username: 'local', token: 'gho_valid' },
-        'Clusters need',
-      ),
-    ).rejects.toBeInstanceOf(GithubUnavailableError);
-  });
-
-  it('keeps a hosted caller as the account it already is', async () => {
-    const lookup = vi.spyOn(Github, 'authenticate');
-    await expect(
-      githubOwner(
-        { id: '7', username: 'owner', token: 'gho_x' },
-        'Clusters need',
-      ),
-    ).resolves.toEqual({ id: '7', username: 'owner', token: 'gho_x' });
-    expect(lookup).not.toHaveBeenCalled();
   });
 });

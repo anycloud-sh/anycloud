@@ -172,54 +172,6 @@ describe('API ownership backfill', () => {
     db.close();
   });
 
-  it('resolves node-pool-owned VM rows to their node pool owner when seeded', async () => {
-    vi.stubEnv('SQLITE_PATH', join(tempDir, 'api.db'));
-    const db = createDatabase();
-    await db.init?.();
-    await db.query(
-      `INSERT INTO credentials (id, encrypted_data, cloud_provider)
-       VALUES ('compute-aws', '', 'AWS')`,
-    );
-    await db.query(
-      `INSERT INTO clusters (
-         id, owner_user_id, name, state, step, kubernetes_identity,
-         encrypted_connection, created_at, updated_at
-       ) VALUES ('cluster-a', 'owner-9', 'production', 'ready', 'release', 'uid-a', 'enc', 1, 1)`,
-    );
-    await db.query(
-      `INSERT INTO node_pools (
-         id, cluster_id, owner_user_id, name, state, compute_credential_id,
-         region, zone, vm_type, min_vm_count, max_vm_count, created_at, updated_at
-       ) VALUES ('node-pool-a', 'cluster-a', 'owner-9', 'aws-east', 'creating',
-         'compute-aws', 'us-east-1', 'us-east-1a', 't3.small', 1, 1, 1, 1)`,
-    );
-    await db.query(
-      `INSERT INTO vms (
-         node_pool_id, cloud_id, ip, created_at, region, availability_zone,
-         credential_id, vm_type
-       ) VALUES ('node-pool-a', 'i-node-pool', '203.0.113.9', 5, 'us-east-1',
-         'us-east-1a', 'compute-aws', 't3.small')`,
-    );
-
-    const ownership = new ApiOwnershipStore(db);
-    await expect(ownership.seedLegacyTargets(API_IDENTITY)).resolves.toBe(1);
-    const targets = await ownership.listActionableTargets(10);
-    expect(targets).toEqual([
-      expect.objectContaining({
-        cloudId: 'i-node-pool',
-        ownerKind: 'resource',
-        ownerId: 'node-pool-a',
-        userId: 'owner-9',
-        credentialId: 'compute-aws',
-        cloudProvider: CloudType.AWS,
-        region: 'us-east-1',
-        availabilityZone: 'us-east-1a',
-        vmType: 't3.small',
-      }),
-    ]);
-    db.close();
-  });
-
   it('preserves adopted forks while assigning divergent resources independently', async () => {
     // Each fork carries the source database's stamp. A local API has no second
     // opinion to weigh it against, so it takes the stamp it finds and the two

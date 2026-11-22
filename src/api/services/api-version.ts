@@ -3,9 +3,8 @@ import * as semver from 'semver';
 import config from '../config.js';
 
 /**
- * Workload, Deployment, node-pool and credential read, quota status, cost and
- * token procedures accept the
- * current release and the one before it, so a pinned client survives one
+ * Workload and credential read, quota status, cost and token procedures
+ * accept the current release and the one before it, so a pinned client survives one
  * upgrade. Releases bump only the patch, so the window names the predecessor
  * the release recorded instead of counting minors.
  */
@@ -18,7 +17,7 @@ export function clientWindowVersionCheck(
 }
 
 /** A missing version is never in the window, even with no predecessor. */
-export function inClientWindow(version: string | null | undefined): boolean {
+function inClientWindow(version: string | null | undefined): boolean {
   return (
     !!version &&
     (version === config.currVersion || version === config.previousVersion)

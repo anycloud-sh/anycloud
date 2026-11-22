@@ -35,7 +35,7 @@ A cluster-hosted API refuses its own backup bucket, which holds the API's cipher
 key and database. Every bucket command that names it on the backup's cloud
 fails with `BUCKET_ACCESS_DENIED` (HTTP 403). A Job or Service that names it as
 `--input-bucket`, `--output-bucket` or `--checkpoint-bucket` is rejected, and
-so is `cluster create --checkpoint-bucket`.
+so is `api create --checkpoint-bucket`.
 
 When the cloud provider throttles a call, the API answers `BUCKET_THROTTLED`
 (HTTP 503) with the provider's `Retry-After`, from 1 to 30 seconds, or 1 second

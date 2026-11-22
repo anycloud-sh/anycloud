@@ -4,7 +4,6 @@ import { type DeployPipelineState } from '../../../shared/workload.js';
 import type { BeginServiceUpgradeInput } from '../repositories/workload-lifecycle.js';
 import type { ProvisioningAttemptRef } from '../entities.js';
 import { validatedRuntimePlacementProvider } from '../runtime-placement.js';
-import type { NodePoolServiceController } from '../node-pool-service-controller.js';
 
 /** Placement already resolved by the existing compute scheduler. */
 interface ServePlacement {
@@ -116,37 +115,8 @@ export function createVmHostServeRuntime(
   };
 }
 
-/**
- * A Service on an explicit node pool in the shared cluster. The
- * node pool Service controller owns its lifecycle; this adapter exposes the
- * shared teardown and cleanup contract to the retry and cleanup lanes.
- */
-export function createNodePoolServeRuntime(
-  controller: Pick<NodePoolServiceController, 'reconcile' | 'stop' | 'remove'>,
-): ServeRuntime {
-  return {
-    deploy({ workload }): Promise<void> {
-      return controller.reconcile(workload.id);
-    },
-    update({ workload }): Promise<boolean> {
-      // The upgrade domain refuses node pool Services before reaching a
-      // runtime; this guards the contract if a caller bypasses it.
-      throw new Error(
-        `Service ${workload.id} runs on a node pool; upgrades are not available yet`,
-      );
-    },
-    teardown({ workload }): Promise<void> {
-      return controller.stop(workload);
-    },
-    cleanup({ workload }): Promise<void> {
-      return controller.remove(workload);
-    },
-  };
-}
-
 export interface ServeRuntimeRouterDeps {
   vmHost: ServeRuntime;
-  nodePool: ServeRuntime;
 }
 
 /**
@@ -157,18 +127,10 @@ export interface ServeRuntimeRouterDeps {
  */
 export function createServeRuntimeRouter({
   vmHost,
-  nodePool,
 }: ServeRuntimeRouterDeps): ServeRuntime {
   const forCloud = (
     cloudProvider: CloudType | null,
-    workload: StoredWorkload,
   ): ServeRuntime | Promise<ServeRuntime> => {
-    if (workload.deploymentId) {
-      throw new Error('Services cannot target a Deployment');
-    }
-    // A node pool Service reports its node pool's cloud; the substrate is the
-    // cluster, so it never reaches VM-host machinery.
-    if (workload.nodePoolId) return nodePool;
     if (cloudProvider === null) {
       throw new Error('Serve runtime requires a resolved cloud provider');
     }
@@ -179,9 +141,6 @@ export function createServeRuntimeRouter({
     request: ServeCleanupRequest,
     allowUnresolvedVmHost = false,
   ): ServeRuntime | Promise<ServeRuntime> => {
-    if (request.workload.nodePoolId) {
-      return forCloud(request.workload.cloudProvider, request.workload);
-    }
     // Keep placement validation synchronous and fail-closed before crossing
     // the asynchronous runtime-resolution boundary.
     const provider = validatedRuntimePlacementProvider(
@@ -190,7 +149,7 @@ export function createServeRuntimeRouter({
       request.placement.cloudConfig.cloudProvider,
       allowUnresolvedVmHost,
     );
-    return forCloud(provider, request.workload);
+    return forCloud(provider);
   };
 
   const invoke = <Result>(
@@ -206,10 +165,7 @@ export function createServeRuntimeRouter({
     },
 
     update(request): Promise<boolean> {
-      const runtime = forCloud(
-        request.workload.cloudProvider,
-        request.workload,
-      );
+      const runtime = forCloud(request.workload.cloudProvider);
       return invoke(runtime, (selected) => selected.update(request));
     },
 

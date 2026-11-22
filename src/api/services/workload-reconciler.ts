@@ -1,16 +1,11 @@
 import { STUCK_ACTIVE_TIMEOUT_MS } from '../config.js';
-import {
-  getWorkloadLifecycle,
-  getWorkloadQueryStore,
-  getDeploymentExecutionStore,
-} from './persistence.js';
+import { getWorkloadLifecycle, getWorkloadQueryStore } from './persistence.js';
 import { type WorkloadReconcileCandidate } from './repositories/workload-queries.js';
 import type { RetryCandidate } from './repositories/retry-candidates.js';
 import { log } from './logger.js';
 import { computeRetryWait } from './retry-backoff.js';
 import { Scheduler } from './reconciliation/scheduler.js';
 import {
-  LIVE_EXECUTION_STATES,
   WorkloadState,
   WorkloadType,
   isDeployPipelineState,
@@ -135,8 +130,7 @@ function sameCandidate(
     left.id !== right.id ||
     left.state !== right.state ||
     left.workloadType !== right.workloadType ||
-    left.spot !== right.spot ||
-    left.deploymentId !== right.deploymentId
+    left.spot !== right.spot
   ) {
     return false;
   }
@@ -365,9 +359,6 @@ export class WorkloadReconciler {
     this.discovering = true;
     try {
       const now = this.now();
-      // First-claim expiry is a local database arbitration, independent of
-      // the bounded provider work lanes, and is rediscovered after restart.
-      await getDeploymentExecutionStore().expireDueTargetedJobSubmissions(now);
       const candidates =
         await getWorkloadQueryStore().listWorkloadReconcileCandidates();
       const seen = new Set(candidates.map((candidate) => candidate.id));
@@ -478,11 +469,7 @@ export class WorkloadReconciler {
   async enqueuePollNow(workloadId: string): Promise<boolean> {
     const candidate =
       await getWorkloadQueryStore().getWorkloadReconcileCandidate(workloadId);
-    if (
-      candidate?.state !== WorkloadState.Running ||
-      candidate.deploymentId !== null
-    )
-      return false;
+    if (candidate?.state !== WorkloadState.Running) return false;
     this.scheduler.replace({ candidate, dueAt: this.now(), kind: 'poll' });
     if (this.running && !this.scheduler.hasInFlight(workloadId))
       await this.pumpNow();
@@ -638,20 +625,6 @@ export class WorkloadReconciler {
         dueAt = kind === 'retry-launch' ? retryDueAt : now;
       } else {
         kind = 'retry-launch';
-      }
-    } else if (candidate.deploymentId !== null) {
-      if (
-        candidate.state === WorkloadState.Starting ||
-        LIVE_EXECUTION_STATES.includes(candidate.state)
-      ) {
-        // Targeted Jobs are observed through their shared Kubernetes
-        // Workload. In particular, the API-startup active-recovery kick
-        // must never reinterpret `starting` as a detached VM deploy step.
-        kind = 'poll';
-      } else if (TERMINAL_STATES.includes(candidate.state)) {
-        kind = 'cleanup';
-      } else {
-        return null;
       }
     } else if (candidate.state === WorkloadState.Finalizing) {
       kind = 'finalization';

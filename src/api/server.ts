@@ -71,7 +71,6 @@ import {
   stopBackgroundServices,
 } from './services/monitor.js';
 import { refreshCatalogs } from './services/catalog-readiness.js';
-import { holdPermissionFailures } from './services/node-pool-controller.js';
 import { getAnycloudDir, sleep } from '../shared/utils.js';
 import { errorMessage } from '../shared/log-diagnostics.js';
 import { isLoopbackApiUrl } from '../shared/config.js';
@@ -509,10 +508,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // other drift is repaired. Never holds readiness.
   if (hostedSystemRelease) {
     const release = createHostedSystemRelease(hostedSystemRelease);
-    holdPermissionFailures(true);
-    void applyOwnChart(release, requestShutdown.signal).finally(() =>
-      holdPermissionFailures(false),
-    );
+    void applyOwnChart(release, requestShutdown.signal);
     // Bootstrap applies the API's Traefik once; an upgrade's values reach it
     // here.
     void repairUntilSettled(

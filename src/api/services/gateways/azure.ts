@@ -47,9 +47,6 @@ import {
   type ScopedStorageGrant,
   type ScopedStorageToken,
   type StorageFailure,
-  INSTANCE_METADATA_CIDR,
-  METADATA_NODE_POOL_BOOT,
-  type NodePoolBootInputs,
 } from './cloud.js';
 import {
   CloudType,
@@ -634,14 +631,6 @@ function storageAccountTypeForDiskTier(
     : 'Standard_LRS';
 }
 
-/** The WireServer serves the guest agent and the Node's DNS. */
-export const AZURE_NODE_POOL_BOOT: NodePoolBootInputs = {
-  ...METADATA_NODE_POOL_BOOT,
-  hostOnlyCidrs: [INSTANCE_METADATA_CIDR, '168.63.129.16/32'],
-  resolvesThroughHostOnly: true,
-  resourceDiskStore: true,
-};
-
 export class Azure {
   type: CloudType;
   /** The region's shared public-SSH NSG, made once per gateway. */
@@ -730,7 +719,6 @@ export class Azure {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       terminateVMsConcurrency: AZURE_TERMINATE_CONCURRENCY,
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.observeStoppedVm(cloudId),
       },
@@ -746,7 +734,6 @@ export class Azure {
         isTerminalAuthError: (error) => this.isTerminalAuthError(error),
       },
       resourceScoped: {
-        nodePoolBoot: AZURE_NODE_POOL_BOOT,
         prepareResourceNetwork: (spec, scope, version) =>
           this.prepareNetwork(
             spec,

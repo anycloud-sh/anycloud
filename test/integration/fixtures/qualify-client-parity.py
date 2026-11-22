@@ -4,19 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import io
 import json
-import os
-from pathlib import Path
-import runpy
-import signal
-import sys
-import tempfile
 import typing
 import unittest
-from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import anycloud
 import httpx
@@ -27,9 +20,6 @@ from anycloud.models.workload_admission_response import WorkloadAdmissionRespons
 from anycloud.models.workload_resubmit_response import WorkloadResubmitResponse
 from anycloud.models.workload_status_response import WorkloadStatusResponse
 from anycloud.models.docker_options import DockerOptions
-from anycloud.models.list_deployments_response import ListDeploymentsResponse
-from anycloud.models.deployment_response import DeploymentResponse
-from anycloud.models.deployment_summary import DeploymentSummary
 from anycloud_workflows import (
     AsyncJob,
     WorkloadWaitTimeout,
@@ -43,24 +33,21 @@ from anycloud_workflows import (
 CLIENTS = ((Client, Job), (AsyncClient, AsyncJob))
 
 
-def status_body(state="running", *, kind="job", deployment=None, job_id="image-job"):
+def status_body(state="running", *, kind="job", job_id="image-job"):
     return {
         "workload": {
             **dict.fromkeys((
                 "agent", "availabilityZone", "awaitingReleaseMs", "checkpointBucket",
-                "checkpointStorageRegion", "claimDeadlineAt", "cloudProvider", "command",
+                "checkpointStorageRegion", "cloudProvider", "command",
                 "completedAt", "costSource", "diskIops", "diskSizeGb", "diskThroughputMibps", "diskTier", "dnsRecordId", "regions",
                 "dockerOptions", "gpuType", "imageDigest", "inputBucket", "inputStorageRegion",
-                "outputBucket", "outputStorageRegion", "publicEndpoint", "region", "secretNames", "session",
+                "outputBucket", "outputStorageRegion", "region", "secretNames", "session",
                 "sessionLabel", "totalCost", "version", "vmDurationMs", "vmType", "endReason",
                 "lastAttemptEndReason",
             )),
             "id": job_id,
             "image": "trainer:v1",
             "workloadType": kind,
-            "deploymentId": deployment,
-            "submissionRevision": 0,
-            "claimed": deployment is not None,
             "userId": "user-1",
             "spot": False,
             "state": state,
@@ -70,7 +57,6 @@ def status_body(state="running", *, kind="job", deployment=None, job_id="image-j
         },
         "events": [],
         "status": "-",
-        "jobsAhead": None,
     }
 
 
@@ -98,54 +84,6 @@ async def client_for(client_type, handler):
 
 
 class ClientParityTests(unittest.IsolatedAsyncioTestCase):
-    async def test_readiness_configuration_and_nullable_status_wire(self):
-        fixture = runpy.run_path(str(Path(__file__).with_name("qualify-python-sdk-extensions.py")))
-        summary = fixture["deployment_summary_body"]()
-        probe = {"exec": {"command": ["test", "-f", "/ready"]}, "periodSeconds": 1}
-        for client_type, _ in CLIENTS:
-            requests = []
-
-            async def handler(request):
-                requests.append(request)
-                if request.method == "GET" and request.url.path == "/v1/deployments":
-                    return httpx.Response(200, json={"deployments": [summary]})
-                body = {**summary, "readinessProbe": probe}
-                if request.method == "GET":
-                    body["status"] = {
-                        "state": "running", "releasing": False, "ready": False, "upgrade": {"number": 1, "state": "starting"},
-                        "reason": "Waiting for cleanup",
-                        "requestedGeneration": 2, "appliedGeneration": None, "podGeneration": None,
-                        "podName": None, "podUid": None, "containerId": None,
-                        "containerReady": None, "readyReplicas": None, "applicationReady": None, "probeConfigured": None,
-                        "observation": "unavailable", "observedAt": None, "observationError": "offline",
-                        "blockingJobs": {"total": 12, "jobs": [{
-                            "id": "blocker", "executionId": "execution", "generation": 1, "state": "terminated"
-                        }]},
-                    }
-                return httpx.Response(200 if request.method == "GET" else 202, json={"deployment": body})
-
-            async with client_for(client_type, handler) as client:
-                created = await call(client.create_deployment, "worker", "image:v1", node_pool="training",
-                    readiness_probe={"exec": {"command": ["test", "-f", "/ready"]}, "period_seconds": 1})
-                self.assertEqual(created.readiness_probe.to_dict(), probe)
-                await call(client.update_deployment, "worker", readiness_probe=created.readiness_probe)
-                await call(client.update_deployment, "worker", readiness_probe=None)
-                await call(client.update_deployment, "worker", image="image:v2")
-                listed = await call(client.list_deployments)
-                self.assertIsNone(listed[0].status)
-                self.assertEqual(len(requests), 5)
-                status = (await call(client.get_deployment, "worker")).status
-                self.assertEqual(status.state, "running")
-                self.assertEqual(status.upgrade.state, "starting")
-                self.assertIsNone(status.application_ready)
-                self.assertEqual(status.blocking_jobs.total, 12)
-                self.assertEqual(status.blocking_jobs.jobs[0].id, "blocker")
-            bodies = [json.loads(request.content) for request in requests[:4]]
-            self.assertEqual(bodies[0]["readinessProbe"], probe)
-            self.assertEqual(bodies[1:], [
-                {"readinessProbe": probe}, {"readinessProbe": None}, {"image": "image:v2"},
-            ])
-
     def test_public_signatures_and_types_stay_paired(self):
         replacements = {Client: AsyncClient, Job: AsyncJob}
         for sync_type, async_type in ((Client, AsyncClient), (Job, AsyncJob)):
@@ -232,15 +170,9 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
                     attached = await call(client.get, " image-job ")
                     self.assertIsNone(attached.submission)
                     self.assertEqual(attached.last_status.workload.state, "completed")
-                    for handle in (job, attached):
-                        with self.assertRaisesRegex(ValueError, "Deployment-targeted"):
-                            await call(handle.wait_for_claim)
-                        with self.assertRaisesRegex(ValueError, "Deployment-targeted"):
-                            await call(handle.resubmit, wait=True)
                     self.assertEqual((await call(attached.terminate)).message, "Termination scheduled")
                     response = await call(attached.resubmit)
                     self.assertIsInstance(response, WorkloadResubmitResponse)
-                    self.assertIsNone(response.submission_revision)
                     self.assertIsNone(attached.last_status)
                     self.assertEqual((await call(client.submit, "trainer:v1")).id, "server-chosen-id")
                     self.assertEqual(sum(request.method == "POST" for request in requests), 3)
@@ -257,20 +189,19 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_terminal_errors_retain_the_generated_status(self):
         for client_type, job_type in CLIENTS:
-            for deployment in (None, "deployment-1"):
-                for state in ("errored", "failed", "invalid", "terminated"):
-                    async def handler(_request):
-                        return httpx.Response(200, json=status_body(state, deployment=deployment))
+            for state in ("errored", "failed", "invalid", "terminated"):
+                async def handler(_request):
+                    return httpx.Response(200, json=status_body(state))
 
-                    with self.subTest(client=client_type.__name__, deployment=deployment, state=state):
-                        async with client_for(client_type, handler) as client:
-                            job = job_type(client, "image-job")
-                            with self.assertRaises(JobFailedError) as caught:
-                                await call(job.wait)
-                            self.assertEqual(caught.exception.workload_id, job.id)
-                            self.assertEqual(caught.exception.state, state)
-                            self.assertIs(caught.exception.status, job.last_status)
-                            self.assertIsInstance(job.last_status, WorkloadStatusResponse)
+                with self.subTest(client=client_type.__name__, state=state):
+                    async with client_for(client_type, handler) as client:
+                        job = job_type(client, "image-job")
+                        with self.assertRaises(JobFailedError) as caught:
+                            await call(job.wait)
+                        self.assertEqual(caught.exception.workload_id, job.id)
+                        self.assertEqual(caught.exception.state, state)
+                        self.assertIs(caught.exception.status, job.last_status)
+                        self.assertIsInstance(job.last_status, WorkloadStatusResponse)
 
     async def test_completion_wait_budget_and_unbounded_helper(self):
         for client_type, job_type in CLIENTS:
@@ -308,9 +239,6 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(client.api_client.rest_client.pool_manager.is_closed)
 
     async def test_generated_response_identity_and_handle_construction(self):
-        deployment = DeploymentSummary.model_construct(id="deployment-1", name="deployment")
-        response = DeploymentResponse(deployment=deployment)
-        listed = ListDeploymentsResponse(deployments=[deployment])
         receipt = WorkloadAdmissionResponse(id="image-job")
         for client_type, job_type in CLIENTS:
             async def handler(_request):
@@ -323,16 +251,6 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(job.submission, receipt)
                 self.assertIs(job_type(client, receipt).submission, receipt)
                 self.assertIsNone(job_type(client, "image-job").submission)
-                for name, args, kwargs in (
-                    ("create_deployment", ("deployment", "trainer:v1"), {"node_pool": "node-pool-1"}),
-                    ("get_deployment", ("deployment",), {}),
-                    ("update_deployment", ("deployment",), {"command": None}),
-                    ("delete_deployment", ("deployment",), {}),
-                ):
-                    with patch.object(client._deployments, name + suffix, return_value=response):
-                        self.assertIs(await call(getattr(client, name), *args, **kwargs), deployment)
-                with patch.object(client._deployments, "list_deployments" + suffix, return_value=listed):
-                    self.assertIs(await call(client.list_deployments), listed.deployments)
 
     async def test_invalid_inputs_and_closed_clients_make_no_requests(self):
         async def handler(_request):
@@ -342,39 +260,27 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
             async with client_for(client_type, handler) as client:
                 invalid = [
                     {}, {"image": "trainer:v1", "deployment": "deployment"},
-                    {"deployment": " "}, {"image": "trainer:v1", "timeout": 1},
+                    {"image": "trainer:v1", "timeout": 1},
                     {"image": "trainer:v1", "wait": True},
                     {"image": "trainer:v1", "command": "python train.py"},
                     {"image": "trainer:v1", "secrets": "wandb"},
                 ]
-                invalid.extend({"deployment": "deployment", name: value} for name, value in (
-                    ("cloud_config", {}), ("credential_name", "credential"), ("gpu", []),
-                    ("env", {}), ("secrets", []), ("docker_options", {}), ("command", []),
-                ))
                 for arguments in invalid:
                     with self.subTest(client=client_type.__name__, arguments=arguments):
                         with self.assertRaises((ValueError, TypeError)):
                             await call(client.submit, **arguments)
-                for arguments in ({}, {"image": None}, {"max_concurrent_jobs_per_replica": None}, {"docker_options": {}}, {"command": "python"}):
-                    with self.assertRaises((ValueError, TypeError)):
-                        await call(client.update_deployment, "deployment", **arguments)
-                for operation in (client.get, client.get_deployment, client.delete_deployment):
-                    with self.assertRaises(ValueError):
-                        await call(operation, " ")
+                with self.assertRaises(ValueError):
+                    await call(client.get, " ")
                 job = job_type(client, "image-job")
                 for arguments in ({"timeout_seconds": 0}, {"poll_interval_seconds": 0}):
                     with self.assertRaises(ValueError):
                         await call(job.wait, **arguments)
             for operation, args in (
-                (client.submit, ("trainer:v1",)), (client.list_deployments, ()),
-                (client.create_deployment, ("deployment", "trainer:v1")),
-                (client.get, ("image-job",)), (client.get_deployment, ("deployment",)),
-                (client.update_deployment, ("deployment",)), (client.delete_deployment, ("deployment",)),
-                (job.status, ()), (job.wait, ()), (job.wait_for_claim, ()),
-                (job.terminate, ()), (job.resubmit, ()),
+                (client.submit, ("trainer:v1",)), (client.get, ("image-job",)),
+                (job.status, ()), (job.wait, ()), (job.terminate, ()), (job.resubmit, ()),
             ):
                 with self.assertRaisesRegex(RuntimeError, "Client is closed"):
-                    await call(operation, *args, **({"node_pool": "pool"} if operation == client.create_deployment else {}))
+                    await call(operation, *args)
             with self.assertRaisesRegex(RuntimeError, "Client is closed"):
                 await call(client.__aenter__ if client_type is AsyncClient else client.__enter__)
 
@@ -392,7 +298,7 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
                 async with client_for(client_type, handler) as client:
                     job = job_type(client, "image-job")
                     operations = (
-                        (client.submit, ("trainer:v1",)), (client.list_deployments, ()),
+                        (client.submit, ("trainer:v1",)),
                         (client.get, (job.id,)), (job.status, ()), (job.wait, ()),
                         (job.terminate, ()), (job.resubmit, ()),
                     )
@@ -417,10 +323,9 @@ class ClientParityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
-    async def test_image_workflows_and_management_share_the_callers_loop(self):
+    async def test_concurrent_image_workflows_share_the_callers_loop(self):
         loop = asyncio.get_running_loop()
         waiting = set()
-        listed = asyncio.Event()
         admissions = []
 
         async def handler(request):
@@ -429,14 +334,9 @@ class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 job_id = json.loads(request.content)["id"]
                 admissions.append(job_id)
                 return httpx.Response(202, json={"id": job_id})
-            if request.url.path == "/v1/deployments":
-                listed.set()
-                return httpx.Response(200, json={"deployments": []})
             job_id = request.url.path.split("/")[-1]
             first = job_id not in waiting
             waiting.add(job_id)
-            if not first:
-                self.assertTrue(listed.is_set(), "Completion polling blocked peer management")
             return httpx.Response(200, json=status_body("running" if first else "completed", job_id=job_id))
 
         async with client_for(AsyncClient, handler) as client:
@@ -444,13 +344,12 @@ class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 job = await client.submit("trainer:v1", workload_id=job_id)
                 return await job.wait(timeout_seconds=5, poll_interval_seconds=0.001)
 
-            first, second, deployments = await asyncio.wait_for(asyncio.gather(
-                workflow("first-image"), workflow("second-image"), client.list_deployments()
+            first, second = await asyncio.wait_for(asyncio.gather(
+                workflow("first-image"), workflow("second-image")
             ), timeout=5)
             self.assertEqual({first.id, second.id}, {"first-image", "second-image"})
             self.assertEqual(sorted(admissions), ["first-image", "second-image"])
             self.assertEqual(waiting, set(admissions))
-            self.assertEqual(deployments, [])
 
     async def test_cancellation_during_image_admission_or_completion_keeps_client_usable(self):
         for during_admission in (True, False):
@@ -460,8 +359,8 @@ class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
             async def handler(request):
                 requests.append(request)
-                if request.url.path == "/v1/deployments":
-                    return httpx.Response(200, json={"deployments": []})
+                if request.url.path == "/v1/workloads/usable-job":
+                    return httpx.Response(200, json=status_body(job_id="usable-job"))
                 entered.set()
                 try:
                     await asyncio.Event().wait()
@@ -478,7 +377,7 @@ class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     await task
                 self.assertTrue(cancelled.is_set())
                 self.assertIsNone(job.last_status)
-                self.assertEqual(await client.list_deployments(), [])
+                self.assertEqual((await client.get("usable-job")).id, "usable-job")
                 self.assertEqual([request.method for request in requests], ["POST" if during_admission else "GET", "GET"])
 
     async def test_cancellation_during_polling_sleep_stops_observation(self):
@@ -504,308 +403,10 @@ class NativeAsyncLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(client.api_client.rest_client.pool_manager.is_closed)
 
 
-class KubernetesDriverTests(unittest.IsolatedAsyncioTestCase):
-    def driver_path(self):
-        return (
-            Path(__file__).resolve().parents[1]
-            / "e2e/internal/fixtures/python-sdk-driver.py"
-        )
-
-    def driver(self, name="run"):
-        return runpy.run_path(str(self.driver_path()))[name]
-
-    async def test_concurrent_driver_requests_share_one_client(self):
-        admissions = []
-        both_admitted = asyncio.Event()
-        initial_tasks = asyncio.all_tasks()
-
-        async def handler(request):
-            if request.url.path == "/v1/workloads":
-                identifier = json.loads(request.content)["id"]
-                admissions.append(identifier)
-                if len(admissions) == 2:
-                    both_admitted.set()
-                await both_admitted.wait()
-                return httpx.Response(202, json={
-                    "id": identifier, "submissionRevision": 0,
-                    "claimDeadlineAt": 1234,
-                })
-            if request.url.path.endswith("/claim-observation"):
-                return httpx.Response(200, json={
-                    "outcome": "claimed", "claimed": True,
-                    "submissionRevision": 0, "claimDeadlineAt": 1234,
-                })
-            self.assertEqual(request.method, "GET")
-            self.assertEqual(request.url.path.rsplit("/", 1)[0], "/v1/workloads")
-            return httpx.Response(200, json=status_body(
-                deployment="deployment-1", job_id=request.url.path.split("/")[-1]
-            ))
-
-        async with client_for(AsyncClient, handler) as client:
-            try:
-                result = await asyncio.wait_for(self.driver()({
-                    "action": "submit_concurrent", "deployment": "deployment-1",
-                    "workloadIds": ["concurrent-a", "concurrent-b"],
-                    "timeout": 5, "wait": True,
-                }, client), timeout=2)
-            except asyncio.TimeoutError:
-                self.fail("concurrent driver did not reach the two-admission barrier")
-            self.assertCountEqual(admissions, ["concurrent-a", "concurrent-b"])
-            self.assertEqual(
-                [job["id"] for job in result["jobs"]],
-                ["concurrent-a", "concurrent-b"],
-            )
-            self.assertTrue(all(job["claimed"] for job in result["jobs"]))
-        self.assertEqual(asyncio.all_tasks(), initial_tasks)
-
-    async def test_failed_batch_cancels_and_joins_its_waiting_sibling(self):
-        waiting = asyncio.Event()
-        cancelled = asyncio.Event()
-        initial_tasks = asyncio.all_tasks()
-
-        async def handler(request):
-            if request.url.path == "/v1/workloads":
-                identifier = json.loads(request.content)["id"]
-                if identifier == "rejected-job":
-                    await waiting.wait()
-                    return httpx.Response(400, json={"message": "rejected submission"})
-                return httpx.Response(202, json={
-                    "id": identifier, "submissionRevision": 0,
-                    "claimDeadlineAt": 1234,
-                })
-            self.assertTrue(request.url.path.endswith("/claim-observation"))
-            waiting.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                await asyncio.sleep(0)
-                cancelled.set()
-
-        async with client_for(AsyncClient, handler) as client:
-            with self.assertRaises(ApiException) as caught:
-                await asyncio.wait_for(self.driver()({
-                    "action": "submit_concurrent", "deployment": "deployment-1",
-                    "workloadIds": ["waiting-job", "rejected-job"],
-                    "timeout": 5, "wait": True,
-                }, client), timeout=2)
-            self.assertEqual(caught.exception.status, 400)
-            self.assertTrue(cancelled.is_set())
-            self.assertEqual(asyncio.all_tasks(), initial_tasks)
-        self.assertEqual(asyncio.all_tasks(), initial_tasks)
-
-    async def test_parent_cancellation_and_timeout_join_both_requests(self):
-        for mode in ("cancel", "timeout"):
-            with self.subTest(mode=mode):
-                entered = set()
-                finished = set()
-                both_entered = asyncio.Event()
-                initial_tasks = asyncio.all_tasks()
-
-                async def handler(request):
-                    self.assertEqual(request.url.path, "/v1/workloads")
-                    identifier = json.loads(request.content)["id"]
-                    entered.add(identifier)
-                    if len(entered) == 2:
-                        both_entered.set()
-                    try:
-                        await asyncio.Event().wait()
-                    finally:
-                        finished.add(identifier)
-
-                async with client_for(AsyncClient, handler) as client:
-                    batch = asyncio.create_task(self.driver()({
-                        "action": "submit_concurrent", "deployment": "deployment-1",
-                        "workloadIds": ["waiting-a", "waiting-b"], "wait": True,
-                    }, client))
-                    try:
-                        await asyncio.wait_for(both_entered.wait(), timeout=2)
-                        if mode == "cancel":
-                            batch.cancel()
-                            with self.assertRaises(asyncio.CancelledError):
-                                await batch
-                        else:
-                            with self.assertRaises(asyncio.TimeoutError):
-                                await asyncio.wait_for(batch, timeout=0.001)
-                        self.assertEqual(finished, {"waiting-a", "waiting-b"})
-                        self.assertEqual(asyncio.all_tasks(), initial_tasks)
-                        self.assertFalse(client.api_client.rest_client.pool_manager.is_closed)
-                    finally:
-                        batch.cancel()
-                        await asyncio.gather(batch, return_exceptions=True)
-
-    async def test_main_emits_success_only_after_its_own_client_closes(self):
-        async def handler(request):
-            if request.method == "POST":
-                return httpx.Response(202, json={
-                    "id": json.loads(request.content)["id"],
-                    "submissionRevision": 0, "claimDeadlineAt": 1234,
-                })
-            return httpx.Response(200, json=status_body(
-                deployment="deployment-1", job_id=request.url.path.split("/")[-1],
-            ))
-
-        client = AsyncClient(api_url="https://api.example.test", token="test-token")
-        transport = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        client.api_client.rest_client.pool_manager = transport
-        main = self.driver("main")
-        output, diagnostics = io.StringIO(), io.StringIO()
-        request = {"action": "submit_concurrent", "deployment": "deployment-1",
-                   "workloadIds": ["main-a", "main-b"]}
-        try:
-            with patch.dict(main.__globals__, {"AsyncClient": lambda: client}), \
-                    patch("sys.stdin", io.StringIO(json.dumps(request))), \
-                    redirect_stdout(output), redirect_stderr(diagnostics):
-                await main()
-            result = json.loads(output.getvalue())
-            self.assertTrue(transport.is_closed)
-            self.assertEqual(result["client"], "AsyncClient")
-            self.assertIs(result["transportClosed"], True)
-            self.assertEqual(result["pendingTasks"], 0)
-            self.assertEqual([job["id"] for job in result["jobs"]], ["main-a", "main-b"])
-            self.assertEqual(diagnostics.getvalue(), "")
-        finally:
-            await transport.aclose()
-
-    async def test_main_preserves_action_and_close_failures_with_observed_cleanup(self):
-        for mode in ("action", "close", "incomplete-close", "action-and-close"):
-            with self.subTest(mode=mode):
-                client = AsyncClient(api_url="https://api.example.test", token="test-token")
-                transport = httpx.AsyncClient(transport=httpx.MockTransport(
-                    lambda _: httpx.Response(200, json=status_body(deployment="deployment-1"))
-                ))
-                client.api_client.rest_client.pool_manager = transport
-                main = self.driver("main")
-                action_error = ValueError("original action failure")
-                close_error = RuntimeError("original close failure")
-                action = AsyncMock(
-                    side_effect=action_error if mode in ("action", "action-and-close") else None,
-                    return_value={"jobs": []},
-                )
-                real_close = client.aclose
-                if mode in ("close", "action-and-close"):
-                    client.aclose = AsyncMock(side_effect=close_error)
-                elif mode == "incomplete-close":
-                    client.aclose = AsyncMock()
-                output, diagnostics = io.StringIO(), io.StringIO()
-                try:
-                    with patch.dict(main.__globals__, {"AsyncClient": lambda: client, "run": action}), \
-                            patch("sys.stdin", io.StringIO('{"action":"submit_concurrent"}')), \
-                            redirect_stdout(output), redirect_stderr(diagnostics):
-                        with self.assertRaises((ValueError, RuntimeError, AssertionError)) as caught:
-                            await main()
-                    self.assertEqual(output.getvalue(), "")
-                    observation = json.loads(diagnostics.getvalue())
-                    self.assertEqual(observation["kind"], "python-sdk-finalization")
-                    self.assertEqual(observation["pendingTasks"], 0)
-                    self.assertIs(observation["transportClosed"], mode == "action")
-                    if mode in ("action", "action-and-close"):
-                        self.assertIs(caught.exception, action_error)
-                    if mode == "close":
-                        self.assertIs(caught.exception, close_error)
-                    if mode == "action-and-close":
-                        self.assertIs(caught.exception.__cause__, close_error)
-                finally:
-                    client.aclose = real_close
-                    await client.aclose()
-                    await transport.aclose()
-
-    async def test_sigterm_cancels_the_real_driver_and_retains_failure_diagnostics(self):
-        both_entered = asyncio.Event()
-        entered = set()
-        handlers = set()
-
-        async def handler(reader, writer):
-            task = asyncio.current_task()
-            handlers.add(task)
-            try:
-                headers = (await reader.readuntil(b"\r\n\r\n")).decode()
-                length = next(int(line.split(":", 1)[1]) for line in headers.splitlines()
-                              if line.lower().startswith("content-length:"))
-                entered.add(json.loads(await reader.readexactly(length))["id"])
-                if len(entered) == 2:
-                    both_entered.set()
-                await reader.read()
-            finally:
-                writer.close()
-                await writer.wait_closed()
-                handlers.discard(task)
-
-        server = await asyncio.start_server(handler, "127.0.0.1", 0)
-        process = None
-        try:
-            with tempfile.TemporaryDirectory(prefix="anycloud-driver-signal-") as directory:
-                # A loopback API takes the token `anycloud api start` writes.
-                Path(directory, "local-api-token").write_text("test-token")
-                environment = {
-                    **os.environ, "ANYCLOUD_DIR": directory, "GITHUB_TOKEN": "test-token",
-                    "API_URL": f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}",
-                }
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable, "-I", str(self.driver_path()),
-                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE, env=environment,
-                )
-                process.stdin.write(json.dumps({
-                    "action": "submit_concurrent", "deployment": "deployment-1",
-                    "workloadIds": ["signal-a", "signal-b"], "wait": True,
-                }).encode())
-                await process.stdin.drain()
-                process.stdin.close()
-                await asyncio.wait_for(both_entered.wait(), timeout=5)
-                process.send_signal(signal.SIGTERM)
-                output, diagnostics = await asyncio.wait_for(process.communicate(), timeout=2)
-                self.assertNotEqual(process.returncode, 0)
-                self.assertEqual(output, b"")
-                record = next(json.loads(line) for line in diagnostics.decode().splitlines()
-                              if line.startswith('{"kind":"python-sdk-finalization"'))
-                self.assertIs(record["transportClosed"], True)
-                self.assertEqual(record["pendingTasks"], 0)
-                self.assertEqual(record["errors"], [{"phase": "action", "type": "CancelledError"}])
-                await asyncio.wait_for(asyncio.gather(*handlers), timeout=2)
-        finally:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.communicate()
-            server.close()
-            await server.wait_closed()
-            for task in list(handlers):
-                task.cancel()
-            await asyncio.gather(*handlers, return_exceptions=True)
-
-    async def test_main_reports_an_unjoined_task_as_incomplete(self):
-        client = AsyncClient(api_url="https://api.example.test", token="test-token")
-        transport = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
-        client.api_client.rest_client.pool_manager = transport
-        main = self.driver("main")
-        pending = None
-
-        async def unjoined_action(*_args):
-            nonlocal pending
-            pending = asyncio.create_task(asyncio.Event().wait(), name="unjoined-request")
-            return {"jobs": []}
-
-        output, diagnostics = io.StringIO(), io.StringIO()
-        try:
-            with patch.dict(main.__globals__, {"AsyncClient": lambda: client, "run": unjoined_action}), \
-                    patch("sys.stdin", io.StringIO('{"action":"submit_concurrent"}')), \
-                    redirect_stdout(output), redirect_stderr(diagnostics):
-                with self.assertRaisesRegex(AssertionError, "left pending tasks"):
-                    await main()
-            record = json.loads(diagnostics.getvalue())
-            self.assertIs(record["transportClosed"], True)
-            self.assertEqual(record["pendingTasks"], 1)
-            self.assertEqual(output.getvalue(), "")
-        finally:
-            if pending is not None:
-                pending.cancel()
-                await asyncio.gather(pending, return_exceptions=True)
-            await transport.aclose()
-
-
 if __name__ == "__main__":
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(case)
-        for case in (ClientParityTests, NativeAsyncLifecycleTests, KubernetesDriverTests)
+        for case in (ClientParityTests, NativeAsyncLifecycleTests)
     )
     if not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful():
         raise SystemExit(1)

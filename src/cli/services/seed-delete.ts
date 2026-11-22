@@ -3,7 +3,7 @@ import { errorMessage } from '../../shared/log-diagnostics.js';
 import type { CloudSeed, SeedResource, SeedStatus } from '../seed/types.js';
 
 /**
- * `cluster delete` on the seed (RFC 0049 C26, seed design). With the hosted
+ * `api delete` on the seed (RFC 0049 C26, seed design). With the hosted
  * API reachable, the API deletes everything and itself last; the CLI follows
  * it, then through the cloud CLI until the stack, group or instance is gone,
  * and then removes the DNS record. With the API dead, guards decide whether
@@ -117,9 +117,9 @@ function keptBucket(
     name,
     managed,
     reason: managed ? 'kept' : 'supplied',
-    restoreCommand: `anycloud cluster create <name> --cloud ${cloud} --region ${region} --checkpoint-bucket ${name}`,
+    restoreCommand: `anycloud api create <name> --cloud ${cloud} --region ${region} --checkpoint-bucket ${name}`,
     ...(managed && {
-      deleteCommand: `anycloud cluster delete ${clusterId} --delete-buckets`,
+      deleteCommand: `anycloud api delete ${clusterId} --delete-buckets`,
     }),
   };
 }
@@ -211,7 +211,7 @@ export async function deleteThroughApi(
     if (status.state === 'idle' || deps.now() >= deadline) {
       throw new DeleteRefusedError(
         'SELF_DELETE_FAILED',
-        `The hosted API's delete stopped (${status.state === 'idle' ? 'it restarted' : 'timed out'}); run anycloud cluster delete ${clusterId} again`,
+        `The hosted API's delete stopped (${status.state === 'idle' ? 'it restarted' : 'timed out'}); run anycloud api delete ${clusterId} again`,
       );
     }
     last = status;
@@ -235,7 +235,7 @@ export async function deleteThroughApi(
   if (!(await untilAbsent(deps, clusterId))) {
     throw new DeleteRefusedError(
       'SELF_DELETE_FAILED',
-      `The hosted API stopped answering but its installation isn't gone yet; run anycloud cluster delete ${clusterId} again to finish it`,
+      `The hosted API stopped answering but its installation isn't gone yet; run anycloud api delete ${clusterId} again to finish it`,
     );
   }
   await finish(deps, clusterId, flags, report);

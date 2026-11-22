@@ -79,27 +79,17 @@ function signInRecovery(
   };
 }
 
-/** Exchange and save a hosted API's token; null when it issued none (older API). */
+/** Exchange the GitHub sign-in for a hosted API's token and save it. */
 export async function exchangeApiToken(
   apiUrl: string,
   githubToken: string,
-): Promise<string | null> {
-  try {
-    const { token } = await createApiClient(githubToken, {
-      apiUrl,
-      interceptors: [signInRecovery(1)],
-    }).apiAccess.exchangeToken({});
-    saveApiToken(apiUrl, token);
-    return token;
-  } catch (error) {
-    if (
-      error instanceof ORPCError &&
-      (error.status === 404 || error.code === 'CLIENT_VERSION_MISMATCH')
-    ) {
-      return null;
-    }
-    throw error;
-  }
+): Promise<string> {
+  const { token } = await createApiClient(githubToken, {
+    apiUrl,
+    interceptors: [signInRecovery(1)],
+  }).apiAccess.exchangeToken({});
+  saveApiToken(apiUrl, token);
+  return token;
 }
 
 /** `ANYCLOUD_API_TOKEN`, only when `API_URL` names the same API. */
@@ -121,7 +111,7 @@ export async function hostedApiBearer(
   if (saved) return saved;
   const githubToken = await signIn();
   if (!githubToken) return null;
-  return (await exchangeApiToken(apiUrl, githubToken)) ?? githubToken;
+  return exchangeApiToken(apiUrl, githubToken);
 }
 
 /**
@@ -187,10 +177,9 @@ export async function apiClient(
         refreshable
           ? async () => {
               const githubToken = optionalGitHubToken();
-              return (
-                githubToken !== null &&
-                (await exchangeApiToken(target.url, githubToken)) !== null
-              );
+              if (githubToken === null) return false;
+              await exchangeApiToken(target.url, githubToken);
+              return true;
             }
           : undefined,
       ),

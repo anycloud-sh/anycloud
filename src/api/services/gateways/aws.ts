@@ -94,7 +94,6 @@ import {
   type VMReleaseObservationOptions,
   type CandidateRegion,
   type StorageFailure,
-  METADATA_NODE_POOL_BOOT,
 } from './cloud.js';
 import { AwsQuotaProvider } from '../quota/aws.js';
 import {
@@ -643,8 +642,8 @@ async function mintScopedS3Token(
         ? await assumeAwsRole(
             source,
             {
-              // CloudTrail names each session after its grants: a pool Job's
-              // `<job-id>/` comes first so truncation keeps it. A caller's
+              // CloudTrail names each session after its grants, the first
+              // first so truncation keeps it. A caller's
               // prefix may hold `/` and more, which STS's
               // `[\w+=,.@-]` refuses, so those become `-`.
               sessionName: `anycloud-${grants
@@ -721,8 +720,6 @@ async function mintScopedS3Token(
     expiresAt: expiresAt!,
   };
 }
-
-export const AWS_NODE_POOL_BOOT = METADATA_NODE_POOL_BOOT;
 
 export class AWS {
   ec2client: EC2Client; // Public for testing
@@ -815,7 +812,6 @@ export class AWS {
       observeVMReleaseOnce: (cloudId, options) =>
         this.observeVMReleaseOnce(cloudId, options),
       isPlaceholderVMId: (vmId) => !vmId.startsWith('i-'),
-      spotLaunch: true,
       stoppedVmObservation: {
         observeStoppedVm: (cloudId) => this.verifyVMPreemption(cloudId),
       },
@@ -831,7 +827,6 @@ export class AWS {
         isTerminalAuthError: (error) => this.isTerminalAuthError(error),
       },
       resourceScoped: {
-        nodePoolBoot: AWS_NODE_POOL_BOOT,
         prepareResourceNetwork: (spec, scope, version) =>
           this.prepareNetwork(
             spec,

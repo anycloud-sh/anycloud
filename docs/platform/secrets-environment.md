@@ -8,7 +8,7 @@ import TabItem from '@theme/TabItem';
 
 # Secrets & Environment
 
-Jobs, Services, VMs, and Deployments accept ordinary environment variables and
+Jobs, Services, and VMs accept ordinary environment variables and
 named secret bundles. Use environment values for non-sensitive,
 workload-specific configuration. Use Secrets for reusable API keys, tokens,
 and passwords whose values should not appear in API responses.
@@ -121,8 +121,7 @@ with Client() as client:
 </Tabs>
 
 Create both bundles above before submitting this Job. The same named Secrets
-work with Services started through the JSON API or CLI, with `anycloud vm`, and
-with [Deployments](/reference/cli/deployments#named-secrets).
+work with Services started through the JSON API or CLI, and with `anycloud vm`.
 
 ## Precedence and rotation
 
@@ -139,12 +138,9 @@ anycloud resubmit <job-id>
 Running containers keep the environment values injected when they started.
 New Jobs, resubmissions, and spot replacements read the current bundle. The
 [Secret files](#read-secrets-as-files) of a running Job, Service or VM change
-within seconds. A Deployment's
-containers read the current bundle whenever they start; see
-[Deployment Secrets](/reference/cli/deployments#named-secrets).
+within seconds.
 
-Deletion is blocked while a non-terminal workload or a Deployment that isn't
-deleted yet references the Secret.
+Deletion is blocked while a non-terminal workload references the Secret.
 `--force` bypasses that safeguard, but the next VM start for a workload that
 still references the missing name will fail.
 
@@ -172,9 +168,6 @@ ones, and a key removed from the Secret disappears. To react to a change, watch
 the Secret's directory rather than one file. If the VM is briefly unreachable,
 the update arrives once it answers again. A force-deleted Secret's last files
 stay until the workload ends.
-
-Deployments and node pool Jobs and Services read Secrets as environment
-variables only.
 
 Programs that create short-lived Secrets can start their names with `_`, as
 in `_job-123-token`. `anycloud secrets list` hides those unless you pass
@@ -240,10 +233,6 @@ resubmissions, and service upgrades preflight named Secret references before
 changing workload state or provisioning; workload startup resolves the
 current values again to catch deletion or rotation between the request and
 container start.
-
-A Deployment's resolved values live in a Kubernetes Secret in its node pool's
-namespace on the cluster, which the container reads at start. Anyone who can
-read Secrets in that namespace or open a shell in the Pod can read them.
 
 Anycloud uses your sign-in token only to pull private GHCR images and to
 publish Service hostnames. Workload containers don't receive it.

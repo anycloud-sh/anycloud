@@ -1,12 +1,8 @@
 import type {
-  DedicatedWorkloadAdmissionInput,
+  WorkloadAdmissionInput,
   WorkloadAdmissionResponse,
 } from '../../../../src/shared/api-contract/workload-admission-schemas.js';
 import type { CloudCredential } from '../../../../src/shared/api-contract/credentials-schemas.js';
-import type {
-  CreateNodePoolRequest,
-  NodePoolSummary,
-} from '../../../../src/shared/api-contract/node-pools-schemas.js';
 import type {
   WorkloadSshAccessInput,
   WorkloadSshAccessResponse,
@@ -56,7 +52,7 @@ export type CloudCredentialInput = CloudCredential extends infer Credential
     : never
   : never;
 export type SshAccessMaterial = WorkloadSshAccessResponse;
-export type WorkloadCreateBody = DedicatedWorkloadAdmissionInput & {
+export type WorkloadCreateBody = WorkloadAdmissionInput & {
   readonly id: string;
 };
 export type WorkloadCreateResponse = WorkloadAdmissionResponse;
@@ -64,13 +60,6 @@ export type SshAccessMode = WorkloadSshAccessInput['mode'];
 
 export type WorkloadStatusLookup =
   | { readonly kind: 'found'; readonly status: StatusResponse }
-  | { readonly kind: 'absent' };
-
-export type { NodePoolSummary };
-export type NodePoolCreateRequest = CreateNodePoolRequest;
-
-export type NodePoolStatusLookup =
-  | { readonly kind: 'found'; readonly nodePool: NodePoolSummary }
   | { readonly kind: 'absent' };
 
 export interface DeclaredApiError {

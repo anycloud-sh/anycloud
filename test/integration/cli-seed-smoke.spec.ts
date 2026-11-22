@@ -1,5 +1,5 @@
 /**
- * The release-built CLI's `cluster create --cloud <c> --json` (the seed, RFC
+ * The release-built CLI's `api create --cloud <c> --json` (the seed, RFC
  * 0049 C26 (e)) against fake `aws` and `az` on PATH (S1's fake-CLI kit):
  * it discovers the account and checks the rights through the user's CLI,
  * then submits the installation under its seed name. The fake refuses the
@@ -131,7 +131,7 @@ async function resourceManager(): Promise<{ url: string; close(): void }> {
   };
 }
 
-describe('compiled seed cluster create', () => {
+describe('compiled seed api create', () => {
   let clis: FakeCloudClis | undefined;
   let home: string | undefined;
   afterEach(() => {
@@ -149,7 +149,7 @@ describe('compiled seed cluster create', () => {
       const result = await promisify(execFile)(
         cli,
         [
-          'cluster',
+          'api',
           'create',
           'smoke',
           '--cloud',

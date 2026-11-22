@@ -1,5 +1,4 @@
 import { KubeConfig, OpenidApi, WellKnownApi } from '@kubernetes/client-node';
-import { SERVICE_ACCOUNT_ISSUER_JWKS_PATH } from '../../../shared/system-release.js';
 
 /**
  * Where a hosted API serves its cluster's ServiceAccount issuer, at the

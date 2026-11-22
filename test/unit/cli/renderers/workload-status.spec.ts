@@ -12,10 +12,7 @@ import {
 } from '../../../../src/cli/renderers/workload-retry.js';
 import { workloadStatusView } from '../../../../src/cli/use-cases/workload-status.js';
 import { printWorkloadHeader } from '../../../../src/cli/utils/output.js';
-import {
-  type WorkloadEvent,
-  type StoredWorkload,
-} from '../../../../src/api/services/workload-record.js';
+import { type WorkloadEvent } from '../../../../src/api/services/workload-record.js';
 import {
   CloudFailureDiagnosis,
   CloudType,
@@ -31,7 +28,6 @@ import {
 } from '../../../../src/shared/runtime.js';
 import { errorForDiagnosticMetadata } from '../../../../src/shared/log-diagnostics.js';
 import {
-  makeStoredWorkload,
   makeWorkloadEvent,
   makeStatusWorkloadMetadata,
 } from '../../helpers/fixtures.js';

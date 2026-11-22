@@ -82,9 +82,7 @@ for their type in that region, so KVM tools such as Local SmolVM run inside
 them. GCP and Azure don't report it, so their catalogs record it from a
 reviewed list of machine series, and other series remain unknown. On GCP a
 region reports support when any of its zones does. VM Jobs submitted with
-`--require-nested-virtualization` and node pools created with
-[`--require-nested-virtualization`](/reference/cli/node-pools#create-a-node-pool)
-keep only the VM types the catalog reports support for, and launch them with
+`--require-nested-virtualization` keep only the VM types the catalog reports support for, and launch them with
 it on, on every cloud.
 
 ## `anycloud gpus`

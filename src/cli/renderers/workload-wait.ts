@@ -54,21 +54,11 @@ function formatText(record: WaitRecord): string {
   switch (record.type) {
     case 'state': {
       const details: string[] = [];
-      if (record.upgrade) {
-        details.push(
-          `upgrade ${record.upgrade.number} ${record.upgrade.state}`,
-        );
-      }
       if (record.ready) details.push('ready');
       if (record.exitCode !== undefined) {
         details.push(`exit ${record.exitCode}`);
       }
       if (record.reason) details.push(record.reason);
-      if (record.jobsAhead !== undefined) {
-        details.push(
-          `${record.jobsAhead} Job${record.jobsAhead === 1 ? '' : 's'} ahead`,
-        );
-      }
       const retry = retryFacts(record);
       if (retry) {
         const due = retryWhen(retry, record.observedAt);

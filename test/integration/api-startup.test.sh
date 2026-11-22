@@ -275,7 +275,7 @@ without_cloud() (
     with_github "$@"
 )
 expect_output without_cloud 1 "Failed to create cluster: GitHub did not name the signed-in account" -- \
-    cluster create api-startup-dummy-github --cloud aws --region us-east-1 --vm-type t3.medium
+    api create api-startup-dummy-github --cloud aws --region us-east-1 --vm-type t3.medium
 kill "$FAKE_GITHUB_PID"
 FAKE_GITHUB_PID=""
 rm -f "$TEMP_DIR/github-device.json" "$FAKE_GITHUB_PORT_FILE"

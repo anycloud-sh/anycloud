@@ -316,33 +316,12 @@ describe('API token selection', () => {
       },
     );
 
-    it.each([
-      ['has no exchange route', () => new Response('', { status: 404 })],
-      [
-        'refuses this version before routing',
-        () =>
-          Response.json(
-            {
-              defined: true,
-              code: 'CLIENT_VERSION_MISMATCH',
-              status: 400,
-              message: 'mismatch',
-            },
-            { status: 400 },
-          ),
-      ],
-    ])(
-      'sends its sign-in to an API older than API tokens that %s',
-      async (_case, exchange) => {
-        const seen = hostedApi(exchange);
-        await listTwice('https://old.anycloud.sh');
-        expect(seen.filter(({ path }) => path !== '/v1/api-token')).toEqual([
-          { path: '/v1/credentials', bearer: `Bearer ${GITHUB_SIGN_IN}` },
-          { path: '/v1/credentials', bearer: `Bearer ${GITHUB_SIGN_IN}` },
-        ]);
-        expect(existsSync(join(anycloudDir, 'api-tokens.json'))).toBe(false);
-      },
-    );
+    it('sends its GitHub sign-in only to the exchange, even when an API has none', async () => {
+      const seen = hostedApi(() => new Response('', { status: 404 }));
+      await expect(listTwice('https://old.anycloud.sh')).rejects.toThrow();
+      expect(seen.map(({ path }) => path)).toEqual(['/v1/api-token']);
+      expect(existsSync(join(anycloudDir, 'api-tokens.json'))).toBe(false);
+    });
 
     it('replaces a damaged token file with the next exchange', async () => {
       writeFileSync(join(anycloudDir, 'api-tokens.json'), '{"half":');

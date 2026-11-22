@@ -320,7 +320,7 @@ missing.
 With `--json`, the setup and progress go to stderr, and stdout carries one
 document: `{name, cloudProvider, kind: "role", ...identifiers}` on success, or
 `{"error": {"code", "message"}}` on failure, with the
-[exit codes of the lifecycle commands](/reference/cli/cluster#results-for-scripts):
+[exit codes of the lifecycle commands](/reference/cli/api-utilities#results-for-scripts):
 `INVALID_ARGUMENT` or `API_UNREACHABLE` (exit `2`, not run),
 `CREDENTIAL_NAME_EXISTS` (the name is taken; pass `--overwrite`),
 `ROLE_SETUP_UNAVAILABLE` (the API serves no setup template), the API's error
@@ -395,7 +395,7 @@ without a terminal it stops:
 "CLOUD_SIGN_IN_REQUIRED", "message", "command"}}`, where `command` signs in
   (`aws sso login`, `gcloud auth login`, `az login`), and exits `2`;
 - a missing CLI is `CLOUD_CLI_UNAVAILABLE` and a refusal
-  `CLOUD_RIGHTS_MISSING` (exit `1`), as for `cluster create`.
+  `CLOUD_RIGHTS_MISSING` (exit `1`), as for `api create`.
 
 The signed-in account needs these rights; an account administrator has them:
 
@@ -622,9 +622,8 @@ gcloud projects add-iam-policy-binding PROJECT_ID \
   {JSON.stringify(gcpRole, null, 2)}
 </CodeBlock>
 
-`resourcemanager.projects.get` reads the project's number, which a
-[spot node pool's Job](/platform/jobs#jobs-on-a-node-pool) checks before it
-reuses a checkpoint bucket that already has its name.
+`resourcemanager.projects.get` reads the project's number, which Anycloud
+checks before it reuses a checkpoint bucket that already has its name.
 
 The two `bigquery` permissions are needed only for per-VM costs from a billing
 export; remove them if you don't configure one. Anycloud runs the cost query

@@ -7,8 +7,6 @@ import type { FirstBackupStatus } from './first-backup.js';
 import * as semver from 'semver';
 import { errorMessage } from '../../shared/log-diagnostics.js';
 import type {
-  DrainPoolJobsInput,
-  DrainPoolJobsResponse,
   KubernetesStep,
   KubernetesStepInput,
   KubernetesStepResponse,
@@ -30,7 +28,6 @@ import {
 import type { User } from './entities.js';
 import { apiIngressHelmChart } from '../../shared/api-ingress.js';
 import type { ClusterConnectionDocument } from './kubernetes/cluster-connection.js';
-import type { ClusterReleaseClient } from './clusters-domain.js';
 import type { ClusterReleaseConflictError } from './cluster-errors.js';
 import type { ClusterRecordRepository } from './cluster-store.js';
 import {
@@ -86,16 +83,42 @@ export interface HostedSystemReleaseIdentity {
   installationId: string;
 }
 
+/** Kubernetes operations on the cluster through its stored connection. */
+export interface ClusterReleaseClient {
+  /** Create or merge-patch a namespaced object (Traefik's HelmChart). */
+  applyObject(
+    connection: ClusterConnectionDocument,
+    object: {
+      apiVersion: string;
+      kind: string;
+      metadata: { name: string; namespace: string };
+      spec: unknown;
+    },
+  ): Promise<void>;
+  getHelmChart(
+    connection: ClusterConnectionDocument,
+    name: string,
+    namespace: string,
+  ): Promise<HelmChartObject | null>;
+  /**
+   * Create when `expectedResourceVersion` is null, otherwise patch with that
+   * resourceVersion as a precondition; throws ClusterReleaseConflictError when
+   * the object moved since it was observed.
+   */
+  applyHelmChart(
+    connection: ClusterConnectionDocument,
+    chart: HelmChartObject,
+    expectedResourceVersion: string | null,
+  ): Promise<void>;
+}
+
 export interface SystemReleaseDomainDependencies {
   /** Null on a local or Docker-hosted API: every call is unavailable. */
   identity: HostedSystemReleaseIdentity | null;
   intents: SystemReleaseIntentRepository;
   clusterRecords: Pick<ClusterRecordRepository, 'getConnection'>;
   parseConnection(serialized: string): ClusterConnectionDocument;
-  releases: Pick<
-    ClusterReleaseClient,
-    'getHelmChart' | 'applyHelmChart' | 'applyObject'
-  >;
+  releases: ClusterReleaseClient;
   isConflict(error: unknown): error is ClusterReleaseConflictError;
   /** Version this process serves and the schema version its database reached. */
   servedVersion: string;
@@ -117,10 +140,6 @@ export interface SystemReleaseDomainDependencies {
   /** A release hook Job by name; null when it cannot be read. */
   observeHookJob(name: string): Promise<HookJobObservation | null>;
   generateOperationId(): string;
-  drainPoolJobs(
-    force: boolean,
-    keep?: readonly string[],
-  ): Promise<DrainPoolJobsResponse['jobs']>;
   /** Whether the management Node carries its label; null when unreadable. */
   observeManagementLabel(): Promise<boolean | null>;
   /** Root scripts on the management host, run from a host-step Job. */
@@ -140,16 +159,14 @@ export interface SystemReleaseDomain {
     signal?: AbortSignal,
   ): Promise<SystemReleaseResponse>;
   status(actor: User, signal?: AbortSignal): Promise<SystemReleaseStatus>;
-  /** C28: `cluster delete`'s final backup, the one an upgrade takes. */
+  /** C28: `api delete`'s final backup, the one an upgrade takes. */
   backup(actor: User): Promise<SystemBackupResponse>;
-  /** Decision 30's drain before an upgrade; any API serves it. */
-  drain(actor: User, input: DrainPoolJobsInput): Promise<DrainPoolJobsResponse>;
-  /** RFC 0049 C26 (b)'s K3s step, which `api upgrade` runs after the drain. */
+  /** RFC 0049 C26 (b)'s K3s step, which `api upgrade` runs first. */
   kubernetes(
     actor: User,
     input: KubernetesStepInput,
   ): Promise<KubernetesStepResponse>;
-  /** `cluster delete`: the installation, this API last. */
+  /** `api delete`: the installation, this API last. */
   selfDelete(actor: User, input: SelfDeleteInput): Promise<SelfDeleteStatus>;
   selfDeleteStatus(actor: User): Promise<SelfDeleteStatus>;
   /**
@@ -339,7 +356,7 @@ export function createSystemReleaseDomain(
 
   /**
    * Everything that can refuse a release, or find it already carried,
-   * before anything changes: `drain` runs it before it stops pool Jobs.
+   * before anything changes.
    */
   async function prepare(
     input: RequestSystemReleaseInput,
@@ -413,7 +430,7 @@ export function createSystemReleaseDomain(
           'no database backup is configured',
         );
       }
-      return { backedUpAt: await deps.backup.run('cluster delete') };
+      return { backedUpAt: await deps.backup.run('api delete') };
     },
 
     async selfDelete(actor, input) {
@@ -422,16 +439,6 @@ export function createSystemReleaseDomain(
     async selfDeleteStatus() {
       return selfDelete().status();
     },
-    async drain(_actor, { force, image, keep }) {
-      // A hosted upgrade that would be refused, or finds its image already
-      // carried, stops no pool Job.
-      if (image) {
-        const prepared = await prepare({ image });
-        if (prepared.carried === prepared.image) return { jobs: [] };
-      }
-      return { jobs: await deps.drainPoolJobs(force, keep) };
-    },
-
     async kubernetes(_actor, { id, image }) {
       // A poll observes the step it started without resolving the image
       // again, through an API server the step may be restarting.

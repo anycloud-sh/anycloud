@@ -29,28 +29,25 @@ codes, which scripts can rely on:
 | `4`   | The wait timed out; workloads keep running | `wait`, `--wait`                               |
 | `130` | Interrupted with Ctrl-C                    | Long-running commands                          |
 
-| Task                                     | Reference                                                                                                               |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Create and list finite Jobs              | [`job`](/reference/cli/job)                                                                                             |
-| Create, list, or upgrade Services        | [`service`](/reference/cli/service)                                                                                     |
-| Create and list persistent VMs           | [`vm`](/reference/cli/vm)                                                                                               |
-| Create the cluster and its node pools    | [`cluster`](/reference/cli/cluster) and [`node-pool`](/reference/cli/node-pools); guide: [Clusters](/platform/clusters) |
-| Create and manage Kubernetes Deployments | [`deployment`](/reference/cli/deployments)                                                                              |
-| Inspect, wait on, and operate workloads  | [Workload operations](/reference/cli/workloads)                                                                         |
-| Browse hardware and prices               | [Catalog and pricing](/reference/cli/catalog-pricing)                                                                   |
-| Inspect or request provider quota        | [`quota`](/reference/cli/quota)                                                                                         |
-| Manage object storage                    | [`bucket`](/reference/cli/bucket)                                                                                       |
-| Manage cloud accounts                    | [`credentials`](/reference/cli/credentials)                                                                             |
-| Manage write-only values                 | [`secrets`](/reference/cli/secrets)                                                                                     |
-| Inspect cost and configure caps          | [Spend commands](/reference/cli/spend)                                                                                  |
-| Configure Slack notifications            | [`notifications`](/reference/cli/notifications)                                                                         |
-| Manage the API, login, docs, and DB      | [`api` and utilities](/reference/cli/api-utilities)                                                                     |
+| Task                                    | Reference                                             |
+| --------------------------------------- | ----------------------------------------------------- |
+| Create and list finite Jobs             | [`job`](/reference/cli/job)                           |
+| Create, list, or upgrade Services       | [`service`](/reference/cli/service)                   |
+| Create and list persistent VMs          | [`vm`](/reference/cli/vm)                             |
+| Inspect a hosted API's cluster          | [`cluster`](/reference/cli/cluster)                   |
+| Inspect, wait on, and operate workloads | [Workload operations](/reference/cli/workloads)       |
+| Browse hardware and prices              | [Catalog and pricing](/reference/cli/catalog-pricing) |
+| Inspect or request provider quota       | [`quota`](/reference/cli/quota)                       |
+| Manage object storage                   | [`bucket`](/reference/cli/bucket)                     |
+| Manage cloud accounts                   | [`credentials`](/reference/cli/credentials)           |
+| Manage write-only values                | [`secrets`](/reference/cli/secrets)                   |
+| Inspect cost and configure caps         | [Spend commands](/reference/cli/spend)                |
+| Configure Slack notifications           | [`notifications`](/reference/cli/notifications)       |
+| Create and manage APIs, login, docs, DB | [`api` and utilities](/reference/cli/api-utilities)   |
 
 Use `anycloud job list`, `anycloud service list`, or `anycloud vm list` for
 one workload type. Each accepts `ls` as an alias. `anycloud list` shows
-the combined overview. Filter Deployments by node pool with
-`anycloud deployment list --node-pool <id-or-name>` and Jobs by Deployment with
-`anycloud job list --deployment <id>`.
+the combined overview.
 
 Put listing options after `list` or `ls`. Those bare names are reserved as
 subcommands. To launch an image named `list` or `ls`, include a tag such as
@@ -71,13 +68,9 @@ See [`service`](/reference/cli/service).
 
 See [`vm`](/reference/cli/vm).
 
-## `anycloud cluster` and `anycloud node-pool`
+## `anycloud cluster`
 
-See [`cluster`](/reference/cli/cluster) and [`node-pool`](/reference/cli/node-pools).
-
-## `anycloud deployment`
-
-See [`deployment`](/reference/cli/deployments).
+See [`cluster`](/reference/cli/cluster).
 
 ## `anycloud images`
 

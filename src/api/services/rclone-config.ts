@@ -4,8 +4,7 @@
  * Consumed by `supervisor.ts` for VM-host bucket sync (AWS / Azure / GCP):
  * it writes the rclone.conf via SSH, drops the env vars into per-bucket env
  * files sourced before each rclone command, and starts systemd services
- * that run `rcloneContinuousLoop(rcloneCopyCommand(...))`. A pool Job's
- * grants take their remote and env from `rcloneGrantRemote`.
+ * that run `rcloneContinuousLoop(rcloneCopyCommand(...))`.
  *
  * Extracted into one module so the rclone semantics (remote naming, env var
  * format, copy-vs-sync, loop cadence) live in a single place and any future
@@ -142,40 +141,6 @@ export function rcloneTokenConfig(config: BucketConfig): string | undefined {
   const token = gcsTokenJson(config);
   return token && `${GCS_REMOTE}token = ${token}\n`;
 }
-
-/**
- * A pool Job grant's rclone remote and the env that alone configures it (RFC
- * 0043): the runner starts a new rclone for each copy, so the grant rides
- * that child's env, never a config file, and a renewal reaches the next copy.
- */
-export function rcloneGrantRemote(
-  config: BucketConfig,
-  prefix = '',
-): { remote: string; env: Record<string, string> } {
-  const remote = GRANT_REMOTES[config.cloudType] ?? '';
-  const section = RCLONE_CONF_TEMPLATE.split('\n\n').find((lines) =>
-    lines.startsWith(`[${remote}]`),
-  );
-  if (!section)
-    throw new Error(`No pool Job rclone remote for ${config.cloudType}`);
-  // The template's remote as env vars; a SAS turns its env_auth off.
-  const env: Record<string, string> = {};
-  for (const [key, value] of section.split('\n').map((l) => l.split(' = '))) {
-    if (value) env[`RCLONE_CONFIG_${remote}_${key}`.toUpperCase()] = value;
-  }
-  const token = gcsTokenJson(config);
-  if (token) env.RCLONE_CONFIG_GCS_TOKEN = token;
-  return {
-    remote: `${remote}:${config.name}/${prefix}`,
-    env: { ...env, ...rcloneEnvVars(config) },
-  };
-}
-
-const GRANT_REMOTES: Partial<Record<CloudType, string>> = {
-  [CloudType.Azure]: 'azureblob',
-  [CloudType.AWS]: 's3',
-  [CloudType.GCP]: 'gcs',
-};
 
 /**
  * Build the rclone copy command for bucket uploads.

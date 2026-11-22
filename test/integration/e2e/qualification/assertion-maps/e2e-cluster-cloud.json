@@ -6,7 +6,7 @@
   "assertions": [
     {
       "id": "checkpoint-bucket-managed",
-      "requirement": "Create without --checkpoint-bucket leaves the product to create the versioned checkpoint bucket named after the cluster id; the default journey's cluster delete keeps it after a final backup it reports as taken (the harness then removes it through the storage gateway), the hosted and GPU journeys' cluster delete --delete-buckets --confirm <id> reports it deleted, and a bucket with the derived installation-id prefix that survives is reported as a leftover by the sweep.",
+      "requirement": "Create without --checkpoint-bucket leaves the product to create the versioned checkpoint bucket named after the cluster id; the default journey's api delete keeps it after a final backup it reports as taken (the harness then removes it through the storage gateway), the hosted journey's api delete --delete-buckets --confirm <id> reports it deleted, and a bucket with the derived installation-id prefix that survives is reported as a leftover by the sweep.",
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.bootstrap (no bucket flag), bucket getter, destroy, keptBucket, bucketDeleted, sweep; contracts/cluster-cloud.ts: ClusterCloudContract.run checkpointBucket record and leftover check."
     },
     {
@@ -30,114 +30,34 @@
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: serviceAccountIssuer; contracts/cluster-cloud.ts: ClusterCloudContract.#serviceAccountIssuer."
     },
     {
-      "id": "node-pool-capacity-readiness",
-      "requirement": "An AWS node pool reaches ready with one live VM ledger row whose Node joined the created cluster through the production join path.",
-      "candidateEvidence": "contracts/node-pool.ts: createReadyNodePool; substrates/cloud-cluster/environment.ts: capacity and connection read the installer ledger through CliDatabase."
-    },
-    {
-      "id": "node-pool-capacity-replacement",
-      "requirement": "Terminating the pool's EC2 instance natively is observed as a lost VM and replaced by the controller with a new ledger row while the pool returns to ready.",
-      "candidateEvidence": "contracts/node-pool.ts: proveCapacityReplacement; substrates/cloud-cluster/environment.ts: deleteOneCapacityHost."
-    },
-    {
-      "id": "node-pool-service-lifecycle",
-      "requirement": "anycloud service --node-pool runs as Pods on the AWS pool without a VM row, reaches Running, and its cleanup is recorded before the tracked reference is released.",
-      "candidateEvidence": "contracts/cluster-cloud.ts: ClusterCloudContract.#service; transports/node-pool-service.ts: CliNodePoolServiceTransport."
-    },
-    {
-      "id": "node-pool-history-capacity-cleanup",
-      "requirement": "Node pool deletion preserves capacity history, ends every VM row, and leaves no EC2 instance tagged for the pool.",
-      "candidateEvidence": "contracts/node-pool.ts: deleteNodePools; substrates/cloud-cluster/environment.ts: nodePoolAbsent."
-    },
-    {
       "id": "cluster-destroy-recorded",
-      "requirement": "anycloud cluster delete leaves the cluster destroyed and the installer lists no live cluster.",
+      "requirement": "anycloud api delete leaves the cluster destroyed and the installer lists no live cluster.",
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: destroy; contracts/cluster-cloud.ts: ClusterCloudContract.run."
     },
     {
       "id": "native-sweep-empty",
-      "requirement": "After teardown no EC2 instance, security group or volume tagged with the cluster or a node pool of this run remains and this run's checkpoint bucket (named after its installation id; any `e2e-clust-` bucket before create returns one) no longer exists; the sweep runs even when an earlier step failed.",
+      "requirement": "After teardown no EC2 instance, security group or volume tagged with the cluster or the hosted API of this run remains and this run's checkpoint bucket (named after its installation id; any `e2e-clust-` bucket before create returns one) no longer exists; on a GCP or Azure management VM, nothing labelled with its resource scope remains; the sweep runs even when an earlier step failed.",
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: sweep; contracts/cluster-cloud.ts: ClusterCloudContract.run finally; e2e-cluster-cloud.yml: Sweep AWS resources tagged for this run."
     },
     {
-      "id": "cross-cloud-pool",
-      "requirement": "With pool_provider=gcp the node pool's VMs run on GCP under the GCP credential while the cluster stays on AWS; the pool joins, is replaced natively, hosts a Running Service, and the GCP sweep finds no instance labelled with the pool id and no firewall rule targeting it. Cross-cloud Pod-to-Pod traffic is not exercised.",
-      "candidateEvidence": "substrates/cloud-cluster/gcp-pool.ts: GcpPoolInventory; substrates/cloud-cluster/environment.ts: pool option, nodePoolRequest, deleteOneCapacityHost, nodePoolAbsent, sweep; e2e-cluster-cloud.yml: pool_provider input and Sweep GCP node pool resources."
-    },
-    {
       "id": "cleanup-registered-before-create",
-      "requirement": "Every AWS resource is registered on the LIFO cleanup stack before it is created: the bucket, the cluster (destroy), the node pool and the Service.",
-      "candidateEvidence": "substrates/cloud-cluster/environment.ts: prepare and bootstrap defer cleanup; node-pools.ts: TrackedNodePoolKernel.reserve; workloads.ts: TrackedWorkloadKernel.reserve."
+      "requirement": "Every resource is registered on the LIFO cleanup stack before it is created: the cluster (destroy), and with the hosted stage the VM Service, each Job and the recursion's Secret through the hosted API.",
+      "candidateEvidence": "substrates/cloud-cluster/environment.ts: prepare and bootstrap defer cleanup; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.#defer in runService, checkJob and recursion."
     },
     {
       "id": "hosted-operator-walk",
-      "requirement": "With the hosted stage, anycloud api use selects the cluster's hosted API URL and credentials new saves the run's AWS credential in the hosted API's own database. api access add shares octocat under its immutable GitHub ID, an organization is refused as not a user account, and api access remove takes octocat off the list (the real-github-account and organization-and-removal checks of the removed aws-recursion member).",
+      "requirement": "anycloud api use selects the cluster's hosted API URL and credentials new saves the run's cluster credential in the hosted API's own database. api access add shares octocat under its immutable GitHub ID, an organization is refused as not a user account, and api access remove takes octocat off the list (the real-github-account and organization-and-removal checks of the removed aws-recursion member). The default journey is this walk alone.",
       "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.operatorWalk."
     },
     {
       "id": "hosted-upgrade-from-release",
-      "requirement": "With from_release, the published release's CLI starts the installer, saves the credentials and creates the cluster, and the hosted API serves that release. This CLI's api upgrade restarts the installer on this tree over the same data, which still lists the cluster. After the released CLI's api use and credentials new against the hosted API, this CLI's api upgrade without --image starts Upgrade N to its own release (a release older than Upgrade N, such as 0.1.65, answers in a shape this CLI prints as accepted (\"accepted the upgrade\"); the stage counts that as started only if the API served another version before and then serves this CLI's, with its status naming the upgrade; from 0.1.66 the started verdict itself is required), which api status --json reports running, adds a backup object version and leaves the API serving this CLI's version and schema; the credential saved before it still decrypts inside the API, and once one replica is ready and updated the API's Deployment is at most one generation later three minutes on (the upgraded API's start-up repair replaces the release's inline chart with its own OCI chart once, and does not keep rolling it). The upgraded API's ServiceAccount reads Pod logs: anycloud logs reads the Deployment's Pod log, and a refusal for permissions fails the stage at once. Chart re-application after the upgrade is tested only when the from_release chart lacks a grant this tree's chart has (get pods/log from 0.1.65).",
-      "candidateEvidence": "substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.prepare, CloudClusterEnvironment.bootstrap, createdSchema; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.operatorWalk, HostedApiStage.release, HostedApiStage.#startedOnOlderApi, HostedApiStage.#rolloutSteady, HostedApiStage.#credentialDecrypts, credentialsNewArgs, HostedApiStage.#deploymentLog; contracts/cluster-cloud.ts: ClusterCloudContract.#hostedStage; e2e.sh: E2E_CLUSTER_FROM_RELEASE_CLI; e2e-cluster-cloud.yml: ANYCLOUD_UPDATE_BIN."
-    },
-    {
-      "id": "pool-nodes-replaced-on-upgrade",
-      "requirement": "With from_release, the hosted stage's or GPU journey's node pool is created and ready on the published release before this CLI's api upgrade, so its Nodes joined with that release's join script. The upgraded API replaces each of the pool's instances, one at a time, and the journey's Service, pool Jobs and the replica's K5 egress probe then run on the replacements.",
-      "candidateEvidence": "contracts/cluster-cloud.ts: ClusterCloudContract.#poolAcrossUpgrade; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.operatorWalk, HostedApiStage.createReadyNodePool; substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.poolInstances."
-    },
-    {
-      "id": "hosted-node-pool-service",
-      "requirement": "A node pool created through the hosted API reaches ready, and a Service created through the hosted API on that pool reaches Running.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.createReadyNodePool, HostedApiStage.runService."
-    },
-    {
-      "id": "hosted-pool-jobs",
-      "requirement": "A Deployment created through the hosted API on its node pool runs one observed Pod; a Job submitted to it completes and is cleaned up, a second is terminated while running, ends Terminated and is cleaned up only by the receiver's acknowledgement, both on that same Pod and container, and the Deployment is deleted before the pool.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.poolJobs, pushReceiverImage."
-    },
-    {
-      "id": "hosted-deployment-named-secret",
-      "requirement": "A Deployment created through the hosted API with a named Secret runs a Pod that logs the digest of the Secret's value; deployment status --json shows the Secret's name, not its key in env, and never the value; a non-forced secrets delete is refused as in use. After the value is rotated, and again after its key is removed, deployment upgrade --secret starts a new Pod that logs the rotated value's digest, then no digest; once the Deployment is deleted the Secret deletes without --force. Every value is registered for redaction before it is sent.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.deploymentSecret, HostedApiStage.#deploymentLog, NAMED_SECRET_PROBE_KEY, SECRET_SHA256; probes/named-secret.ts: NAMED_SECRET_PROBE_KEY; contracts/cluster-cloud.ts: ClusterCloudContract.#hostedStage."
-    },
-    {
-      "id": "gpu-pool-device-registration",
-      "requirement": "With gpu_pool, a g4dn.xlarge node pool created through the hosted API reaches ready, which the product allows only once the NVIDIA device plugin it installs has made the Node advertise the catalog's nvidia.com/gpu count; a Deployment on it is admitted with one GPU and its Pod is observed running.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.createReadyNodePool, HostedApiStage.poolJobs (gpuCount); src/api/services/node-pool-controller.ts: GPU readiness rule; e2e-cluster-cloud.yml: gpu_pool input."
-    },
-    {
-      "id": "gpu-pool-jobs",
-      "requirement": "With gpu_pool, the receiver is built on the cached-model MACE image and loads MACE onto CUDA once; before each Deployment-targeted Job it runs nvidia-smi -L and a fresh CUDA energy, and errors the Job unless a GPU is listed and the energy matches the CPU reference baked into the image; a -mace-canary Job, checked against its reference plus 1 eV, errors with a message whose energy equals the CPU reference on a named CUDA device; the -complete Job completes and the -hold Job is cancelled and cleaned up on the same Pod.",
-      "candidateEvidence": "fixtures/deployment.py: prove_gpu; fixtures/mace_inference.py: MaceInference; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.poolJobs, maceCanaryEvidence, pushReceiverImage (MACE_RECEIVER_BASE_IMAGE); test/docker/Dockerfile.e2e-cluster-local-deployment."
-    },
-    {
-      "id": "gpu-pool-voice-sessions",
-      "requirement": "With gpu_pool and gpu_workload=voice, the receiver builds on the pinned Kyutai TTS image with a CPU reference Whisper hears as its text, and the Deployment admits two Jobs at once: a -complete session and a -voice-canary session each match the reference within tolerance on a named CUDA device (the canary errors with that evidence, which the harness reads back); of three held sessions two run while the third stays queued for a minute, and cancelling the first lets the third start while the second keeps running; a -voice-canary-2 session checked beside the second held session matches too and reports the first canary's model-load ID; a held session that stops producing audio is errored by the receiver.",
-      "candidateEvidence": "fixtures/voice_session.py: Voice, VoiceWork, check, build_reference; fixtures/deployment.py: load_work; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.poolJobs, voiceCanaryEvidence, pushReceiverImage; test/docker/Dockerfile.voice; e2e-cluster-cloud.yml: gpu_workload input."
-    },
-    {
-      "id": "gpu-pool-time-to-first-inference",
-      "requirement": "With gpu_pool and one replica, records.gpu.coldStart holds, for the first Node and the host-loss replacement, the VM launch (null on Lambda), Node creation, Ready, the device plugin's start, PodScheduled and the receiver container's start natively, the receiver's AC_TIMING marks for its workload (process_start, work_loaded, first_claim, and MACE's torch_imported, calculator_ready, warm_inference_done or voice's model_loaded, warm_first_chunk, warm_done) and the durations between them, without total or gpu_plugin_started->pod_scheduled for the first Node, whose Pod follows the journey's Service and storage stages; records.hosted.poolJobs.claimMs is the completed Job's creation to its claim; the voice canaries carry firstChunkMs and rtf. A missing time or mark fails the stage; no duration has a bound.",
-      "candidateEvidence": "contracts/gpu-cold-start.ts: coldStartRecord; contracts/cluster-cloud.ts: ClusterCloudContract.#gpuStage; substrates/cloud-cluster/cold-start.ts: poolColdStartTimes; substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.poolColdStart; substrates/cloud-cluster/hosted-stage.ts: timingMarks, HostedApiStage.receiverMarks, HostedApiStage.poolJobs, voiceCanaryEvidence; fixtures/deployment.py, fixtures/mace_inference.py, fixtures/voice_session.py: timing."
-    },
-    {
-      "id": "gpu-pool-service",
-      "requirement": "With gpu_pool, a Service created through the hosted API on the GPU pool (default GPU access) reaches Running only after nvidia-smi -L lists a GPU, and its https URL through Cloudflare and the pool ingress serves that GPU line; it is terminated and cleaned up before the Deployment takes the Node's GPU.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.runService (GPU_SERVICE_IMAGE, GPU_SERVICE_COMMAND), HostedApiStage.gpuServiceDevices; contracts/cluster-cloud.ts: ClusterCloudContract.#gpuStage."
-    },
-    {
-      "id": "gpu-pool-host-loss",
-      "requirement": "With gpu_pool, the pool's one EC2 instance is terminated natively; a different instance replaces it, the pool is ready again with one VM, the kept Deployment runs a new Pod and one more Job completes there after seeing the GPU and matching its MACE reference; teardown then deletes the Deployment, the pool and the cluster, and the native sweep finds nothing.",
-      "candidateEvidence": "contracts/cluster-cloud.ts: ClusterCloudContract.#gpuStage; substrates/cloud-cluster/environment.ts: terminatePoolInstance, poolInstances; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.poolJobAfterHostLoss."
-    },
-    {
-      "id": "gpu-pool-session-replica-loss",
-      "requirement": "With one GPU replica (the default), a session running on that replica when its VM is terminated natively is classified (a Retrying event whose reason starts \"replica \"), claimed again on the replacement's new Pod and completed there within its retry budget, through the hosted API's status --json. Its log tail isn't asserted on cloud: no API serves an attempt's stored tail, so the local qualifyReplicaOomRetry stage alone proves it.",
-      "candidateEvidence": "contracts/cluster-cloud.ts: ClusterCloudContract.#gpuStage; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.startReplicaLossSession, poolJobAfterHostLoss; fixtures/deployment.py: JobIdBehavior (E2E_FRESH_REPLICA_COMPLETE_JOB_IDS)."
+      "requirement": "With from_release, the published release's CLI creates the cluster through the run's cloud CLI session and lists it, and the hosted API serves that release; a VM Service created through the hosted API on the release still runs under its id after the upgrade. After the released CLI's api use and credentials new against the hosted API, this CLI's api upgrade without --image starts Upgrade N to its own release (a release older than Upgrade N, such as 0.1.65, answers in a shape this CLI prints as accepted (\"accepted the upgrade\"); the stage counts that as started only if the API served another version before and then serves this CLI's, with its status naming the upgrade; from 0.1.66 the started verdict itself is required), which api status --json reports running, adds a backup object version and leaves the API serving this CLI's version and schema; the credential saved before it still decrypts inside the API, and once one replica is ready and updated the API's Deployment is at most one generation later three minutes on (the upgraded API's start-up repair replaces the release's inline chart with its own OCI chart once, and does not keep rolling it). Chart re-application after the upgrade is tested only when the from_release chart lacks a grant this tree's chart has (get pods/log from 0.1.65).",
+      "candidateEvidence": "substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.bootstrap, CloudClusterEnvironment.#lifecycle; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.operatorWalk, HostedApiStage.release, HostedApiStage.#startedOnOlderApi, HostedApiStage.#rolloutSteady, HostedApiStage.#credentialDecrypts, HostedApiStage.runService, HostedApiStage.stateSurvives, credentialsNewArgs; contracts/cluster-cloud.ts: ClusterCloudContract.#hostedStage; e2e-cluster-cloud.yml: E2E_CLUSTER_FROM_RELEASE_CLI."
     },
     {
       "id": "hosted-release-round-trip",
-      "requirement": "api upgrade --image starts an upgrade to the alternate image and then back to the bootstrap image; each Upgrade N is reported running by api status --json only once its ready check Job succeeded, adds a backup object version, the hosted API then serves the expected version steadily, and the human cluster list row shows its cluster running on that version (the removed aws-api-update member's argument-free-active-update, replacement-and-event and same-url-restored-state checks). Both images name their chart by digest, and the alternate image's chart differs (e2e.sh publishes it as <version>-b), so the upgrade to it moves chart and image in one HelmChart write: the API's Deployment is exactly one generation later when the upgrade runs than before the request, and no later three minutes on. After each release the pool Service still runs under the same id, and the credential saved before it decrypts inside the API: bucket list with it names the API's backup bucket, and listing inside that bucket through the hosted API is refused as the API's own backup bucket.",
-      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.release, HOSTED_VERDICT; substrates/cloud-cluster/environment.ts: backupObjectVersions; src/api/services/system-release/ready-job.ts: reportSystemUpgrade. substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.stateSurvives, HostedApiStage.#credentialDecrypts, HostedApiStage.releaseUnderLoad, HostedApiStage.#rolloutSteady; e2e.sh: publish_api_chart."
+      "requirement": "api upgrade --image starts an upgrade to the alternate image and then back to the bootstrap image; each Upgrade N is reported running by api status --json only once its ready check Job succeeded, adds a backup object version, the hosted API then serves the expected version steadily, and the human cluster list row shows its cluster running on that version (the removed aws-api-update member's argument-free-active-update, replacement-and-event and same-url-restored-state checks). Both images name their chart by digest, and the alternate image's chart differs (e2e.sh publishes it as <version>-b), so the upgrade to it moves chart and image in one HelmChart write: the API's Deployment is exactly one generation later when the upgrade runs than before the request, and no later three minutes on. After each release the VM Service created through the hosted API before it still runs under the same id, and the credential saved before it decrypts inside the API: bucket list with it names the API's backup bucket, and listing inside that bucket through the hosted API is refused as the API's own backup bucket.",
+      "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.release, HOSTED_VERDICT; substrates/cloud-cluster/environment.ts: backupObjectVersions; src/api/services/system-release/ready-job.ts: reportSystemUpgrade. substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.stateSurvives, HostedApiStage.#credentialDecrypts, HostedApiStage.runService, HostedApiStage.#rolloutSteady; e2e.sh: publish_api_chart."
     },
     {
       "id": "hosted-release-noops",
@@ -146,28 +66,13 @@
     },
     {
       "id": "hosted-recursion",
-      "requirement": "A parent Job submitted through the hosted API runs the CLI from the API image, submits a child Job through the same API and waits for it; both complete and are torn down child first.",
+      "requirement": "A parent VM Job submitted through the hosted API on the cluster's credential, in its region and of the run's vm_type, runs the CLI from the API image, submits a child VM Job through the same API and waits for it; both complete and are torn down child first.",
       "candidateEvidence": "substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.recursion, HostedApiStage.terminate."
     },
     {
-      "id": "hosted-destroy-refused",
-      "requirement": "cluster delete is refused while the hosted API still manages a node pool, naming the node-pool delete step, and leaves the cluster ready; the pool is then deleted through the hosted API.",
-      "candidateEvidence": "substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.destroyRefused; substrates/cloud-cluster/hosted-stage.ts: HostedApiStage.deleteNodePool."
-    },
-    {
       "id": "hosted-owner-sweep",
-      "requirement": "The hosted API's owner identity is recorded after bootstrap and the native sweep covers every VM that API created by its anycloud_owner_api tag.",
+      "requirement": "The hosted API's owner identity is recorded after bootstrap and the native sweep covers every VM that API created (the VM Service and Jobs) by its anycloud_owner_api tag.",
       "candidateEvidence": "substrates/cloud-cluster/environment.ts: CloudClusterEnvironment.sweep, hostedApiIdentity, OWNER_API_TAG."
-    },
-    {
-      "id": "cli-wait-node-pool-service-ready",
-      "requirement": "After a Service on a node pool reaches Running, `anycloud wait <id> --json` exits 0 with a ready state record.",
-      "candidateEvidence": "transports/node-pool-service.ts: CliNodePoolServiceTransport.createAndAwaitRunning calls waitReadyByCli (cli-observations.ts) after the API Running observation."
-    },
-    {
-      "id": "cli-wait-node-pool-and-deployment-ready",
-      "requirement": "Once a node pool is Ready, `anycloud wait node-pool/<id> --json` exits 0 with a ready record; once a Deployment is ready, `anycloud wait deployment/<id> --json` does too.",
-      "candidateEvidence": "contracts/node-pool.ts: createReadyNodePool calls target.nodePoolReadyByCli after the Running wait; contracts/deployment.ts: waitForDeploymentStatus('ready') calls target.deploymentReadyByCli; targets/cluster-node-pool.ts: ClusterNodePoolAdapter delegates to waitReadyByCli (cli-observations.ts)."
     }
   ]
 }

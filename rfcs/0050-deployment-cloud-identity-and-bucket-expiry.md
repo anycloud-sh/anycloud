@@ -15,6 +15,9 @@
 > and pool Jobs. `bucket create --expire-days` (§ 4) carries over to its own
 > issue; none had been filed separately as of this writing, so it remains
 > tracked here for now.
+>
+> The Deployment workload identity this RFC built on was itself removed, along
+> with Kubernetes Deployments.
 
 ## Summary
 

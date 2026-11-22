@@ -1,16 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { callApi } from '../helpers/api-test-helper';
-import { TEST_DAEMON_VERSION } from '../config';
 import { walkToState, provisionTestVm } from '../../helpers/workload-store.js';
 import { getDB } from '../../../src/api/services/repositories/db';
 import { CloudType } from '../../../src/shared/cloud.js';
 import { WorkloadState, WorkloadType } from '../../../src/shared/workload.js';
 import { resetTestStore } from '../utils';
-import { seedReadyNodePool } from '../helpers/node-pool-seed.js';
-import { makeContainerSpec } from '../helpers/fixtures.js';
-import { TEST_USER_ID } from '../../../src/api/services/test-identity.js';
-import { getDeploymentStore } from '../../../src/api/services/persistence.js';
 import Github from '../../../src/api/services/gateways/github';
 import { ANYCLOUD_CLIENT_VERSION_HEADER } from '../../../src/shared/api-version';
 
@@ -73,12 +68,10 @@ describe('POST /v1/workloads/{id}/exec', () => {
       vms = [],
       cloudProvider = CloudType.AWS,
       workloadType = WorkloadType.Job,
-      nodePoolId,
     }: {
       vms?: Parameters<typeof provisionTestVm>[1][];
       cloudProvider?: CloudType;
       workloadType?: WorkloadType;
-      nodePoolId?: string;
     } = {},
   ): Promise<void> {
     await getDB().query(
@@ -95,7 +88,6 @@ describe('POST /v1/workloads/{id}/exec', () => {
       vmType: 't3.medium',
       sshPrivateKey: 'test-ssh-key',
       credentialId: 'test-credential-id',
-      nodePoolId,
     });
     for (const vm of vms) await provisionTestVm(id, vm);
     await walkToState(id, WorkloadState.Running);
@@ -345,69 +337,13 @@ describe('POST /v1/workloads/{id}/exec', () => {
     expect(execStreamMock).not.toHaveBeenCalled();
   });
 
-  it('refuses a node-pool Service instead of reporting no live VM', async () => {
-    const id = 'exec-node-pool-service';
-    const { nodePoolId } = await seedReadyNodePool();
-    await seedWorkload(id, { workloadType: WorkloadType.Service, nodePoolId });
-
-    const response = await execRequest(id);
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      message: 'anycloud exec is not supported for Services on a node pool.',
-    });
-  });
-
-  it('returns 404 for an ID that is neither a Workload nor a Deployment', async () => {
+  it('returns 404 for an unknown Workload ID', async () => {
     const response = await execRequest('missing');
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toMatchObject({
-      message: 'Workload or Deployment not found',
+      message: 'Workload not found',
     });
-  });
-
-  it('runs in a Deployment record named by name, on its node pool cluster', async () => {
-    const { nodePoolId } = await seedReadyNodePool({
-      ownerUserId: TEST_USER_ID,
-    });
-    await getDeploymentStore().create(
-      {
-        id: 'handler-0001',
-        name: 'handler',
-        nodePoolId,
-        ownerUserId: TEST_USER_ID,
-        config: makeContainerSpec(),
-        gpuCount: 0,
-        maxConcurrentJobsPerReplica: 1,
-      },
-      { kind: 'api' },
-    );
-
-    const response = await execRequest('handler', { replica: 'r-1' });
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      message: expect.stringMatching(
-        /^Could not reach the cluster of Deployment handler-0001: /,
-      ),
-    });
-    expect(execStreamMock).not.toHaveBeenCalled();
-  });
-
-  it('refuses --replica for a Workload', async () => {
-    const id = 'exec-replica-workload';
-    await seedWorkload(id, {
-      vms: [{ ip: 'exec-replica-vm', cloudId: 'exec-replica-vm' }],
-    });
-
-    const response = await execRequest(id, { replica: 'r-1' });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'EXEC_REQUEST_INVALID',
-    });
-    expect(execStreamMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 for multi-VM workloads', async () => {

@@ -4,7 +4,6 @@ import {
   RCLONE_CONF_TEMPLATE,
   rcloneEnvVars,
   rcloneTokenConfig,
-  rcloneGrantRemote,
   rcloneCopyCommand,
   rcloneContinuousLoop,
   rcloneInputSyncCommand,
@@ -191,50 +190,6 @@ describe('rclone-config', () => {
       expect(rcloneEnvVars({ name: 'b', cloudType: CloudType.AWS })).toEqual(
         {},
       );
-    });
-  });
-
-  describe('rcloneGrantRemote', () => {
-    it("0043/S17 configures an S3 or GCS grant's remote from its env alone, the GCS token as rcloneTokenConfig writes it", () => {
-      const s3 = rcloneGrantRemote(
-        {
-          name: 'results',
-          cloudType: CloudType.AWS,
-          region: 'us-east-2',
-          credentials: {
-            cloudProvider: CloudType.AWS,
-            accessKeyId: 'ASIA',
-            secretAccessKey: 's',
-            sessionToken: 't',
-          },
-        },
-        'job-a/',
-      );
-      expect(s3).toEqual({
-        remote: 's3:results/job-a/',
-        env: expect.objectContaining({
-          RCLONE_CONFIG_S3_TYPE: 's3',
-          RCLONE_CONFIG_S3_ENV_AUTH: 'true',
-          RCLONE_CONFIG_S3_REGION: 'us-east-2',
-          AWS_SESSION_TOKEN: 't',
-        }),
-      });
-      const gcs: Parameters<typeof rcloneGrantRemote>[0] = {
-        name: 'dataset',
-        cloudType: CloudType.GCP,
-        credentials: { cloudProvider: CloudType.GCP, accessToken: 'ya29' },
-        credentialExpiresAt: Date.UTC(2026, 9, 23, 12),
-      };
-      const { remote, env } = rcloneGrantRemote(gcs);
-      expect(remote).toBe('gcs:dataset/');
-      expect(rcloneTokenConfig(gcs)).toContain(
-        `token = ${env.RCLONE_CONFIG_GCS_TOKEN}\n`,
-      );
-      expect(JSON.parse(env.RCLONE_CONFIG_GCS_TOKEN!)).toEqual({
-        access_token: 'ya29',
-        token_type: 'Bearer',
-        expiry: '2026-10-23T12:00:00Z',
-      });
     });
   });
 

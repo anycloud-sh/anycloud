@@ -20,11 +20,9 @@ import {
 import { pickGHCRImage } from '../services/ghcr-picker.js';
 import { createListCommand } from './list.js';
 import { runWait } from './wait.js';
-import { assertNodePoolFlags, NODE_POOL_REJECTED_FLAGS } from './serve.js';
 import {
   addJobSpecOptions,
   jobSpecRequest,
-  parseWholeSeconds,
   type JobSpecOptions,
 } from './job-spec-options.js';
 import { parseWorkloadIdOption } from '../utils/workload-id-option.js';
@@ -70,10 +68,6 @@ export function createSubmitCommand(): Command {
           }
           return val;
         },
-      )
-      .option(
-        '--deployment <id-or-name>',
-        'Run the Job on a Kubernetes Deployment, which supplies image and placement',
       )
       .option('--region <region>', 'Cloud region (e.g., us-east-1)')
       .option(
@@ -164,32 +158,17 @@ export function createSubmitCommand(): Command {
       .option('--runtime <runtime>', 'Container runtime (e.g., nvidia)')
       .option(
         '--bind <path>',
-        'Volume bind mount (repeatable); with --node-pool, a disposable volume at an absolute container path, on a --user-namespace-jobs or --allow-privileged-jobs pool',
-        (value: string, all: string[]) => [...all, value],
-        [] as string[],
-      )
-      .option(
-        '--cache <name:path>',
-        "With --node-pool: mount the Node cache NAME at an absolute container path, shared by the pool's Jobs on that Node (repeatable)",
+        'Volume bind mount (repeatable)',
         (value: string, all: string[]) => [...all, value],
         [] as string[],
       )
       .option(
         '--privileged',
-        'Deprecated, removed in the next release: run on a node pool created with --user-namespace-jobs. Privileged container, root on its host; with --node-pool, the pool needs --allow-privileged-jobs and one dedicated account',
-      )
-      .option(
-        '--node-pool <id-or-name>',
-        'Run on this node pool in the shared cluster instead of a VM host',
-      )
-      .option(
-        '--timeout <duration>',
-        'With --node-pool: fail the Job if no replica starts it within this long (90s, 30m, 2h)',
-        parseWholeSeconds('--timeout'),
+        'Deprecated, removed in the next release: use --host-docker. Privileged container, root on its host',
       )
       .option(
         '--max-retries <count>',
-        'Retry at most this many times after a disruption or a runner exit (0 for none)',
+        'Retry at most this many times after a disruption (0 for none)',
         (value: string) => {
           if (!/^\d+$/.test(value)) {
             throw new InvalidArgumentError(
@@ -201,7 +180,7 @@ export function createSubmitCommand(): Command {
       )
       .option(
         '--require-nested-virtualization',
-        "Keep only the VM types the catalog reports as supporting nested virtualization (KVM), and launch them with it on; a node pool's Jobs take the pool's",
+        'Keep only the VM types the catalog reports as supporting nested virtualization (KVM), and launch them with it on',
       )
       .option(
         '--host-docker',
@@ -217,7 +196,7 @@ export function createSubmitCommand(): Command {
         `
 Examples:
   $ anycloud job list
-  $ anycloud job list --deployment deployment-id -n 400
+  $ anycloud job list -n 400
   $ anycloud job ghcr.io/user/repo:latest \\
       --credentials my-aws --gpu-type h100 \\
       --spot --gpus all -- python train.py
@@ -259,9 +238,6 @@ Environment variables:
             envFile?: string;
             secret?: string[];
             // Inline workload config options
-            deployment?: string;
-            nodePool?: string;
-            timeout?: number;
             maxRetries?: number;
             checkpoint?: boolean;
             credentials?: string;
@@ -293,7 +269,6 @@ Environment variables:
             cpus?: string;
             runtime?: string;
             bind?: string[];
-            cache?: string[];
             privileged?: boolean;
             wait?: boolean;
             requireNestedVirtualization?: boolean;
@@ -302,16 +277,7 @@ Environment variables:
         ) => {
           try {
             if (options.privileged) warnPrivilegedDeprecated('--privileged');
-            if (options.deployment && options.nodePool) {
-              throw new Error('--deployment and --node-pool are exclusive');
-            }
-            if (options.timeout !== undefined && !options.nodePool) {
-              throw new Error('--timeout needs --node-pool');
-            }
-            if (options.cache?.length && !options.nodePool) {
-              throw new Error('--cache needs --node-pool');
-            }
-            if (!image && !options.deployment) {
+            if (!image) {
               if (!shouldAllowPrompts()) {
                 exitWithError(
                   'Image required. Pass it as the first argument, e.g. anycloud job ghcr.io/owner/repo:tag.',
@@ -325,161 +291,47 @@ Environment variables:
             const workloadId = options.id;
             const spinner = createSpinner('Creating job workload...').start();
             const detected = detectSession();
-            let request: WorkloadRequest;
-            if (options.deployment) {
-              const conflicts = [
-                image && 'image',
-                command.length > 0 && 'command',
-                options.credentials && '--credentials',
-                options.region && '--region',
-                options.vmType?.length && '--vm-type',
-                options.gpuType?.length && '--gpu-type',
-                options.spot && '--spot',
-                options.diskSize !== undefined && '--disk-size',
-                options.diskTier !== undefined && '--disk-tier',
-                options.regions?.length && '--regions',
-                options.diskIops !== undefined && '--disk-iops',
-                options.diskThroughput !== undefined && '--disk-throughput',
-                options.inputBucket && '--input-bucket',
-                options.outputBucket && '--output-bucket',
-                options.checkpointBucket && '--checkpoint-bucket',
-                options.inputStorageCredentials &&
-                  '--input-storage-credentials',
-                options.inputStorageRegion && '--input-storage-region',
-                options.outputStorageCredentials &&
-                  '--output-storage-credentials',
-                options.outputStorageRegion && '--output-storage-region',
-                options.checkpointStorageCredentials &&
-                  '--checkpoint-storage-credentials',
-                options.checkpointStorageRegion &&
-                  '--checkpoint-storage-region',
-                options.zone && '--zone',
-                options.checkpoint === false && '--no-checkpoint',
-                options.requireNestedVirtualization &&
-                  '--require-nested-virtualization',
-                options.hostDocker && '--host-docker',
-                options.secret?.length && '--secret',
-                options.env?.length && '--env',
-                options.envFile && '--env-file',
-                options.shmSize && '--shm-size',
-                options.gpus && '--gpus',
-                options.ipc && '--ipc',
-                options.ulimit?.length && '--ulimit',
-                options.memory && '--memory',
-                options.cpus && '--cpus',
-                options.runtime && '--runtime',
-                options.bind?.length && '--bind',
-                options.privileged && '--privileged',
-              ].filter(Boolean);
-              if (conflicts.length > 0) {
-                throw new Error(
-                  `--deployment cannot be combined with Job overrides: ${conflicts.join(', ')}`,
-                );
-              }
-              request = {
-                deployment: options.deployment,
-                workloadType: WorkloadType.Job,
-                id: workloadId,
-                maxRetries: options.maxRetries,
-                session: detected?.session,
-                agent: detected?.agent ?? undefined,
-                sessionLabel: detected?.label,
-                ...jobSpecRequest(options),
-              };
-            } else if (options.nodePool) {
-              // A pool Job takes storage; the pool owns everything else.
-              assertNodePoolFlags(
-                options,
-                `A Job on node pool "${options.nodePool}"`,
-                [
-                  ...NODE_POOL_REJECTED_FLAGS.filter(
-                    ([key]) => !key.startsWith('checkpoint'),
-                  ),
-                  // The pool sets it for its Jobs.
-                  [
-                    'requireNestedVirtualization',
-                    '--require-nested-virtualization',
-                  ],
-                  ['hostDocker', '--host-docker'],
-                  ['regions', '--regions'],
-                  ['diskIops', '--disk-iops'],
-                  ['diskThroughput', '--disk-throughput'],
-                ],
-              );
-              request = {
-                image: image!,
-                cloudConfig: {
-                  inputBucket: options.inputBucket,
-                  outputBucket: options.outputBucket,
-                  checkpointBucket: options.checkpointBucket,
-                  inputStorageRegion: options.inputStorageRegion,
-                  outputStorageRegion: options.outputStorageRegion,
-                  checkpointStorageRegion: options.checkpointStorageRegion,
-                },
-                inputStorageCredentialName: options.inputStorageCredentials,
-                outputStorageCredentialName: options.outputStorageCredentials,
-                checkpointStorageCredentialName:
-                  options.checkpointStorageCredentials,
-                nodePool: options.nodePool,
-                timeout: options.timeout,
-                maxRetries: options.maxRetries,
-                noCheckpoint: options.checkpoint === false || undefined,
-                caches: options.cache?.length ? options.cache : undefined,
-                workloadType: WorkloadType.Job,
-                id: workloadId,
-                env: parseEnvVars(options),
-                secrets: options.secret?.length ? options.secret : undefined,
-                dockerOptions: buildDockerOptions(options),
-                command: command.length > 0 ? command : undefined,
-                session: detected?.session,
-                agent: detected?.agent ?? undefined,
-                sessionLabel: detected?.label,
-                ...jobSpecRequest(options),
-              };
-            } else {
-              const envVars = parseEnvVars(options);
-              const resolved = await resolveCloudConfig(options);
-              console.log('');
-              printInfo(`Deploying image: ${image}`);
-              request = {
-                image: image!,
-                cloudConfig: {
-                  ...resolved.cloudConfig,
-                  ...(options.regions?.length && { regions: options.regions }),
-                  ...(options.diskIops !== undefined && {
-                    diskIops: options.diskIops,
-                  }),
-                  ...(options.diskThroughput !== undefined && {
-                    diskThroughputMibps: options.diskThroughput,
-                  }),
-                },
-                credentialName: resolved.credentialName,
-                inputStorageCredentialName: resolved.inputStorageCredentialName,
-                outputStorageCredentialName:
-                  resolved.outputStorageCredentialName,
-                checkpointStorageCredentialName:
-                  resolved.checkpointStorageCredentialName,
-                gpuType: resolved.gpuType,
-                maxRetries: options.maxRetries,
-                noCheckpoint: options.checkpoint === false || undefined,
-                requireNestedVirtualization:
-                  options.requireNestedVirtualization || undefined,
-                hostDocker: options.hostDocker || undefined,
-                workloadType: WorkloadType.Job,
-                id: workloadId,
-                env: envVars,
-                secrets:
-                  options.secret && options.secret.length > 0
-                    ? options.secret
-                    : undefined,
-                dockerOptions: buildDockerOptions(options),
-                command: command.length > 0 ? command : undefined,
-                session: detected?.session,
-                agent: detected?.agent ?? undefined,
-                sessionLabel: detected?.label,
-                ...jobSpecRequest(options),
-              };
-            }
+            const envVars = parseEnvVars(options);
+            const resolved = await resolveCloudConfig(options);
+            console.log('');
+            printInfo(`Deploying image: ${image}`);
+            const request: WorkloadRequest = {
+              image: image!,
+              cloudConfig: {
+                ...resolved.cloudConfig,
+                ...(options.regions?.length && { regions: options.regions }),
+                ...(options.diskIops !== undefined && {
+                  diskIops: options.diskIops,
+                }),
+                ...(options.diskThroughput !== undefined && {
+                  diskThroughputMibps: options.diskThroughput,
+                }),
+              },
+              credentialName: resolved.credentialName,
+              inputStorageCredentialName: resolved.inputStorageCredentialName,
+              outputStorageCredentialName: resolved.outputStorageCredentialName,
+              checkpointStorageCredentialName:
+                resolved.checkpointStorageCredentialName,
+              gpuType: resolved.gpuType,
+              maxRetries: options.maxRetries,
+              noCheckpoint: options.checkpoint === false || undefined,
+              requireNestedVirtualization:
+                options.requireNestedVirtualization || undefined,
+              hostDocker: options.hostDocker || undefined,
+              workloadType: WorkloadType.Job,
+              id: workloadId,
+              env: envVars,
+              secrets:
+                options.secret && options.secret.length > 0
+                  ? options.secret
+                  : undefined,
+              dockerOptions: buildDockerOptions(options),
+              command: command.length > 0 ? command : undefined,
+              session: detected?.session,
+              agent: detected?.agent ?? undefined,
+              sessionLabel: detected?.label,
+              ...jobSpecRequest(options),
+            };
             const response = await (
               await apiClient()
             ).admission.submit(request);

@@ -6,7 +6,6 @@
 
 import { GHCR_TOKEN_USERNAME } from '../../../shared/image.js';
 import { type DB } from './db.js';
-import { nodePoolGpuReservationSql } from './node-pool-references.js';
 import { CloudType, type DiskTier } from '../../../shared/cloud.js';
 import {
   WorkloadState,
@@ -56,10 +55,6 @@ export interface CreateWorkloadInput {
   sshPrivateKey: string;
   credentialId?: string | null;
   requestedComputeProvider?: CloudType | null;
-  /** Explicit node pool target; the insert is refused unless it is ready. */
-  nodePoolId?: string;
-  /** GPUs the node pool's ready VMs hold; the insert is refused if `dockerOptions.gpus` no longer fits. */
-  nodePoolGpuBound?: number;
   inputStorageCredentialId?: string;
   inputStorageRegion?: string;
   outputStorageCredentialId?: string;
@@ -118,32 +113,20 @@ export async function createWorkload(
   // Owner and admitted configuration commit together. submitted_at remains
   // the original submission even when started_at changes on a later attempt.
   await db.transaction((tx) => {
-    if (input.nodePoolGpuBound !== undefined) {
-      const [row] = tx.query<{ reserved: number }>(
-        `SELECT ${nodePoolGpuReservationSql('?')} AS reserved`,
-        [input.nodePoolId ?? null, input.nodePoolId ?? null],
-      );
-      if (
-        (row?.reserved ?? 0) + Number(input.dockerOptions?.gpus ?? 0) >
-        input.nodePoolGpuBound
-      ) {
-        throw new Error('node pool GPU capacity is reserved');
-      }
-    }
     const inserted = tx.query<{ rowsAffected: number }>(
       `INSERT INTO workloads (
         id, user_id, owner_user_id, workload_type,
         region, vm_type, gpu_type, spot, state, started_at, submitted_at,
         completed_at, docker_command, input_bucket, output_bucket, checkpoint_bucket,
         disk_size_gb, disk_tier, availability_zone, ssh_private_key,
-        credential_id, requested_compute_provider, node_pool_id,
+        credential_id, requested_compute_provider,
         input_storage_credential_id, input_storage_region,
         output_storage_credential_id, output_storage_region,
         checkpoint_storage_credential_id, checkpoint_storage_region,
         image_runtime, secret_names, session, agent, session_label, max_retries,
         no_checkpoint, require_nested_virtualization, host_docker,
         disk_iops, disk_throughput_mibps, regions
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.id,
         input.userId,
@@ -167,7 +150,6 @@ export async function createWorkload(
         encryptedSshKey,
         input.credentialId ?? null,
         input.requestedComputeProvider ?? null,
-        input.nodePoolId ?? null,
         input.inputStorageCredentialId ?? null,
         input.inputStorageRegion ?? null,
         input.outputStorageCredentialId ?? null,
@@ -193,7 +175,7 @@ export async function createWorkload(
         `Workload ${input.id}: expected exactly one workload insert`,
       );
     }
-    insertContainerSpec(tx, { workloadId: input.id }, spec);
+    insertContainerSpec(tx, input.id, spec);
     if (initialState !== WorkloadState.Queued) {
       tx.query(
         `INSERT INTO workload_events (workload_id, state, metadata, created_at)

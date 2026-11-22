@@ -245,7 +245,6 @@ describe('WorkloadSpendStore', () => {
       )!;
       expect(sql).toContain('FROM workloads d');
       expect(sql).toContain('owned_workloads d JOIN vms AS v');
-      expect(sql).toContain('JOIN pool_occupancy o');
       expect(sql).not.toContain('LIMIT ?');
       expect(params).toEqual(['selective-session']);
       const details = (

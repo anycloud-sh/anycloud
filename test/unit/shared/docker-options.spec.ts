@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  validateDockerOptionsForKubernetes,
   validateDockerOptionsForResolvedTarget,
   validateDockerOptionsRequest,
 } from '../../../src/shared/docker-options';
@@ -9,50 +8,16 @@ import {
   parseDockerVolumeBind,
 } from '../../../src/shared/docker-volume';
 import { CloudType } from '../../../src/shared/cloud.js';
-import { InvalidAnycloudConfigError } from '../../../src/shared/errors.js';
 import { type DockerOptions } from '../../../src/shared/runtime.js';
 
 describe('Docker option validation', () => {
-  it('accepts explicit privilege and disposable Deployment volumes', () => {
-    expect(() =>
-      validateDockerOptionsForKubernetes({
-        privileged: true,
-        binds: ['/var/lib/docker', '/workspace'],
-      }),
-    ).not.toThrow();
+  it('requires an explicit boolean privilege', () => {
     expect(() =>
       validateDockerOptionsRequest({ privileged: false }),
     ).not.toThrow();
     expect(() => validateDockerOptionsRequest({ privileged: 'true' })).toThrow(
       'must be a boolean',
     );
-  });
-
-  it('refuses CPU finer than a millicore on Kubernetes only', () => {
-    expect(() =>
-      validateDockerOptionsForKubernetes({ cpus: '0.2500' }),
-    ).not.toThrow();
-    for (const cpus of ['0.0005', '1.0005']) {
-      expect(() => validateDockerOptionsForKubernetes({ cpus })).toThrow(
-        InvalidAnycloudConfigError,
-      );
-      expect(() => validateDockerOptionsRequest({ cpus })).not.toThrow();
-    }
-  });
-
-  it.each([
-    ['/host:/data'],
-    ['cache:/data'],
-    ['/var/run/secrets/anycloud'],
-    ['/var//run/secrets/anycloud'],
-    ['/run/secrets'],
-    ['/var/lib/../run/secrets'],
-    ['/'],
-    ['/data', '/data/child'],
-    ['/data', '/data'],
-    ['/dev/shm'],
-  ])('rejects unsafe or ambiguous Deployment volumes %j', (...binds) => {
-    expect(() => validateDockerOptionsForKubernetes({ binds })).toThrow();
   });
 
   it('accepts the Docker options implemented by VM-host targets', () => {

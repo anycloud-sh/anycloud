@@ -2,7 +2,7 @@ import { call } from '@orpc/server';
 import { request as httpRequest, type Server } from 'node:http';
 import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { boundedClientWindowImplementation } from '../../../src/api/rpc/base.js';
+import { authenticatedImplementation } from '../../../src/api/rpc/base.js';
 import { createApiRpcDomains } from '../../../src/api/composition.js';
 import type { ApiRpcContext } from '../../../src/api/rpc/context.js';
 import type { User } from '../../../src/api/services/entities.js';
@@ -20,10 +20,12 @@ const actor: User = {
   username: 'budget-user',
   token: 'budget-token',
 };
-const input = {
-  params: { id: 'budget-job' },
-  body: { submissionRevision: 0, waitMs: 20_000 },
+const listed = {
+  owner: { userId: '1', username: 'owner' },
+  users: [],
 };
+const QUERY = apiContractProcedurePolicy(['apiAccess', 'list']);
+const COMMAND = apiContractProcedurePolicy(['credentials', 'save']);
 
 function context(overrides: Partial<ApiRpcContext> = {}): ApiRpcContext {
   return {
@@ -34,6 +36,23 @@ function context(overrides: Partial<ApiRpcContext> = {}): ApiRpcContext {
     domains: createApiRpcDomains(),
     ...overrides,
   };
+}
+
+/** A query under the elapsed budget, as the RPC middleware runs a bounded route. */
+function bounded(
+  handler: (options: { context: ApiRpcContext }) => unknown,
+  current: ApiRpcContext,
+  signal?: AbortSignal,
+) {
+  const procedure = authenticatedImplementation.apiAccess.list.handler(
+    handler as never,
+  );
+  return withRequestBudget(current, signal, QUERY, (operation) =>
+    call(procedure, undefined, {
+      context: { ...current, operation },
+      signal: operation.signal,
+    }),
+  );
 }
 
 describe('bounded RPC elapsed request budget', () => {
@@ -54,26 +73,18 @@ describe('bounded RPC elapsed request budget', () => {
       release = resolve;
     });
     const events: string[] = [];
-    const procedure =
-      boundedClientWindowImplementation.workloads.observeSubmission.handler(
-        async () => {
-          entered();
-          // A transport timeout cannot assume an arbitrary domain dependency obeys
-          // cancellation. Its continuation must remain owned until it settles.
-          await waiting;
-          events.push('operation finished');
-          return {
-            outcome: 'pending' as const,
-            claimed: false,
-            submissionRevision: 0,
-            claimDeadlineAt: null,
-          };
-        },
-      );
-    const request = call(procedure, input, {
-      context: context({ requests }),
-      signal: abort.signal,
-    });
+    const request = bounded(
+      async () => {
+        entered();
+        // A transport timeout cannot assume an arbitrary domain dependency obeys
+        // cancellation. Its continuation must remain owned until it settles.
+        await waiting;
+        events.push('operation finished');
+        return listed;
+      },
+      context({ requests }),
+      abort.signal,
+    );
     const rejected = expect(request).rejects.toThrow('Client disconnected');
     await started;
     abort.abort(new Error('Client disconnected'));
@@ -106,13 +117,9 @@ describe('bounded RPC elapsed request budget', () => {
       });
       const events: string[] = [];
       const handler = vi.fn();
-      const procedure =
-        boundedClientWindowImplementation.workloads.observeSubmission.handler(
-          handler,
-        );
-      const request = call(procedure, input, {
-        ...(kind === 'disconnect' ? { signal: abort.signal } : {}),
-        context: context({
+      const request = bounded(
+        handler,
+        context({
           requests,
           ...(kind === 'shutdown' ? { shutdownSignal: abort.signal } : {}),
           authenticate: async (_token, signal) => {
@@ -123,9 +130,13 @@ describe('bounded RPC elapsed request budget', () => {
             return actor;
           },
         }),
-      });
+        kind === 'disconnect' ? abort.signal : undefined,
+      );
+      // Shutdown cuts a safe query off as a restart the caller rides out.
       const rejected = expect(request).rejects.toThrow(
-        'Authentication cancelled',
+        kind === 'shutdown'
+          ? 'API server is restarting'
+          : 'Authentication cancelled',
       );
       await started;
       abort.abort(new Error('Authentication cancelled'));
@@ -148,38 +159,31 @@ describe('bounded RPC elapsed request budget', () => {
     requests.beginDrain();
     const authenticate = vi.fn(async () => actor);
     const handler = vi.fn();
-    const procedure =
-      boundedClientWindowImplementation.workloads.observeSubmission.handler(
-        handler,
-      );
     await expect(
-      call(procedure, input, { context: context({ requests, authenticate }) }),
+      bounded(handler, context({ requests, authenticate })),
     ).rejects.toThrow('API server is shutting down');
     expect(authenticate).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
     expect(requests.pending()).toEqual({});
   });
 
-  // The contract's own kind decides, not the replay guarantee alone: a claim
-  // is replay-safe but a command, and may have acted when shutdown cut it off.
+  // A command may have acted when shutdown cut it off; a safe query did not.
   it('answers a query cut off by shutdown API_RESTARTING and keeps the shutdown error for a command', async () => {
-    const cutOff = async (path: string[]) => {
+    const cutOff = async (policy: typeof QUERY) => {
       const shutdown = new AbortController();
       const pending = withRequestBudget(
         context({ shutdownSignal: shutdown.signal }),
         undefined,
-        apiContractProcedurePolicy(path),
+        policy,
         () => new Promise<never>(() => {}),
       );
       shutdown.abort(new Error('API server is shutting down'));
       return pending.catch((error: unknown) => error);
     };
-    await expect(
-      cutOff(['deploymentWorkload', 'claim']),
-    ).resolves.toMatchObject({ message: 'API server is shutting down' });
-    await expect(
-      cutOff(['deploymentWorkload', 'cancellation']),
-    ).resolves.toMatchObject({
+    await expect(cutOff(COMMAND)).resolves.toMatchObject({
+      message: 'API server is shutting down',
+    });
+    await expect(cutOff(QUERY)).resolves.toMatchObject({
       defined: true,
       code: 'API_RESTARTING',
       status: 503,
@@ -192,7 +196,7 @@ describe('bounded RPC elapsed request budget', () => {
     const request = withRequestBudget(
       context(),
       undefined,
-      apiContractProcedurePolicy(['deploymentWorkload', 'claim']),
+      COMMAND,
       async (operation) => {
         operation.signal.addEventListener('abort', aborted, { once: true });
         await Promise.resolve();
@@ -211,10 +215,6 @@ describe('bounded RPC elapsed request budget', () => {
 
   it('rejects authentication that finishes after the clock cutoff before its timer', async () => {
     const handler = vi.fn();
-    const procedure =
-      boundedClientWindowImplementation.workloads.observeSubmission.handler(
-        handler,
-      );
     const current = context();
     current.authenticate = async () => {
       await Promise.resolve();
@@ -223,9 +223,7 @@ describe('bounded RPC elapsed request budget', () => {
       );
       return actor;
     };
-    await expect(
-      call(procedure, input, { context: current }),
-    ).rejects.toMatchObject({
+    await expect(bounded(handler, current)).rejects.toMatchObject({
       code: 'TIMEOUT',
       status: 504,
     });
@@ -244,10 +242,7 @@ describe('bounded RPC elapsed request budget', () => {
       });
       const authenticate = vi.fn(async () => actor);
       const domains = createApiRpcDomains();
-      const observed = vi.spyOn(
-        domains.workloadManagement,
-        'observeSubmission',
-      );
+      const observed = vi.spyOn(domains.credentials, 'save');
       const app = express();
       app.use((req, _res, next) => {
         req.once('data', bodyStarted);
@@ -266,9 +261,9 @@ describe('bounded RPC elapsed request budget', () => {
       const response = new Promise<{ status: number; body: string }>(
         (resolve, reject) => {
           request = httpRequest(
-            `http://127.0.0.1:${address.port}/v1/workloads/budget-job/claim-observation`,
+            `http://127.0.0.1:${address.port}/v1/credentials/budget-credential`,
             {
-              method: 'POST',
+              method: 'PUT',
               headers: {
                 authorization: `Bearer ${actor.token}`,
                 [ANYCLOUD_CLIENT_VERSION_HEADER]: getAnycloudVersion(),
@@ -297,16 +292,16 @@ describe('bounded RPC elapsed request budget', () => {
               socketErrors.push(error);
             });
           });
-          request.write('{"submissionRevision":');
+          request.write('{"cloudProvider":');
         },
       );
       try {
         await started;
         if (kind === 'incremental') {
           await vi.advanceTimersByTimeAsync(10_000);
-          request.write('0');
+          request.write('"aws"');
           await vi.advanceTimersByTimeAsync(10_000);
-          request.write(',"waitMs":');
+          request.write(',"accessKeyId":');
           await vi.advanceTimersByTimeAsync(10_000);
         } else {
           await vi.advanceTimersByTimeAsync(30_000);
@@ -314,7 +309,7 @@ describe('bounded RPC elapsed request budget', () => {
         const result = await response;
         expect(result.status).toBe(504);
         expect(JSON.parse(result.body)).toMatchObject({ code: 'TIMEOUT' });
-        request.end('0}');
+        request.end('"x"}');
         await vi.advanceTimersByTimeAsync(1_000);
         expect(authenticate).not.toHaveBeenCalled();
         expect(observed).not.toHaveBeenCalled();
@@ -338,26 +333,18 @@ describe('bounded RPC elapsed request budget', () => {
       async ({ context: current }: { context: ApiRpcContext }) => {
         await waitForPoll(2_000, current.operation?.signal);
         mutated();
-        return {
-          outcome: 'pending' as const,
-          claimed: false,
-          submissionRevision: 0,
-          claimDeadlineAt: null,
-        };
+        return listed;
       },
     );
-    const procedure =
-      boundedClientWindowImplementation.workloads.observeSubmission.handler(
-        handler,
-      );
-    const request = call(procedure, input, {
-      context: context({
+    const request = bounded(
+      handler,
+      context({
         authenticate: () =>
           new Promise((resolve) => {
             authenticate = resolve;
           }),
       }),
-    });
+    );
     const rejected = expect(request).rejects.toMatchObject({
       code: 'TIMEOUT',
       status: 504,
@@ -381,19 +368,10 @@ describe('bounded RPC elapsed request budget', () => {
       const authenticating = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      const handler = vi.fn(async () => ({
-        outcome: 'pending' as const,
-        claimed: false,
-        submissionRevision: 0,
-        claimDeadlineAt: null,
-      }));
-      const procedure =
-        boundedClientWindowImplementation.workloads.observeSubmission.handler(
-          handler,
-        );
-      const request = call(procedure, input, {
-        ...(kind === 'disconnect' ? { signal: abort.signal } : {}),
-        context: context({
+      const handler = vi.fn(async () => listed);
+      const request = bounded(
+        handler,
+        context({
           ...(kind === 'shutdown' ? { shutdownSignal: abort.signal } : {}),
           authenticate: () =>
             new Promise((resolve) => {
@@ -401,8 +379,11 @@ describe('bounded RPC elapsed request budget', () => {
               entered();
             }),
         }),
-      });
-      const rejected = expect(request).rejects.toThrow(kind);
+        kind === 'disconnect' ? abort.signal : undefined,
+      );
+      const rejected = expect(request).rejects.toThrow(
+        kind === 'shutdown' ? 'API server is restarting' : kind,
+      );
       await authenticating;
       abort.abort(new Error(kind));
       await rejected;

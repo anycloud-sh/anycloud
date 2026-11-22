@@ -96,9 +96,6 @@ export function correctnessCases(scope) {
       list(`type-${workloadType}`, { ...edges, workloadType }),
     ),
     list('status', { ...edges, status: 'FAILED' }),
-    list('worker-search', { filter: 'list-worker' }),
-    list('worker-id', { deploymentId: 'list-worker', limit: 1000 }),
-    list('worker-id-empty', { deploymentId: 'list-no-worker', limit: 1000 }),
     list('missing-auth', {}, { token: null, expectedStatus: 401 }),
     list('invalid-limit', { limit: 0 }, { expectedStatus: 400 }),
     list('invalid-status', { status: 'made-up' }, { expectedStatus: 400 }),
@@ -205,9 +202,6 @@ export function checkResponse(testCase, data, status, scope) {
           !ids.includes('list-other-user'),
       );
     assert.equal(byId('list-event-tie-z').latestMessage, 'winning message');
-    const worker = byId('list-worker-job');
-    for (const field of ['image', 'imageDigest', 'command', 'dockerOptions'])
-      assert.equal(worker[field], null);
   }
   if (testCase.id === 'headroom-default' || testCase.id === 'headroom-1000')
     assert.equal(data.length, 225);
@@ -246,10 +240,6 @@ export function checkResponse(testCase, data, status, scope) {
   if (testCase.id === 'session-exact' || testCase.id === 'literal-search')
     assert.deepEqual(ids, ['list-search']);
   if (testCase.id === 'renamed-user') assert.deepEqual(ids, ['list-renamed']);
-  if (testCase.id === 'worker-search')
-    assert.deepEqual(ids, ['list-worker-job']);
-  if (testCase.id === 'worker-id') assert.deepEqual(ids, ['list-worker-job']);
-  if (testCase.id === 'worker-id-empty') assert.deepEqual(ids, []);
   if (testCase.id === 'admitted-peer')
     assert(data.every((row) => !row.isOwnedByCaller));
   if (testCase.id.startsWith('type-'))

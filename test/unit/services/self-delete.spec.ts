@@ -37,7 +37,7 @@ function world(
     requireOwner: async (actorId) => {
       if (actorId !== 'owner') throw new Error('not the owner');
     },
-    liveDependents: async () => ({ pools: [], workloads: [] }),
+    liveDependents: async () => ({ workloads: [] }),
     backup: { run: vi.fn(async () => order.push('backup')) },
     sweeperFor: () =>
       createCloudResourceSweeper({
@@ -163,12 +163,9 @@ describe('the hosted API deleting itself', () => {
     expect(deps.backup!.run).toHaveBeenCalledOnce();
     await gone;
   });
-  it('refuses while node pools or live VM workloads remain, naming what to run first and deleting nothing', async () => {
+  it('refuses while live VM workloads remain, naming what to run first and deleting nothing', async () => {
     const { selfDelete, order } = world({
-      liveDependents: async () => ({
-        pools: [{ name: 'gpu', liveReferences: 1 }],
-        workloads: ['svc-1'],
-      }),
+      liveDependents: async () => ({ workloads: ['svc-1'] }),
     });
     await expect(
       selfDelete.request('owner', {
@@ -178,7 +175,7 @@ describe('the hosted API deleting itself', () => {
     ).rejects.toMatchObject({
       name: 'SelfDeleteRefusedError',
       message:
-        'Node pool gpu still has Deployments or Services. Workload svc-1 still runs. Run anycloud deployment delete <id> / anycloud terminate <id>, then anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.',
+        'Workload svc-1 still runs. Run anycloud terminate <id>, then anycloud api delete prod-1 again.',
     });
     expect(order).toEqual([]);
     expect(selfDelete.status().state).toBe('idle');
@@ -243,8 +240,7 @@ describe('the hosted API deleting itself', () => {
     const { selfDelete, order } = world({
       sweeperFor: null,
       liveDependents: async () => ({
-        pools: ++calls > 2 ? [{ name: 'late', liveReferences: 0 }] : [],
-        workloads: [],
+        workloads: ++calls > 2 ? ['late-1'] : [],
       }),
     });
     await selfDelete.request('owner', {
@@ -254,7 +250,7 @@ describe('the hosted API deleting itself', () => {
     await vi.waitFor(() => expect(selfDelete.status().state).toBe('failed'));
     expect(order).toEqual(['backup']);
     expect(selfDelete.status().error).toBe(
-      'Node pool late still exists. Run anycloud node-pool delete <name>, then anycloud cluster delete prod-1 again.',
+      'Workload late-1 still runs. Run anycloud terminate <id>, then anycloud api delete prod-1 again.',
     );
   });
 

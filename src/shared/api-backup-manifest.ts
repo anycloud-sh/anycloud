@@ -1,6 +1,6 @@
 /**
  * `backup.json`, the hosted API's backup manifest: the API writes it last,
- * after the database, and `cluster create --checkpoint-bucket` reads it to
+ * after the database, and `api create --checkpoint-bucket` reads it to
  * restore (RFC 0049 C26 (e)). Shared so the CLI parses it without `src/api`.
  */
 
@@ -9,7 +9,7 @@ export const API_BACKUP_MANIFEST_KEY = 'anycloud-api/backup.json';
 
 /**
  * What `backup.json` records about where an installation's resources live,
- * so `cluster delete` on another machine can sweep each account (RFC 0049
+ * so `api delete` on another machine can sweep each account (RFC 0049
  * C26 (c)). The management VM's cloud and account and the backup trust are
  * recorded beside these in `backup.json` (C26 (e)). Names and accounts only:
  * no secret.
@@ -20,16 +20,6 @@ export interface ApiBackupInventory {
     cloud: string;
     /** GCP project, Azure subscription or AWS account; Lambda keys name none. */
     account: string | null;
-  }>;
-  readonly pools: ReadonlyArray<{
-    id: string;
-    name: string;
-    cloud: string;
-    /** Null when the credential was deleted after the pool was created. */
-    credential: string | null;
-    account: string | null;
-    region: string | null;
-    zone: string | null;
   }>;
 }
 
@@ -74,7 +64,6 @@ export function parseApiBackupManifest(raw: string): ApiBackupManifest {
     typeof value.databaseSha256 !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.databaseSha256) ||
     (value.credentials !== undefined && !Array.isArray(value.credentials)) ||
-    (value.pools !== undefined && !Array.isArray(value.pools)) ||
     (['cloud', 'account', 'name', 'region', 'vmType'] as const).some(
       (field) => value[field] !== undefined && typeof value[field] !== 'string',
     )

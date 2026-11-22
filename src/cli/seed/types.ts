@@ -1,5 +1,5 @@
 /**
- * The seed (RFC 0049 C26 (e), owner decision 2026-11-07): `cluster create`
+ * The seed (RFC 0049 C26 (e), owner decision 2026-11-07): `api create`
  * drives the user's own cloud CLI to stand up one management VM whose
  * startup script brings up K3s and the API; the API does every other cloud
  * call. Each cloud implements `CloudSeed` (AWS: one CloudFormation stack;
@@ -95,8 +95,6 @@ export interface SeedReleaseValues {
   readonly [key: string]: unknown;
   readonly selfDelete: SeedSelfDelete;
   readonly backup: SystemReleaseBackupValues;
-  /** Test-only: the pool whose first launch fails as capacity (`ANYCLOUD_E2E_CAPACITY_FAULT`). */
-  readonly e2e?: { readonly capacityFaultPool: string };
   /** Test-only: mount the e2e harness's kubeconfig hand-off (`ANYCLOUD_E2E_ACCESS=1`). */
   readonly e2eAccess?: true;
 }

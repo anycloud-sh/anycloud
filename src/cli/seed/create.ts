@@ -1,5 +1,5 @@
 /**
- * `cluster create` through the seed (RFC 0049 C26 (e)): the user's own cloud
+ * `api create` through the seed (RFC 0049 C26 (e)): the user's own cloud
  * CLI stands up the management VM, whose startup script brings up K3s and
  * the API. This drives it: sign-in and rights, the cluster's ID (a re-run
  * resumes it by name), the release values and boot script, the deploy, the
@@ -111,8 +111,6 @@ export interface SeedCreateDependencies {
   publicARecordExists: typeof publicARecordExists;
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
   now: () => number;
-  /** `ANYCLOUD_E2E_CAPACITY_FAULT`, test-only. */
-  capacityFaultPool: string | undefined;
   /** `ANYCLOUD_E2E_ACCESS=1`, test-only: the harness's kubeconfig hand-off. */
   e2eAccess: boolean;
   /** Downloads the cloud's catalog on a fresh machine; the seeds read it. */
@@ -128,8 +126,6 @@ export const DEFAULT_DEPENDENCIES: SeedCreateDependencies = {
   publicARecordExists,
   sleep,
   now: () => Date.now(),
-  capacityFaultPool:
-    process.env.ANYCLOUD_E2E_CAPACITY_FAULT?.trim() || undefined,
   e2eAccess: process.env.ANYCLOUD_E2E_ACCESS === '1',
   bootstrapCatalog: async (cloud, progress) => {
     if (!readCatalog(cloud))
@@ -156,7 +152,7 @@ export async function runSeedCreate(
   } else if (missing.length > 0) {
     throw new SeedCreateError(
       'CLOUD_RIGHTS_MISSING',
-      `${account.principal} lacks ${missing.join(', ')} in ${seed.cloud} account ${account.account}; grant them and retry (https://anycloud.sh/reference/cli/cluster#cloud-rights)`,
+      `${account.principal} lacks ${missing.join(', ')} in ${seed.cloud} account ${account.account}; grant them and retry (https://anycloud.sh/reference/cli/api-utilities#cloud-rights)`,
     );
   }
   // A supplied bucket holding a backup makes this a restore under the
@@ -254,9 +250,6 @@ export async function runSeedCreate(
     }),
     backup,
     selfDelete: seed.selfDeleteValues(location, account),
-    ...(dependencies.capacityFaultPool
-      ? { e2e: { capacityFaultPool: dependencies.capacityFaultPool } }
-      : {}),
     // The chart mounts the hand-off directory and the script writes the
     // kubeconfig into it: both or neither.
     ...(dependencies.e2eAccess ? { e2eAccess: true as const } : {}),
@@ -396,13 +389,13 @@ async function restorableBackup(
       // A running installation this name holds is resumed as it is.
       if (own && !installation.stopped) return manifest;
       return refuse(
-        `${subject} ${installation.stopped ? 'has a stopped management VM' : 'still runs'}; delete it (anycloud cluster delete ${manifest.clusterId}) before restoring, since two APIs must never write one bucket`,
+        `${subject} ${installation.stopped ? 'has a stopped management VM' : 'still runs'}; delete it (anycloud api delete ${manifest.clusterId}) before restoring, since two APIs must never write one bucket`,
       );
     case 'failed':
       // A lost VM leaves its stack or group behind, which a resume would
       // adopt without a VM.
       return refuse(
-        `${subject} is broken (${installation.detail}); delete it (anycloud cluster delete ${manifest.clusterId}) before restoring`,
+        `${subject} is broken (${installation.detail}); delete it (anycloud api delete ${manifest.clusterId}) before restoring`,
       );
   }
 }

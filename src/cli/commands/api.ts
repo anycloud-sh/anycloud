@@ -1,5 +1,7 @@
 import { Command, InvalidArgumentError } from 'commander';
 import { apiClient, hostedApiBearer } from '../services/auth.js';
+import { createApiCreateCommand } from './cluster.js';
+import { createApiDeleteCommand } from './cluster-delete.js';
 import * as semver from 'semver';
 import { newTable } from '../renderers/table.js';
 import { spawnSync, spawn } from 'child_process';
@@ -61,7 +63,6 @@ import {
 import {
   activeVmHostedApi,
   discoverApiTargetRows,
-  checkApiHealth,
   getActiveApiTargetInfo,
   persistApiTarget,
   resolveApiTargetArgument,
@@ -89,7 +90,11 @@ import type {
   SystemReleaseStatus,
 } from '../../shared/api-contract/system-release-schemas.js';
 import { createApiAccessCommand, createApiTokenCommand } from './api-access.js';
-import { drainPoolJobs } from '../use-cases/pool-job-drain.js';
+import {
+  RemovedWorkloadsError,
+  remainingRemovedWorkloads,
+  removedWorkloadsRefusal,
+} from '../use-cases/removed-workloads.js';
 import {
   inspectLocalApiContainer,
   isLocalApiContainerRunning,
@@ -333,7 +338,6 @@ async function waitForRelease(
 
 interface ApiUpgradeOptions {
   image?: string;
-  force?: boolean;
   signInApps?: number[];
   json?: boolean;
 }
@@ -371,10 +375,6 @@ function createApiUpgradeCommand(): Command {
       "Helm-managed API only: exact image to run instead of this CLI's release (ghcr.io/anycloud-sh/api:<version>@sha256:<digest>); an image older than the served one is refused",
     )
     .option(
-      '--force',
-      'Stop the pool Jobs the upgrade waits for instead of waiting; each retries on the new release',
-    )
-    .option(
       '--sign-in-apps <ids>',
       "Hosted API, owner only: replace the comma-separated GitHub App ids whose user tokens it exchanges, once it serves this CLI's release (an older one is upgraded first)",
       (list: string) => {
@@ -395,20 +395,17 @@ Examples:
   $ anycloud api upgrade --sign-in-apps 5622376
 
 With the local API active, it is started or restarted on this CLI's release. If the
-active API is a Helm-managed API on a cluster (anycloud cluster create), it is
+active API is a Helm-managed API on a cluster (anycloud api create), it is
 asked to move to this CLI's release, without Docker or the local API:
 it backs its database up and hands the new image to helm-controller, then is
 replaced by it while it keeps running. "anycloud api status" shows the
-upgrade. The active API selection is not changed. From any machine, once the
-pool Jobs below have drained, the hosted API first brings the cluster's K3s
-configuration to the new release's, which briefly restarts the Kubernetes API
-server when it changed.
+upgrade. The active API selection is not changed. From any machine, the
+hosted API first brings the cluster's K3s configuration to the new release's,
+which briefly restarts the Kubernetes API server when it changed.
 
-Before an API is replaced, no new pool Job (job --node-pool) starts. Pool
-Jobs running on this release's or the previous release's runner keep running
-through the upgrade and are listed. The upgrade waits for older ones, and
-for all of them with an --image of another release; with --force those are
-stopped instead, and each retries after the upgrade.
+Node pools, Kubernetes Deployments and node pool Services are removed: a
+hosted API that still runs any is refused before anything changes, naming
+them.
 
 ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API only).
 `,
@@ -425,9 +422,6 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         const activeIsLocal =
           activeTarget.source === 'default' || activeLoopbackPort !== undefined;
         const currentVersion = packageJson.version;
-        // RFC 0049 C27: this release accepts its own runners and the previous
-        // release's, so Jobs on those keep running through the upgrade.
-        const keep = [currentVersion, packageJson.previousVersion];
 
         // A hosted API is upgraded through its own API alone: the local API,
         // and Docker, are not touched.
@@ -443,28 +437,6 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
               activeLoopbackPort !== undefined && {
                 startPort: activeLoopbackPort,
               }),
-            // Claims go through the API, so one that doesn't answer starts no
-            // new pool Job; those it started before keep running until the
-            // restart, which retries them, and can't be drained from here.
-            beforeRestart: async (apiUrl) => {
-              if (!(await checkApiHealth(apiUrl))) {
-                printWarning(
-                  'Skipped draining pool Jobs: the local API did not answer /health. Pool Jobs it claimed before keep running until the new API replaces their replicas, then retry.',
-                );
-                return;
-              }
-              await drainPoolJobs(
-                (
-                  await apiClient({
-                    apiUrl,
-                    missingExitCode: NOT_RUN_EXIT_CODE,
-                  })
-                ).systemRelease,
-                !!options.force,
-                printInfo,
-                { keep },
-              );
-            },
           });
           finish(
             {
@@ -541,15 +513,26 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
           // The hosted API resolves this CLI's release tag to its published
           // digest itself; an explicit --image is used exactly as given.
           const image = options.image ?? `${IMAGE_NAME}:${currentVersion}`;
-          // A pinned image of another release has a window this CLI can't
-          // name, so every pool Job drains.
-          await drainPoolJobs(hostedRelease, !!options.force, printInfo, {
+          // Refused before anything changes while the API runs what this
+          // release removes.
+          await refuseRemovedWorkloads(activeTarget.url, served).catch(
+            (error: unknown) =>
+              exitWithLifecycleError(
+                'Hosted API upgrade refused',
+                error,
+                options.json,
+                (refusal) =>
+                  refusal instanceof RemovedWorkloadsError
+                    ? refusal.code
+                    : undefined,
+              ),
+          );
+          const k3s = await runKubernetesStep(
+            hostedRelease,
             image,
-            ...(image.split('@')[0]!.endsWith(`:${currentVersion}`) && {
-              keep,
-            }),
-          }).catch((error: unknown) => {
-            // The drain checks the release first: its refusal is the verdict.
+            printInfo,
+          ).catch((error: unknown) => {
+            // The step checks the release first: its refusal is the verdict.
             if (
               error instanceof ORPCError &&
               ['SYSTEM_RELEASE_REFUSED', 'SYSTEM_RELEASE_UNAVAILABLE'].includes(
@@ -564,7 +547,6 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
             }
             throw error;
           });
-          const k3s = await runKubernetesStep(hostedRelease, image, printInfo);
           if (k3s) {
             printInfo(`K3s step: ${kubernetesStepSummary(k3s)}`);
             k3sResult = { configuration: k3s.configuration ?? 'current' };
@@ -630,7 +612,7 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         const legacy = await activeVmHostedApi();
         if (legacy) throw new Error(vmHostedApiMigrationMessage(legacy));
         throw new Error(
-          `Active API ${activeTarget.url} is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud cluster create.`,
+          `Active API ${activeTarget.url} is not a Helm-managed API; api upgrade applies to the local API and to an API created with anycloud api create.`,
         );
       } catch (error) {
         if (options.json) {
@@ -641,6 +623,17 @@ ${LIFECYCLE_EXIT_HELP} Exit 4: the new local API was still starting (local API o
         process.exit(exitCode);
       }
     });
+}
+
+/** Refuses while the API at `url` runs anything this release removes. */
+async function refuseRemovedWorkloads(
+  url: string,
+  servedVersion: string,
+): Promise<void> {
+  const bearer = await hostedApiBearer(url, async () => optionalGitHubToken());
+  if (!bearer) throw new Error('No GitHub sign-in found.');
+  const remaining = await remainingRemovedWorkloads(url, servedVersion, bearer);
+  if (remaining.length > 0) throw removedWorkloadsRefusal(remaining);
 }
 
 function formatApiTargetSource(source: ApiTargetRow['source']): string {
@@ -878,14 +871,6 @@ function createStartCommand(): Command {
         ...(process.env.IS_TEST === 'true' &&
         process.env.ANYCLOUD_E2E_GHCR_AUTH === 'true'
           ? ['-e', 'ANYCLOUD_E2E_GHCR_AUTH=true']
-          : []),
-        // E2E only: the node pool of this name fails its first launch as the
-        // provider's capacity error. e2e-cluster-cloud runs without IS_TEST.
-        ...(process.env.ANYCLOUD_E2E_CAPACITY_FAULT
-          ? [
-              '-e',
-              `ANYCLOUD_E2E_CAPACITY_FAULT=${process.env.ANYCLOUD_E2E_CAPACITY_FAULT}`,
-            ]
           : []),
         image,
       ];
@@ -1227,6 +1212,8 @@ function createStatusCommand(): Command {
 export function createApiCommand(): Command {
   const api = new Command('api').description('Manage AnyCloud API servers');
 
+  api.addCommand(createApiCreateCommand());
+  api.addCommand(createApiDeleteCommand());
   api.addCommand(createListCommand());
   api.addCommand(createUseCommand());
   api.addCommand(createApiUpgradeCommand());

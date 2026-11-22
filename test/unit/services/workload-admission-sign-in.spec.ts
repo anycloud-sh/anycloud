@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { prepareWorkloadCreation } from '../../../src/api/services/workload-admission-plan.js';
 import { resolveWorkloadAdmission } from '../../../src/api/services/workload-admission-resolution.js';
-import type { DedicatedWorkloadAdmissionInput } from '../../../src/shared/api-contract/workload-admission-schemas.js';
+import type { WorkloadAdmissionInput } from '../../../src/shared/api-contract/workload-admission-schemas.js';
 import { CloudType } from '../../../src/shared/cloud.js';
 import { GithubSignInRequiredError } from '../../../src/shared/errors.js';
 import { TEST_AWS_CRED, TEST_GCP_CRED } from '../helpers/fixtures.js';
@@ -24,7 +24,7 @@ vi.mock(
 
 describe('VM-host Service admission without a GitHub sign-in', () => {
   it('stops before image inspection and any bucket check', async () => {
-    const input: DedicatedWorkloadAdmissionInput = {
+    const input: WorkloadAdmissionInput = {
       image: 'nginx:1.27',
       workloadType: 'service',
       cloudConfig: {

@@ -307,10 +307,6 @@ const containerSpecWriteOwners = {
   'src/api/services/repositories/workload-lifecycle.ts': [
     'WorkloadLifecycleStore.beginServiceUpgrade',
   ],
-  'src/api/services/deployment-store.ts': [
-    'DeploymentStore.update',
-    'renewRegistryToken',
-  ],
 };
 
 const containerSpecWriteOwnership = {
@@ -2298,7 +2294,6 @@ function e2eClosedLayerAllowsImport(context, layer, source) {
   const internalRoot = `${projectRoot}${marker}`;
   const sharedOwnerRoot = `${projectRoot}/src/shared/`;
   const sharedValueOwners = new Set([
-    'node-pools',
     'cloud',
     'workload',
     'image',
@@ -2318,8 +2313,6 @@ function e2eClosedLayerAllowsImport(context, layer, source) {
     if (identity.startsWith(`${internalRoot}targets/`)) return true;
     return new Set([
       'artifacts',
-      'node-pools',
-      'deployments',
       'workloads',
       'environment',
       'host-identity',
@@ -2337,10 +2330,6 @@ function e2eClosedLayerAllowsImport(context, layer, source) {
   return new Set([
     // argv for the CLI the target drives, checked against the commander tree.
     'cli-surface',
-    'node-pool-mutations',
-    'node-pools',
-    'deployment-mutations',
-    'deployments',
     'workload-mutations',
     'workloads',
     'profiles',
@@ -2383,27 +2372,16 @@ const noE2eRawMutationClients = {
       if (typeof node.source.value !== 'string') return;
       const source = node.source.value;
       const client = source.match(
-        /(?:^|\/)(api|cli|node-pool-mutations|deployment-mutations|workload-mutations)\.js$/u,
+        /(?:^|\/)(api|cli|workload-mutations)\.js$/u,
       )?.[1];
       const approvedTargetTransports = new Set([
-        'NodePoolCreateTransport',
-        'NodePoolDeleteAttemptTransport',
-        'NodePoolDeleteTransport',
-        'DeploymentCreateInput',
-        'DeploymentCreateTransport',
-        'DeploymentDeleteTransport',
-        'DeploymentReadTransport',
-        'DeploymentUpdateInput',
-        'DeploymentUpdateTransport',
         'WorkloadApiCreateTransport',
         'WorkloadCliCreateTransport',
         'WorkloadCliResubmitTransport',
         'WorkloadCliUpgradeTransport',
       ]);
       const importsRawMutationTransport =
-        (client === 'node-pool-mutations' ||
-          client === 'deployment-mutations' ||
-          client === 'workload-mutations') &&
+        client === 'workload-mutations' &&
         node.specifiers.some(
           (specifier) =>
             !approvedTargetTransports.has(e2eImportedName(specifier)),
@@ -3910,7 +3888,6 @@ const vmComputeBindingOwners = [
   'src/api/services/vm-compute.ts',
   'src/api/services/host-runtime/termination.ts',
   'src/api/services/node-pool-controller.ts',
-  'src/api/services/cluster-installer-runtime.ts',
 ];
 
 // As with literal-module-loads, reserve the capability names in every literal
@@ -3928,7 +3905,7 @@ const exactVmComputeOwnership = {
       lifecycle:
         '{{name}} belongs to VmCompute or a named provider gateway. Consume a bound VM handle here.',
       binding:
-        'bindVmCompute belongs to the named Workload, node pool and cluster installation composition roots.',
+        'bindVmCompute belongs to the named Workload and node pool composition roots.',
     },
   },
   create(context) {

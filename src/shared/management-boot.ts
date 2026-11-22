@@ -211,12 +211,11 @@ const E2E_ACCESS_NAME = 'anycloud-e2e-access';
 /**
  * Exactly what the e2e harness's checks call (test/integration/e2e), as
  * `[apiGroup, resource, verbs]`, no wildcards: cluster-wide reads, Pod
- * deletion and ServiceAccount tokens, where node pool namespaces are named at
- * run time; a namespaced Role for the rest. kube-system holds the host shell
- * and victim Pods and the victim's Secret; the role live checks mint the API's
- * and the trust probe's tokens in anycloud-system and a Deployment's Pod-bound
- * token in its node pool's namespace, plus the Helm state a timed-out
- * hosted upgrade's capture lists.
+ * deletion and ServiceAccount tokens; a namespaced Role for the rest.
+ * kube-system holds the host shell and victim Pods and the victim's Secret;
+ * the role live checks mint the API's and the trust probe's tokens in
+ * anycloud-system, plus the Helm state a timed-out hosted upgrade's capture
+ * lists.
  */
 const E2E_ACCESS_ROLES: Record<string, [string, string, string[]][]> = {
   '': [
@@ -578,7 +577,7 @@ PY
   ${K3S_BINARY} kubectl -n ${SYSTEM_RELEASE_NAMESPACE} create secret tls ${API_TLS_SECRET} --cert=${STATE}/tls.crt --key=${STATE}/tls.key --dry-run=client -o yaml | ${K3S_BINARY} kubectl apply -f -
   if [ -s ${STATE}/ca.crt ]; then
     ${K3S_BINARY} kubectl -n ${SYSTEM_RELEASE_NAMESPACE} create secret generic ${API_TLS_CA_SECRET} --from-file=ca.crt=${STATE}/ca.crt --dry-run=client -o yaml | ${K3S_BINARY} kubectl apply -f -
-    # Then Traefik requires Cloudflare's client certificate (api-tls.ts).
+    # Then Traefik requires Cloudflare's client certificate.
     until ${K3S_BINARY} kubectl apply -f - <<'OPTION'
 ${JSON.stringify(ORIGIN_PULL_OPTION)}
 OPTION

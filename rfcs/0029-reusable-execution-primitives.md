@@ -2,7 +2,9 @@
 
 <span id="rfc-0029-anycloud-deployments-for-jobs"></span>
 
-> Status: Proposed
+> Status: Superseded — node pools, Kubernetes Deployments and node pool
+> Services were removed (migrations 0172 and 0173); VM Jobs and VM Services
+> replace them.
 > Date: 2026-08-28
 > Author: Luis Fernando De Pombo
 > Decision state: O19 promoted for implementation validation

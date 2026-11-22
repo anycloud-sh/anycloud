@@ -20,7 +20,7 @@ export interface SelfDeleteDependencies {
   installation: SelfDeleteStatus['installation'];
   /** Only the hosted API's owner may delete it; throws for anyone else. */
   requireOwner(actorId: string): Promise<void>;
-  /** Node pools and VM Services or Jobs not yet ended; any refuses. */
+  /** VM Services or Jobs not yet ended; any refuses. */
   liveDependents(): Promise<ClusterDependents>;
   /** Null when no backup is configured: the final backup is `failed`. */
   backup: { run(reason: string): Promise<unknown> } | null;
@@ -144,7 +144,7 @@ export function createSelfDelete(deps: SelfDeleteDependencies): SelfDelete {
     // A supplied bucket is kept whatever the flag, so it gets its backup.
     if (!deleteBuckets || !deps.installation.bucket.managed) {
       finalBackup = await (
-        deps.backup?.run('cluster delete') ??
+        deps.backup?.run('api delete') ??
         Promise.reject(new Error('no backup is configured'))
       )
         .then(() => 'taken' as const)

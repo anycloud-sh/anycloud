@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { callApi } from '../helpers/api-test-helper';
-import { TEST_DAEMON_VERSION } from '../config';
 import { walkToState, provisionTestVm } from '../../helpers/workload-store.js';
 import { WorkloadState } from '../../../src/shared/workload.js';
 import { ContainerState, ServiceState } from '../../../src/shared/runtime.js';

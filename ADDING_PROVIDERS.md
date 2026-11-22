@@ -6,16 +6,15 @@ Do not start by designing a new abstraction. Start with the cheapest spike that 
 
 ## Current State
 
-Audited on 2026-10-08, after the Cloudflare Containers spike. The `Kubernetes` cloud provider value was retired on 2026-10-02, and node pools are the only Deployment and Job substrate (owner decision).
+Audited on 2026-10-08, after the Cloudflare Containers spike, and updated when node pools, Kubernetes Deployments, and node pool Services were removed. The `Kubernetes` cloud provider value was retired on 2026-10-02.
 
-AnyCloud currently has two shipped workload-control shapes:
+AnyCloud currently has one shipped workload-control shape:
 
-| Shape               | Providers                                 | Workload shape                                                                      | Completion                          |
-| ------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------- |
-| VM host             | AWS, Azure, GCP, Lambda, Local            | Provision VM, SSH in, install Docker and rclone, run the user image with Docker     | `docker inspect` over SSH           |
-| Node pool substrate | Kubernetes node pools (not a `CloudType`) | Reconcile Deployment records and node pool Services as native objects on node pools | Native object status and Job claims |
+| Shape   | Providers                      | Workload shape                                                                  | Completion                |
+| ------- | ------------------------------ | ------------------------------------------------------------------------------- | ------------------------- |
+| VM host | AWS, Azure, GCP, Lambda, Local | Provision VM, SSH in, install Docker and rclone, run the user image with Docker | `docker inspect` over SSH |
 
-The important seam is lifecycle ownership. VM-host runtimes use SSH endpoint data (`CloudVM.sshHost` and `CloudVM.sshPort` let a provider return an address that differs from `ip:22`, as with Local's mapped SSH port); node-pool runtimes derive a reconstructible resource identity from the durable workload ID and own deploy, observe, exec/log, and confirmed cleanup through the scheduler API.
+The important seam is lifecycle ownership. VM-host runtimes use SSH endpoint data (`CloudVM.sshHost` and `CloudVM.sshPort` let a provider return an address that differs from `ip:22`, as with Local's mapped SSH port).
 
 **Capability is declared by the provider object it returns, not by a central table.** Base compute,
 storage, and some optional capabilities are constructed through the shared factories in
@@ -32,7 +31,7 @@ compute-gateway behavior
 — the quota-increase API — instead lives in a small server-side `QUOTA_PROVIDERS` registry (a cloud is
 quota-capable iff it's registered; same drift-free principle, just not hung off the compute gateway).
 
-Cross-identity S3 access uses scoped, short-lived tokens (AWS STS, or Cloudflare R2 temporary credentials) minted through the `ScopedStorageTokenMinter` capability on branded `CloudStorage`; `validateStorageCapabilities` checks `canMintScopedStorageToken(storage)` rather than a hardcoded cloud or parallel flag. Deployment-targeted Jobs do not support per-Job buckets.
+Cross-identity S3 access uses scoped, short-lived tokens (AWS STS, or Cloudflare R2 temporary credentials) minted through the `ScopedStorageTokenMinter` capability on branded `CloudStorage`; `validateStorageCapabilities` checks `canMintScopedStorageToken(storage)` rather than a hardcoded cloud or parallel flag.
 
 ## Hard Rules
 
@@ -40,7 +39,7 @@ Cross-identity S3 access uses scoped, short-lived tokens (AWS STS, or Cloudflare
    Prove the provider shape with its real control transport, real readiness polling, and the smallest live or local resource that exercises the unknowns. Use the spike result to decide the interface.
 
 2. Use one control plane.
-   One runtime must own the whole workload lifecycle. Providers are VM hosts operated over SSH; scheduler-controlled execution belongs to a substrate that owns creation, readiness, completion, operations, and deletion through its own API, as node pools and Slurm do.
+   One runtime must own the whole workload lifecycle. Providers are VM hosts operated over SSH; scheduler-controlled execution belongs to a substrate that owns creation, readiness, completion, operations, and deletion through its own API, as RFC 0046 plans for Slurm.
 
 3. Persist a reconstructible control identity.
    For SSH this is provider identity plus endpoint facts, such as a marketplace VM's mapped SSH port. Never persist only a process-local port-forward, socket, or generated Pod name. A restarted API must be able to observe and clean up the same resource.
@@ -72,13 +71,11 @@ When a provider boots GPU guests from templates, qualify guest GPU initializatio
 
 Classify a container platform by what its container can do, not by what it is called. If a container gives root SSH and `dockerd` starts inside it, it is a VM host: `newVM()` returns it and the steps above run unchanged. The Cloudflare Containers spike (run 37738433193) passed `initializeVM` and `verifyVmContainerProfile` this way inside Cloudflare's microVM, and a Modal Sandbox on its `vm` runtime ran the startup steps, bucket sync, and confirmed release through a draft gateway (run 37800321693). Runtimes on one platform differ: under Modal's gVisor, its only GPU runtime, Docker starts only without its bridge network, and containers reach the GPU through CDI (`--device nvidia.com/gpu=all`) rather than `--gpus` (run 37814473423). Probe for this first, alongside KVM templates and machine images.
 
-A platform whose containers cannot host Docker over SSH is not a provider. Scheduler-controlled execution belongs to a substrate with its own records and runtime, as node pools and Slurm are; see the Provider registry in [ARCHITECTURE.md](ARCHITECTURE.md#provider-registry).
+A platform whose containers cannot host Docker over SSH is not a provider. Scheduler-controlled execution belongs to a substrate with its own records and runtime, as RFC 0046 plans for Slurm; see the Provider registry in [ARCHITECTURE.md](ARCHITECTURE.md#provider-registry).
 
-### Node Pools
+### Hosted API
 
-Kubernetes is the installation's cluster, not a provider. Node pools join it, and Deployments, Jobs, and node pool Services run on them without VM rows or the VM-host pipeline; see the Deployment runtime, Services on node pools, and Cluster lifecycle sections of [ARCHITECTURE.md](ARCHITECTURE.md). `yarn test:e2e-cluster-local:vitest` drives this surface against a real K3s on Docker.
-
-Because node pools are the only Deployment and Job substrate, a provider earns its place by supplying pool capacity. A pool VM is an outbound-connected x86_64 VM that runs the startup script from `src/api/services/kubernetes/node-pool-join.ts` and joins over the K3s agent's outbound tunnel; nothing dials into it (RFC 0033). The gateway adds the `resourceScoped` bundle (`CloudResourceCompute`). That work for Lambda includes the resource-scoped operations, pool tags, an attempt-keyed duplicate sweep that never terminates a sibling, an orphan sweep, and architecture admission. Probe the join with flannel running: the agent tunnel is outbound-only, but flannel still creates a local VXLAN device. Cloudflare's microVM kernel has none, so its K3s agent reached Ready and then exited (run 37803059036). Changing the cluster's backend touches every pool; a per-agent `--flannel-conf` with `host-gw` kept the Cloudflare node Ready, but only `hostNetwork` Pods work there, without cluster DNS or ClusterIPs (run 37815423732).
+Kubernetes is not a provider: it runs only the hosted API on its management VM; see [Cluster lifecycle and restore](ARCHITECTURE.md#cluster-lifecycle-and-restore). A provider that hosts the management VM passes the `resourceScoped` operations (`CloudResourceCompute`) to `createCloudCompute`, as AWS, Azure, and GCP do.
 
 ## Provider Qualification
 
@@ -91,7 +88,7 @@ Before writing a gateway, classify the provider shape and write probes for the f
 | Container without SSH or Docker          | Not a provider      | Its scheduler belongs to a substrate                                                |
 | Ephemeral job erased immediately on exit | Out of scope        | Breaks exit-code and log inspection before AnyCloud can publish terminal state      |
 | Provider-managed ingress only            | Partial             | Jobs may work; `serve` likely needs a separate ingress path                         |
-| Multi-node or gang-scheduled jobs        | Not supported       | The VM and Deployment runtimes each execute one workload target                     |
+| Multi-node or gang-scheduled jobs        | Not supported       | The VM runtime executes one workload target                                         |
 | Dynamic marketplace pricing              | Special handling    | Static catalog and launch-time offer ranking diverge                                |
 | Provider-durable volumes                 | Special handling    | Must decide whether provider volume or AnyCloud bucket sync owns persistence        |
 
@@ -102,8 +99,7 @@ Qualify a provider in an `experiments/<name>/` proof dispatched through the Spik
 3. A Job's exit code and logs read back through `DockerManager.getContainerStatus()`.
 4. `verifyVmContainerProfile` (`test/integration/helpers/vm-container-profile.ts`) passes.
 5. `syncStep` moves data through a real bucket.
-6. The K3s agent joins the cluster and runs a Pod (see Node Pools).
-7. `terminateVMs()` returns the ID, a fresh observation finds it gone, and `getAllVMs()` no longer lists it.
+6. `terminateVMs()` returns the ID, a fresh observation finds it gone, and `getAllVMs()` no longer lists it.
 
 Also probe what the sequence cannot show: identity that survives an API restart, maximum lifetime and provider-initiated restarts (Modal caps a Sandbox at 24 hours; Cloudflare rollouts send SIGTERM), eviction, and GPU behavior for arbitrary images. Promote the accepted behavior into `src/` and `test/`, then delete the experiment.
 
@@ -187,14 +183,10 @@ branded, and constructed capabilities are the capability declaration.
 | terminal auth detection   | `terminalAuthErrorClassifier` on `createCloudCompute(...)` | `canClassifyTerminalAuthError` |
 | per-account region filter | `createCandidateRegionFilter(...)` on `CloudCompute`       | `canFilterCandidateRegions`    |
 
-Spot is three capabilities (RFC 0044, decision 33). A Spot node pool needs
-Spot launch and the exact-ID stopped-VM observation (`canLaunchSpotPools`); the
-pool controller deletes and replaces a stopped VM and never restarts it. A VM
-spot Job also needs restart: `isPreemptible` is observation plus restart. A
-provider that deletes evicted VMs omits `stoppedVmRestart`; don't add no-op
-methods. A provider that runs node pools only sets `poolsOnly` in
-`PROVIDER_DATA`: admission refuses its Workloads without `--node-pool`, and
-`createCloudCompute` refuses the cluster scope.
+Spot is three capabilities. A VM spot Job needs Spot launch, the exact-ID
+stopped-VM observation, and restart: `isPreemptible` is observation plus
+restart. A provider that deletes evicted VMs omits `stoppedVmRestart`; don't
+add no-op methods.
 Only clouds that can positively distinguish terminal stored-secret failures
 pass `terminalAuthErrorClassifier`; otherwise bad credentials remain on the
 self-healing transient block path.
@@ -305,9 +297,7 @@ Most VM providers should not touch `src/api/services/workload-workflows/vm-host-
 Only touch lifecycle code when the execution model demands it:
 
 - VM-host providers use the full `vm-host-startup.ts` state machine, Docker-over-SSH completion, Docker exec/logs, and supervisor rclone health
-- Deployment-targeted Jobs never create VM rows or enter the VM-host pipeline; the Deployment's handler claims them and its outcome ends them
-- native objects are deleted by exact UID before the durable record ends
-- multi-node jobs are not supported by the current VM or Deployment runtimes
+- multi-node jobs are not supported by the current VM runtime
 
 If a lifecycle change looks general, first prove it with a provider spike. Do not land an unused interface.
 
@@ -328,10 +318,7 @@ Scoped cross-identity bucket credentials are **shipped for AWS S3 and Cloudflare
 - Each `ScopedStorageTokenMinter` implementation must throw rather than return standing credentials; the AWS gateway enforces the STS `SessionToken` shape.
 - GCP/Azure don't implement `ScopedStorageTokenMinter` (no scoped cross-cloud cred path yet); same-cloud GCS access boundaries / Azure user-delegation SAS are a future tier.
 
-**Workload env and named secrets.** On the VM path, user env rides `docker run -e` and named secrets ride `--env-file` written over SSH to tmpfs (`docker.ts:writeSecretsEnvFile`). On Kubernetes:
-
-- A Deployment's env is plain in the Pod spec, so it suits only non-secret configuration; Deployments take no named secrets.
-- A node pool Service's env and **named secrets** are projected into the Pod from an owned Secret (`envFrom`); the secrets are resolved at reconcile time. GHCR authentication is separate and also uses owned Kubernetes Secrets.
+**Workload env and named secrets.** On the VM path, user env rides `docker run -e` and named secrets ride `--env-file` written over SSH to tmpfs (`docker.ts:writeSecretsEnvFile`).
 
 ### 9. Migrations
 

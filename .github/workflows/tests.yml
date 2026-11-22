@@ -65,11 +65,6 @@ jobs:
             yarn test:ci-backmesh
           fi
 
-      - name: Run Python fixture tests
-        run: |
-          pip install 'pytest>=8.0' numpy
-          python -m pytest test/unit/test_submission_response_loss.py test/unit/test_voice_session.py -q -p no:cacheprovider
-
       - name: Verify Python API wire compatibility
         run: yarn test:python-api-wire
 

@@ -15,7 +15,6 @@ import { log } from './logger.js';
 import {
   backupDatabase,
   getCredentialSecretStore,
-  getPersistence,
   getSchemaAppVersion,
 } from './persistence.js';
 
@@ -86,7 +85,6 @@ export function getDefaultApiDatabaseBackup(
           inventory: () =>
             readApiBackupInventory({
               credentials: getCredentialSecretStore(),
-              nodePools: getPersistence().nodePools,
               decrypt: decryptCredential,
             }),
           log: {

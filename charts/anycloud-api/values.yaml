@@ -34,8 +34,8 @@ cluster:
   name: ''
   # kube-system namespace UID observed by bootstrap.
   kubernetesIdentity: ''
-  # Public control-plane endpoint node pool VMs join through
-  # (https://<public-ip>:6443) and the base64 cluster certificate authority.
+  # Public control-plane endpoint (https://<public-ip>:6443) and the base64
+  # cluster certificate authority.
   joinEndpoint: ''
   certificateAuthorityData: ''
   # What delete and upgrade need from the creating machine: cloud and account,
@@ -59,12 +59,9 @@ e2eAccess: false
 
 api:
   port: 8080
-  # Management capacity only: the API never shares a Node with node pool work.
   # The management Node carries the standard control-plane taint
-  # (management-host.ts), which
-  # the API, its hook Jobs and K3s's own add-ons tolerate; node pool Pods do not.
-  # Only the API sets this label, never a Node itself: a pool Node that
-  # re-registers with the management label and taint still gets no API Pod.
+  # (management-host.ts), which the API, its hook Jobs and K3s's own add-ons
+  # tolerate. Only the API sets this label, never a Node itself.
   nodeSelector:
     node-restriction.kubernetes.io/anycloud-management: 'true'
   tolerations:

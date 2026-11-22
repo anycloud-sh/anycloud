@@ -13,13 +13,12 @@ import {
   type ProvisioningAttemptRef,
 } from '../entities.js';
 import { assertSpecOwnership } from '../container-spec.js';
-import type { WorkloadPublicEndpoint } from '../workload-record.js';
 import { computedWorkloadCloudProviderSql } from './credential-reference.js';
 import type { DB } from './db.js';
 
 // A row in the `vms` table — the provisioning *ledger*, not a live VM list.
 // Each row is ONE attempt to stand up a real cloud VM and has exactly one
-// workload, node pool or cluster owner:
+// workload or cluster owner:
 //   - ip IS NOT NULL → a provisioned VM (live iff ended_at IS NULL)
 //   - ip IS NULL     → a durable in-flight/failed-attempt placeholder, written
 //     before the first provider mutation so cleanup can recover after a crash.
@@ -32,7 +31,6 @@ import type { DB } from './db.js';
 export interface VMRow {
   id: number; // Immutable VM-ledger row identity
   workload_id: string | null;
-  node_pool_id: string | null;
   cluster_id: string | null;
   cloud_id: string; // NOT NULL in schema
   created_at: number; // NOT NULL in schema
@@ -363,14 +361,13 @@ export class ProvisioningAttemptStore {
   } | null> {
     const [row] = await this.db.query<{
       id: string;
-      deployment_id: string | null;
       container_spec_owner_id: string | null;
       missing_image: number;
       missing_registry_username: number;
       cloudProvider: CloudType | null;
       encryptedData: string | null;
     }>(
-      `SELECT d.id, d.deployment_id,
+      `SELECT d.id,
               s.workload_id AS container_spec_owner_id,
               s.image IS NULL AS missing_image,
               s.registry_username IS NULL AS missing_registry_username,
@@ -387,10 +384,7 @@ export class ProvisioningAttemptStore {
     );
     if (!row) return null;
     assertSpecOwnership(row);
-    if (
-      row.deployment_id === null &&
-      (row.missing_image || row.missing_registry_username)
-    ) {
+    if (row.missing_image || row.missing_registry_username) {
       throw new Error(`Workload ${row.id}: container spec is incomplete`);
     }
     return {
@@ -407,21 +401,5 @@ export class ProvisioningAttemptStore {
       dnsRecordId,
       workloadId,
     ]);
-  }
-
-  /** The node pool Service's public endpoint view; null clears it with the record. */
-  async updatePublicEndpoint(
-    workloadId: string,
-    endpoint: WorkloadPublicEndpoint | null,
-  ): Promise<void> {
-    await this.db.query(
-      `UPDATE workloads SET public_endpoint_ip = ?, public_endpoint_state = ?, public_endpoint_error = ? WHERE id = ?`,
-      [
-        endpoint?.ip ?? null,
-        endpoint?.state ?? null,
-        endpoint?.error ?? null,
-        workloadId,
-      ],
-    );
   }
 }

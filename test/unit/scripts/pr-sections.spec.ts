@@ -24,9 +24,9 @@ describe('pr-sections: runtime layers', () => {
     change('src/cli/commands/job.ts', 'M', 3, 1),
     change('migrations/0200_example.sql', 'A', 20, 0),
     change('src/shared/workload.ts', 'M', 5, 0),
-    change('src/api/services/kubernetes/pod-termination.ts', 'D', 0, 40),
+    change('src/api/services/spend-controls.ts', 'D', 0, 40),
     change(
-      'src/api/services/node-pool-service-admission.ts',
+      'src/api/services/job-spec-admission.ts',
       'R',
       2,
       2,
@@ -34,7 +34,7 @@ describe('pr-sections: runtime layers', () => {
     ),
     change('src/api/services/workload-admission-checks.ts'),
     change('src/api/services/slurm/preflight.ts', 'A', 9, 0),
-    change('src/api/services/workload-workflows/targeted-job.ts'),
+    change('src/api/services/workload-workflows/completion.ts'),
     change('src/api/composition.ts'),
     change('src/api/brand-new.ts', 'A'),
     change('test/unit/ignored.spec.ts'),
@@ -42,19 +42,19 @@ describe('pr-sections: runtime layers', () => {
 
   it('marks each file by status, with line counts and a per-cell total', () => {
     expect(row(table, '1 Surface')).toBe(
-      '| 1 Surface | 🟡 `cli/commands/job.ts` +3/−1 |  |  |  |',
+      '| 1 Surface | 🟡 `cli/commands/job.ts` +3/−1 |  |  |',
     );
     expect(row(table, '2 Records')).toBe(
-      '| 2 Records | 🟢 🗃️ `0200_example.sql` +20/−0<br>🟡 `shared/workload.ts` +5/−0<br>**+25/−0** |  |  |  |',
+      '| 2 Records | 🟢 🗃️ `0200_example.sql` +20/−0<br>🟡 `shared/workload.ts` +5/−0<br>**+25/−0** |  |  |',
     );
     expect(row(table, '4 Contracts')).toBe(
-      '| 4 Contracts |  | 🔴 `kubernetes/pod-termination.ts` +0/−40 |  |  |',
+      '| 4 Contracts | 🔴 `spend-controls.ts` +0/−40 |  |  |',
     );
     expect(row(table, '5 Admission')).toBe(
-      '| 5 Admission |  | 🔵 `node-pool-service-admission.ts` from `old-admission.ts` +2/−2 | 🟡 `workload-admission-checks.ts` +1/−1 | 🟢 `slurm/preflight.ts` +9/−0 |',
+      '| 5 Admission | 🔵 `job-spec-admission.ts` from `old-admission.ts` +2/−2 | 🟡 `workload-admission-checks.ts` +1/−1 | 🟢 `slurm/preflight.ts` +9/−0 |',
     );
     expect(row(table, '6 Loop')).toBe(
-      '| 6 Loop |  | 🟡 `workload-workflows/targeted-job.ts` +1/−1 |  |  |',
+      '| 6 Loop |  | 🟡 `workload-workflows/completion.ts` +1/−1 |  |',
     );
   });
 

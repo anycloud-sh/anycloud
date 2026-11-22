@@ -62,14 +62,6 @@ const grant = authenticated
       status: 400,
       message: 'GitHub account is not a user',
     },
-    API_ACCESS_MANAGED_DEPLOYMENT: {
-      status: 400,
-      message: 'A managed Deployment cannot be registered',
-    },
-    API_ACCESS_NAME_TAKEN: {
-      status: 400,
-      message: 'A GitHub login with access has this name',
-    },
   });
 
 const revoke = authenticated

@@ -18,7 +18,7 @@ import { createSpinner, printInfo } from '../utils/output.js';
 
 /**
  * `--cloud`: current limits through the user's own cloud CLI, with no API
- * or saved credential. Errors follow `cluster create`'s codes.
+ * or saved credential. Errors follow `api create`'s codes.
  */
 export async function cloudQuotaStatus(opts: {
   cloud: string;

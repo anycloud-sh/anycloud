@@ -157,9 +157,8 @@ describe('live Secret file delivery', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('leaves pool Jobs, non-Running Workloads and busy Workloads alone', async () => {
+  it('leaves non-Running Workloads and busy Workloads alone', async () => {
     const row = await workload();
-    await deliverLiveSecretFiles({ ...row, deploymentId: 'deployment' });
     await deliverLiveSecretFiles({ ...row, state: WorkloadState.Finalizing });
     let release!: () => void;
     trackWorkloadWork(ID, new Promise<void>((resolve) => (release = resolve)));
