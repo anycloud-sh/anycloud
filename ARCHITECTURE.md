@@ -271,7 +271,7 @@ Repository policy applies the following static checks to reviewed source code:
   mode, and dependency-free boundary modules remain limited to their declared
   owners.
 
-The independent directive check runs before ESLint and rejects attempts to
+The independent directive check runs separately from ESLint and rejects attempts to
 suppress or reconfigure these protected rules unless an exact exception is
 present in reviewed repository-policy data. Other style and correctness rules
 are accidental-misuse guards, not architectural security boundaries. Static

@@ -20,7 +20,10 @@ concurrency:
 jobs:
   test:
     runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
-    needs: generated-sdk
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
 
@@ -42,31 +45,13 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
-      - name: Download generated Python SDK
-        uses: actions/download-artifact@v4
-        with:
-          name: generated-python-sdk
-          path: python/generated/anycloud
-
-      - name: Install Python SDK
-        run: pip install ./python
-
       - name: Build
         run: yarn build
 
       - name: Run unit tests (API service)
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CI_BACKEND: ${{ vars.CI_BACKEND }}
-        run: |
-          if [ "${CI_BACKEND:-backmesh}" = hosted ]; then
-            yarn test
-          else
-            yarn test:ci-backmesh
-          fi
-
-      - name: Verify Python API wire compatibility
-        run: yarn test:python-api-wire
+        run: yarn test --shard=${{ matrix.shard }}/3
 
   generated-sdk:
     runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
@@ -137,6 +122,14 @@ jobs:
         env:
           PYTHON_BIN: python
         run: yarn test:generated-python-sdk-wire
+
+      - name: Install Python SDK
+        if: matrix.python-version == '3.12'
+        run: pip install ./python
+
+      - name: Verify Python API wire compatibility
+        if: matrix.python-version == '3.12'
+        run: yarn test:python-api-wire
 
   test-sdk:
     runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}

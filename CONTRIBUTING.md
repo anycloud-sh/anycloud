@@ -238,9 +238,9 @@ yarn clean        # Clean build artifacts
 ```
 
 Pull requests run the same `yarn verify` checks in CI. The **Style** workflow
-runs `yarn check:boundaries` and `yarn style`. The **CI** workflow runs
-`yarn build` and `yarn test`; self-hosted runners use `yarn test:ci-backmesh`,
-the same tests with fewer workers. Fork and Dependabot pull requests run on
+runs `yarn check:boundaries` and `yarn style`, which runs its checks in
+parallel. The **CI** workflow runs `yarn build` and `yarn test`, split into
+three shards that run in parallel. Fork and Dependabot pull requests run on
 GitHub-hosted runners, and CI skips the jobs that read secrets or reach a cloud
 for them.
 `test/unit/ci/verify-ci-parity.spec.ts` fails if a `verify` check loses its CI
@@ -286,7 +286,7 @@ against [What to assess](#what-to-assess).
 
 ### Repository policy
 
-`yarn check:policy` runs before ESLint and cannot be suppressed by an ESLint
+`yarn check:policy` runs separately from ESLint and cannot be suppressed by an ESLint
 directive. Ruleless, file-wide, same-line, multi-rule, and unapproved protected
 rule disables are rejected. A necessary protected exception must identify one
 exact rule and rationale and be added to the reviewed allowlist in
