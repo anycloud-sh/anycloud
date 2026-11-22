@@ -5,6 +5,12 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.80
+
+### Secrets saved while a Job starts reach it at once
+
+A Secret saved while its Job, Service or VM is still starting now reaches the container's `/run/anycloud-secrets` files as soon as it runs, instead of up to 30 seconds later.
+
 ## 0.1.79
 
 ### anycloud is open source under Apache-2.0
