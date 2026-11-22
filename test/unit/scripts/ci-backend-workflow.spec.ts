@@ -583,11 +583,17 @@ describe('CI backend workflow policy', () => {
     }
   });
 
-  it('provides generated Python source to fresh-checkout consumers', () => {
-    const tests = jobBlocks(workflowSource('tests.yml')).get('test');
-    expect(tests).toContain('needs: generated-sdk');
-    expect(tests).toContain('name: generated-python-sdk');
-    expect(tests).toContain('path: python/generated/anycloud');
+  it('runs the unit tests without waiting for the generated Python SDK', () => {
+    const jobs = jobBlocks(workflowSource('tests.yml'));
+    expect(jobs.get('test')).not.toContain('needs:');
+    // The Python SDK checks run where the SDK is generated, after generating it.
+    const sdk = jobs.get('generated-sdk')!;
+    const generate = sdk.indexOf('run: yarn generate:python-sdk');
+    expect(generate).toBeGreaterThan(0);
+    expect(sdk.indexOf('run: pip install ./python')).toBeGreaterThan(generate);
+    expect(sdk.indexOf('run: yarn test:python-api-wire')).toBeGreaterThan(
+      generate,
+    );
   });
 
   it('keeps Service qualification and cleanup after the VM-hosted API members are removed', () => {
@@ -707,17 +713,17 @@ describe('CI backend workflow policy', () => {
     expect(workflowSource('release.yml')).not.toContain('vars.CI_BACKEND');
   });
 
-  it('bounds unit-test workers only on backmesh', () => {
-    const source = workflowSource('tests.yml');
-    expect(source).toContain('if [ "${CI_BACKEND:-backmesh}" = hosted ]; then');
-    expect(source).toContain('yarn test:ci-backmesh');
-    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
-      scripts?: Record<string, string>;
-    };
-    expect(packageJson.scripts?.['test:ci-backmesh']).toContain(
-      '--maxWorkers=2',
+  it('runs every unit test shard', () => {
+    const test = jobBlocks(workflowSource('tests.yml')).get('test')!;
+    const count = Number(
+      /yarn test --shard=\$\{\{ matrix\.shard \}\}\/(\d+)\n/.exec(test)?.[1],
     );
-    expect(packageJson.scripts?.test).toContain('--maxWorkers=4');
+    const shards = /\n {8}shard: \[([\d, ]+)\]\n/.exec(test)?.[1];
+    expect(shards).toBe(
+      Array.from({ length: count }, (_, index) => index + 1).join(', '),
+    );
+    // One failing shard must not cancel the others' results.
+    expect(test).toContain('fail-fast: false');
   });
 
   it('defaults an unset backend to backmesh', () => {

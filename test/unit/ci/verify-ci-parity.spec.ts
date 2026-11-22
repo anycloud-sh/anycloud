@@ -71,12 +71,7 @@ jobs:
       ${FORK_BACKEND_GATE}
     steps:
       - run: yarn build
-      - run: |
-          if [ "$CI_BACKEND" = hosted ]; then
-            yarn test
-          else
-            yarn test:ci-backmesh
-          fi
+      - run: yarn test --shard=\${{ matrix.shard }}/3
 `;
 const VERIFY = 'yarn check:boundaries && yarn build && yarn style && yarn test';
 
@@ -116,7 +111,7 @@ describe('yarn verify CI parity', () => {
         'tests.yml': TESTS_FIXTURE.replace(
           '      - run: yarn build\n',
           '      - if: always()\n        run: yarn build\n',
-        ).replace('yarn test\n', 'true\n'),
+        ).replace('yarn test ', 'true '),
       }),
     ).toEqual(['build', 'style', 'test', 'check:new']);
   });
@@ -135,11 +130,5 @@ describe('yarn verify CI parity', () => {
         'integration.yml': STYLE_FIXTURE,
       }),
     ).toEqual(['check:boundaries', 'build', 'style', 'test']);
-  });
-
-  it('runs the same unit test set on backmesh runners, with fewer workers', () => {
-    expect(
-      scripts['test:ci-backmesh']?.replace('--maxWorkers=2', '--maxWorkers=4'),
-    ).toBe(scripts.test);
   });
 });

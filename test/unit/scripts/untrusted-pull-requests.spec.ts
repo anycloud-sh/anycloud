@@ -368,7 +368,9 @@ describe('untrusted pull requests and the runs they start', () => {
         .flatMap((file) => reachedJobs(file, SAME_REPOSITORY, 'backmesh'))
         .map((job) => [job.id, job]),
     );
-    expect(reached.get('tests.yml:test')?.runsOn).toEqual(['backmesh-4']);
+    expect(new Set(reached.get('tests.yml:test')?.runsOn)).toEqual(
+      new Set(['backmesh-4']),
+    );
     expect(reached.get('integration.yml:cloud-sad-tests')?.environment).toBe(
       'cloud-e2e',
     );
