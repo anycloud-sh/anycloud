@@ -603,13 +603,18 @@ describe('AWS cluster substrate', () => {
                   args: [...args],
                   env: options?.env as Record<string, string>,
                 });
+                // 0.1.80 still prints the node pool count this tree removed.
+                const listed = {
+                  ...cluster('running'),
+                  activeNodePoolCount: 0,
+                };
                 return commandResultForTest({
                   stdout: JSON.stringify(
                     args[1] === 'list'
-                      ? [cluster('running')]
+                      ? [listed]
                       : args[1] === 'delete'
                         ? deleteResult()
-                        : cluster('running'),
+                        : listed,
                   ),
                 });
               }),

@@ -244,6 +244,11 @@ const jwksSchema = z
  * the 65-minute test budget (130 with from_release) for the sweeps.
  */
 const CLEANUP_SETTLE_MS = 300_000;
+/**
+ * A cluster as a CLI prints it, unknown fields dropped: a `from_release`
+ * CLI prints fields this tree removed (0.1.80's `activeNodePoolCount`).
+ */
+const printedClusterSchema = z.object(clusterSummarySchema.shape);
 /** Create prints the cluster's id once it is recorded, before any cloud mutation. */
 const CREATED_ID = /\(ID: (?<id>[^)\s]+)\)/u;
 /** This tree's delete of a cluster the hosted API doesn't know: create failed before the API answered. */
@@ -588,7 +593,7 @@ export class CloudClusterEnvironment {
     );
     // A running cluster is the one JSON document; a failed or cut-short
     // create leaves only its printed id.
-    const printed = clusterSummarySchema.safeParse(
+    const printed = printedClusterSchema.safeParse(
       (() => {
         try {
           return JSON.parse(result.stdout) as unknown;
@@ -687,7 +692,7 @@ export class CloudClusterEnvironment {
     label: string,
   ): Promise<readonly ClusterSummary[]> {
     // `cluster list --json` prints the array, not the API response.
-    return z.array(clusterSummarySchema).parse(
+    return z.array(printedClusterSchema).parse(
       parseJson(
         successful(
           await this.#lifecycle().cli.run(

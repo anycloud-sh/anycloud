@@ -35,7 +35,7 @@ import { probeFailure, type TargetHttpClient } from '../../transports/http.js';
 import type { ServiceDnsProbe } from '../../transports/service-dns.js';
 import type { ProcessRunner } from '../../process.js';
 import { FetchFailureCapture } from './hosted-fetch-failure.js';
-import type { CommandResult } from '../../types.js';
+import { isRecord, type CommandResult } from '../../types.js';
 import type { FixtureNames } from '../../names.js';
 import { roleApplyCheck } from './role-apply-check.js';
 import { completedCommand, rejectedCommand } from '../../api-assertions.js';
@@ -141,6 +141,36 @@ const apiStatusSchema = z
 const versionSchema = z
   .object({ version: z.string().min(1), schemaVersion: z.string().nullable() })
   .loose();
+
+const without = (value: unknown, keys: readonly string[]) =>
+  isRecord(value)
+    ? Object.fromEntries(
+        Object.entries(value).filter(([k]) => !keys.includes(k)),
+      )
+    : value;
+
+/**
+ * `workload status`, also as a `from_release` CLI before the upgrade prints
+ * it: 0.1.80 still has the node pool and Deployment fields this tree removed.
+ */
+const workloadStatusSchema = z.preprocess(
+  (value) =>
+    isRecord(value)
+      ? {
+          ...(without(value, ['attempt', 'jobsAhead', 'waiting']) as object),
+          workload: without(value.workload, [
+            'claimDeadlineAt',
+            'claimed',
+            'deploymentId',
+            'nodePoolId',
+            'nodePoolName',
+            'publicEndpoint',
+            'submissionRevision',
+          ]),
+        }
+      : value,
+  workloadStatusResponseSchema,
+);
 
 /** `credentials new` for the cluster's credential, as the hosted stage and a released installer save it. */
 export function credentialsNewArgs(
@@ -539,7 +569,7 @@ export class HostedApiStage implements HostedStage {
   #workloadStatus(id: string) {
     return this.#read(
       cliArgs(WORKLOAD_STATUS, { json: true }, [id]),
-      workloadStatusResponseSchema,
+      workloadStatusSchema,
       'workload-status',
       /\bWorkload not found\b/u,
     );

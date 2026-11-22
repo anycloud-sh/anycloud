@@ -468,6 +468,29 @@ describe('e2e-cluster-cloud hosted-API stage', () => {
     expect(calls[0].args).toEqual(['api', 'use', HOSTED_URL]);
   });
 
+  test("reads a 0.1.80 CLI's Service status, which still has the node pool and Deployment fields", async () => {
+    const released = JSON.parse(statusJson(ID.service, WorkloadState.Running));
+    const { hosted } = stage((args) =>
+      args[0] === 'status'
+        ? {
+            stdout: JSON.stringify({
+              ...released,
+              attempt: null,
+              workload: {
+                ...released.workload,
+                deploymentId: null,
+                nodePoolId: null,
+                submissionRevision: 0,
+                claimDeadlineAt: null,
+                claimed: false,
+              },
+            }),
+          }
+        : { combined: `ID: ${ID.service}` },
+    );
+    await expect(hosted.runService()).resolves.toBe(ID.service);
+  });
+
   test('runs a VM Service through the hosted API on the cluster credential, region and VM type', async () => {
     const { hosted, calls } = stage((args) =>
       args[0] === 'status'
