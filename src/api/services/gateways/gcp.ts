@@ -95,7 +95,8 @@ import {
   validateGCPZoneSuffixSyntax,
 } from '../../../shared/cloud-config.js';
 import {
-  memoizeAsync,
+  memoizeAsyncTtl,
+  type MemoizeAsyncTtlEntry,
   retryUntil,
   sleep,
   withRetry,
@@ -157,8 +158,9 @@ const GCP_LEGACY_JOB_HOST_TAG = 'anycloud-job-host';
 /**
  * One creation per project in this process: every `compute()` call builds a
  * new gateway, so a per-gateway memo wouldn't stop concurrent Jobs racing.
+ * Rechecked every 15 minutes, so a deleted network is made again.
  */
-const gcpJobsNetworks = new Map<string, Promise<void>>();
+const gcpJobsNetworks = new Map<string, MemoizeAsyncTtlEntry<void>>();
 
 // Plan priority classes → GCP's flat allow space. `default` omits the field
 // so ordinary workloads keep provider-default priority.
@@ -1745,12 +1747,14 @@ export class GCP {
   }
 
   private ensureJobsNetwork(): Promise<void> {
-    return memoizeAsync(gcpJobsNetworks, this.projectId, async () => {
+    const get = () =>
+      this.networksClient.get({
+        project: this.projectId,
+        network: GCP_JOBS_NETWORK,
+      });
+    const create = async () => {
       try {
-        await this.networksClient.get({
-          project: this.projectId,
-          network: GCP_JOBS_NETWORK,
-        });
+        await get();
         return;
       } catch (err) {
         if (!isGCPNotFound(err)) throw err;
@@ -1766,9 +1770,18 @@ export class GCP {
         });
         await this.waitForOperation(operation, 'global');
       } catch (err: any) {
-        // Another API process made it first.
         if (err.code !== 6 && err.code !== 409) throw err;
+        // Another API process is making it: wait until it can be read.
+        await withRetry(get, 'GCP Jobs network', {
+          maxAttempts: 12,
+          waitMs: 5_000,
+          exponentialBackoff: false,
+          shouldRetry: isGCPNotFound,
+        });
       }
+    };
+    return memoizeAsyncTtl(gcpJobsNetworks, this.projectId, create, {
+      ttlMs: 15 * 60_000,
     });
   }
 

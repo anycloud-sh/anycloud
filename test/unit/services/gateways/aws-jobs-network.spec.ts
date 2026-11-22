@@ -24,7 +24,11 @@ type Filter = { Name: string; Values: string[] };
  */
 class FakeEc2 {
   vpcs: { VpcId: string; CidrBlock: string; Tags: Tag[] }[] = [];
-  gateways: { InternetGatewayId: string; vpcId?: string }[] = [];
+  gateways: {
+    InternetGatewayId: string;
+    Tags: Tag[];
+    Attachments: { VpcId: string }[];
+  }[] = [];
   tables: {
     RouteTableId: string;
     vpcId: string;
@@ -47,6 +51,10 @@ class FakeEc2 {
   /** Zones whose RunInstances fails with this code. */
   refusals: Record<string, string> = {};
   failures: Record<string, Error> = {};
+  /** Fails the next call to that command only. */
+  once: Record<string, Error> = {};
+  /** Zones where CreateSubnet is refused. */
+  subnetRefusals = new Set<string>();
   #next = 0;
 
   #id(prefix: string) {
@@ -59,6 +67,11 @@ class FakeEc2 {
     const input = command.input;
     this.calls.push(name);
     if (this.failures[name]) throw this.failures[name];
+    const once = this.once[name];
+    if (once) {
+      delete this.once[name];
+      throw once;
+    }
     const value = (filters: Filter[] | undefined, key: string) =>
       filters?.find((filter) => filter.Name === key)?.Values;
     switch (name) {
@@ -94,21 +107,31 @@ class FakeEc2 {
         for (const vpc of this.vpcs)
           if (input.Resources.includes(vpc.VpcId)) vpc.Tags.push(...input.Tags);
         return {};
-      case 'DescribeInternetGateways': {
-        const vpcId = value(input.Filters, 'attachment.vpc-id')![0];
+      case 'DescribeInternetGateways':
         return {
-          InternetGateways: this.gateways.filter((igw) => igw.vpcId === vpcId),
+          InternetGateways: this.gateways.filter((igw) =>
+            (input.Filters as Filter[]).every((filter) =>
+              igw.Tags.some(
+                (tag) =>
+                  tag.Key === filter.Name.slice(4) &&
+                  filter.Values.includes(tag.Value),
+              ),
+            ),
+          ),
         };
-      }
       case 'CreateInternetGateway': {
-        const igw = { InternetGatewayId: this.#id('igw') };
+        const igw = {
+          InternetGatewayId: this.#id('igw'),
+          Tags: input.TagSpecifications[0].Tags,
+          Attachments: [],
+        };
         this.gateways.push(igw);
         return { InternetGateway: igw };
       }
       case 'AttachInternetGateway':
-        this.gateways.find(
-          (igw) => igw.InternetGatewayId === input.InternetGatewayId,
-        )!.vpcId = input.VpcId;
+        this.gateways
+          .find((igw) => igw.InternetGatewayId === input.InternetGatewayId)!
+          .Attachments.push({ VpcId: input.VpcId });
         return {};
       case 'DescribeRouteTables': {
         const vpcId = value(input.Filters, 'vpc-id')![0];
@@ -138,6 +161,13 @@ class FakeEc2 {
         };
       }
       case 'CreateSubnet':
+        if (this.subnetRefusals.has(input.AvailabilityZone))
+          throw Object.assign(
+            new Error(
+              'Subnets can currently only be created in the following availability zones: us-east-1a.',
+            ),
+            { name: 'InvalidParameterValue' },
+          );
         if (
           this.subnets.some(
             (subnet) =>
@@ -258,7 +288,14 @@ describe('AWS Jobs network (RFC 0053)', () => {
     ]);
     const vpcId = ec2.vpcs[0].VpcId;
     expect(ec2.gateways).toEqual([
-      { InternetGatewayId: expect.any(String), vpcId },
+      {
+        InternetGatewayId: expect.any(String),
+        Tags: [
+          { Key: 'Name', Value: 'anycloud-jobs' },
+          { Key: 'anycloud_managed', Value: 'shared' },
+        ],
+        Attachments: [{ VpcId: vpcId }],
+      },
     ]);
     expect(ec2.tables[0].Routes).toEqual([
       {
@@ -426,9 +463,64 @@ describe('AWS Jobs network (RFC 0053)', () => {
     );
 
     await expect(prepare(gateway(ec2))).rejects.toThrow(
-      'maximum number of VPCs',
+      /maximum number of VPCs.*raise the "VPCs per Region" quota/,
     );
     expect(ec2.groups).toEqual([]);
     expect(ec2.launches).toEqual([]);
+  });
+
+  it('launches in the other zones when AWS refuses a subnet in one', async () => {
+    const ec2 = new FakeEc2();
+    ec2.subnetRefusals.add('us-east-1b');
+
+    const network = await prepare(gateway(ec2));
+
+    expect(network!.subnets).toEqual([
+      { id: expect.any(String), zone: 'us-east-1a' },
+    ]);
+    expect(log.warn).toHaveBeenCalledWith(
+      'AWS refused a Jobs subnet in us-east-1b',
+      expect.anything(),
+    );
+
+    // With no zone at all, the refusal fails the Job.
+    const none = new FakeEc2();
+    none.subnetRefusals.add('us-east-1a').add('us-east-1b');
+    await expect(prepare(gateway(none))).rejects.toThrow(
+      'Subnets can currently only be created',
+    );
+  });
+
+  it('waits out a new VPC that EC2 does not show yet', async () => {
+    const ec2 = new FakeEc2();
+    ec2.once.AttachInternetGateway = Object.assign(new Error('not yet'), {
+      name: 'InvalidVpcID.NotFound',
+    });
+
+    const network = await prepare(gateway(ec2));
+
+    expect(network!.subnets).toHaveLength(2);
+    expect(ec2.gateways).toHaveLength(1);
+    expect(ec2.tables[0].Routes).toHaveLength(1);
+  });
+
+  it('attaches a gateway left unattached by a crash instead of making another', async () => {
+    const ec2 = new FakeEc2();
+    ec2.gateways.push({
+      InternetGatewayId: 'igw-orphan',
+      Tags: [
+        { Key: 'Name', Value: 'anycloud-jobs' },
+        { Key: 'anycloud_managed', Value: 'shared' },
+      ],
+      Attachments: [],
+    });
+
+    await prepare(gateway(ec2));
+
+    expect(ec2.calls).not.toContain('CreateInternetGateway');
+    expect(ec2.gateways[0].Attachments).toEqual([{ VpcId: ec2.vpcs[0].VpcId }]);
+    expect(ec2.tables[0].Routes).toEqual([
+      { DestinationCidrBlock: '0.0.0.0/0', GatewayId: 'igw-orphan' },
+    ]);
   });
 });

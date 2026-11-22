@@ -37,6 +37,7 @@ import {
   type Reservation,
   type ResourceType,
   type SpotInstanceRequest,
+  type TagSpecification,
   RunInstancesCommand,
   RevokeSecurityGroupIngressCommand,
   StartInstancesCommand,
@@ -228,6 +229,12 @@ const awsJobsNetworks = new Map<
     subnets: { id: string; zone: string }[];
   }>
 >();
+/** Codes EC2 returns for a resource it has made but not yet propagated. */
+const AWS_NOT_YET_VISIBLE_CODES = new Set([
+  'InvalidVpcID.NotFound',
+  'InvalidInternetGatewayID.NotFound',
+  'InvalidRouteTableID.NotFound',
+]);
 /** A refusal tied to one subnet's zone: the launch tries the next subnet. */
 const AWS_ZONE_REFUSAL_CODES = new Set([
   'Unsupported',
@@ -2952,69 +2959,27 @@ export class AWS {
     const vpcId =
       vpcs[0]?.id ??
       (
-        await ec2.send(
-          new CreateVpcCommand({
-            CidrBlock: AWS_JOBS_VPC_CIDR,
-            TagSpecifications: tags('vpc'),
-          }),
-        )
-      ).Vpc!.VpcId!;
-
-    if (!vpcs[0]?.ready) {
-      const attachment = { Name: 'attachment.vpc-id', Values: [vpcId] };
-      const gatewayId =
-        (
-          await ec2.send(
-            new DescribeInternetGatewaysCommand({ Filters: [attachment] }),
-          )
-        ).InternetGateways?.[0]?.InternetGatewayId ??
-        (await (async () => {
-          const id = (
-            await ec2.send(
-              new CreateInternetGatewayCommand({
-                TagSpecifications: tags('internet-gateway'),
-              }),
-            )
-          ).InternetGateway!.InternetGatewayId!;
-          await ec2.send(
-            new AttachInternetGatewayCommand({
-              InternetGatewayId: id,
-              VpcId: vpcId,
+        await ec2
+          .send(
+            new CreateVpcCommand({
+              CidrBlock: AWS_JOBS_VPC_CIDR,
+              TagSpecifications: tags('vpc'),
             }),
-          );
-          return id;
-        })());
-      const mainTable = (
-        await ec2.send(
-          new DescribeRouteTablesCommand({
-            Filters: [
-              { Name: 'vpc-id', Values: [vpcId] },
-              { Name: 'association.main', Values: ['true'] },
-            ],
-          }),
-        )
-      ).RouteTables?.[0];
-      if (
-        !mainTable?.Routes?.some(
-          (route) =>
-            route.DestinationCidrBlock === '0.0.0.0/0' &&
-            route.GatewayId === gatewayId,
-        )
-      )
-        await ec2.send(
-          new CreateRouteCommand({
-            RouteTableId: mainTable!.RouteTableId!,
-            DestinationCidrBlock: '0.0.0.0/0',
-            GatewayId: gatewayId,
-          }),
-        );
-      await ec2.send(
-        new CreateTagsCommand({
-          Resources: [vpcId],
-          Tags: [{ Key: AWS_JOBS_READY_TAG, Value: 'ready' }],
-        }),
-      );
-    }
+          )
+          .catch((error) => {
+            if (awsErrorCode(error) === 'VpcLimitExceeded')
+              error.message = `${error.message} VM Jobs need one VPC of their own in ${this.region}; delete an unused VPC or raise the "VPCs per Region" quota.`;
+            throw error;
+          })
+      ).Vpc!.VpcId!;
+    if (!vpcs[0]?.ready)
+      // A new VPC can take a moment to reach every EC2 read.
+      await withRetry(() => this.finishJobsVpc(vpcId, tags), 'Jobs VPC', {
+        maxAttempts: 5,
+        waitMs: 1_000,
+        shouldRetry: (error) =>
+          AWS_NOT_YET_VISIBLE_CODES.has(awsErrorCode(error) ?? ''),
+      });
 
     // A subnet per standard zone, so Local and Wavelength Zones stay out.
     const zones = (
@@ -3037,15 +3002,18 @@ export class AWS {
             }),
           )
         ).Subnets ?? []
-      ).map((subnet) => ({
-        id: subnet.SubnetId!,
-        zone: subnet.AvailabilityZone!,
-        cidr: subnet.CidrBlock!,
-      }));
+      )
+        .map((subnet) => ({
+          id: subnet.SubnetId!,
+          zone: subnet.AvailabilityZone!,
+          cidr: subnet.CidrBlock!,
+        }))
+        .filter((subnet) => zones.includes(subnet.zone));
     let subnets = await listSubnets();
     const missing = zones.filter(
       (zone) => !subnets.some((subnet) => subnet.zone === zone),
     );
+    let refusal: unknown;
     if (missing.length > 0) {
       // The /16's sixteen /20s, lowest unused first.
       const free = Array.from(
@@ -3064,20 +3032,109 @@ export class AWS {
             }),
           )
           .catch((error) => {
+            const code = awsErrorCode(error);
             // Another API process took the range; its subnet is listed below.
-            if ((error.Code ?? error.name) !== 'InvalidSubnet.Conflict')
-              throw error;
+            if (code === 'InvalidSubnet.Conflict') return;
+            if (code === 'UnauthorizedOperation') throw error;
+            // Some accounts can't make subnets in every zone: launch in the
+            // others, and retry this one on the next check.
+            refusal ??= error;
+            log.warn(`AWS refused a Jobs subnet in ${zone}`, {
+              zone,
+              error: errorMessage(error),
+            });
           });
       }
       subnets = await listSubnets();
     }
+    if (subnets.length === 0)
+      throw refusal ?? new Error(`AWS region ${this.region} has no zones`);
     return {
       vpcId,
       subnets: subnets
-        .filter((subnet) => zones.includes(subnet.zone))
         .sort((a, b) => a.zone.localeCompare(b.zone))
         .map(({ id, zone }) => ({ id, zone })),
     };
+  }
+
+  /**
+   * Attach the VPC's internet gateway and route to it, then mark the VPC
+   * ready. The gateway is found by its tags too, so one created before a
+   * crash is attached rather than leaked.
+   */
+  private async finishJobsVpc(
+    vpcId: string,
+    tags: (type: ResourceType) => TagSpecification[],
+  ): Promise<void> {
+    const ec2 = this.ec2client;
+    const gateways =
+      (
+        await ec2.send(
+          new DescribeInternetGatewaysCommand({
+            Filters: [
+              { Name: 'tag:Name', Values: [AWS_JOBS_NETWORK] },
+              { Name: 'tag:anycloud_managed', Values: ['shared'] },
+            ],
+          }),
+        )
+      ).InternetGateways ?? [];
+    let gatewayId = gateways.find((igw) =>
+      igw.Attachments?.some((attachment) => attachment.VpcId === vpcId),
+    )?.InternetGatewayId;
+    if (!gatewayId) {
+      gatewayId =
+        gateways.find((igw) => !igw.Attachments?.length)?.InternetGatewayId ??
+        (
+          await ec2.send(
+            new CreateInternetGatewayCommand({
+              TagSpecifications: tags('internet-gateway'),
+            }),
+          )
+        ).InternetGateway!.InternetGatewayId!;
+      await ec2.send(
+        new AttachInternetGatewayCommand({
+          InternetGatewayId: gatewayId,
+          VpcId: vpcId,
+        }),
+      );
+    }
+    const mainTable = (
+      await ec2.send(
+        new DescribeRouteTablesCommand({
+          Filters: [
+            { Name: 'vpc-id', Values: [vpcId] },
+            { Name: 'association.main', Values: ['true'] },
+          ],
+        }),
+      )
+    ).RouteTables?.[0];
+    if (!mainTable)
+      throw Object.assign(
+        new Error(`VPC ${vpcId} has no main route table yet`),
+        {
+          name: 'InvalidRouteTableID.NotFound',
+        },
+      );
+    if (
+      !mainTable.Routes?.some(
+        (route) =>
+          route.DestinationCidrBlock === '0.0.0.0/0' &&
+          route.GatewayId === gatewayId,
+      )
+    )
+      await ec2.send(
+        new CreateRouteCommand({
+          RouteTableId: mainTable.RouteTableId!,
+          DestinationCidrBlock: '0.0.0.0/0',
+          GatewayId: gatewayId,
+        }),
+      );
+    await ec2.send(
+      new CreateTagsCommand({
+        Resources: [vpcId],
+        Tags: [{ Key: AWS_JOBS_READY_TAG, Value: 'ready' }],
+      }),
+    );
   }
 
   private async ensureScopedSecurityGroup(

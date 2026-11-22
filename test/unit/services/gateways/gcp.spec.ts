@@ -1124,6 +1124,55 @@ describe('GCP class', () => {
     expect(network.insert).toHaveBeenCalledTimes(1);
   });
 
+  it('re-checks the Jobs network after 15 minutes, so a deleted one is made again', async () => {
+    vi.useFakeTimers();
+    try {
+      const notFound = Object.assign(new Error('x'), { code: 404 });
+      const network = {
+        get: vi.fn().mockResolvedValue([{}]),
+        insert: vi.fn().mockResolvedValue([{}]),
+      };
+      const { prepare } = jobsGateway(network);
+      await prepare();
+      await prepare();
+      expect(network.get).toHaveBeenCalledTimes(1);
+
+      network.get.mockRejectedValueOnce(notFound);
+      vi.advanceTimersByTime(15 * 60_000 + 1);
+      await prepare();
+      expect(network.get).toHaveBeenCalledTimes(2);
+      expect(network.insert).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for a Jobs network another API process is still making', async () => {
+    vi.useFakeTimers();
+    try {
+      const notFound = Object.assign(new Error('x'), { code: 404 });
+      const network = {
+        get: vi
+          .fn()
+          .mockRejectedValueOnce(notFound)
+          .mockRejectedValueOnce(notFound)
+          .mockResolvedValue([{}]),
+        insert: vi.fn().mockRejectedValue({ code: 409 }),
+      };
+      const { insert, prepare } = jobsGateway(network);
+      const prepared = prepare();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await prepared;
+      expect(network.get).toHaveBeenCalledTimes(3);
+      // The rules wait for the network to be readable.
+      expect(insert.mock.invocationCallOrder[0]).toBeGreaterThan(
+        network.get.mock.invocationCallOrder[2],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('0053/I3 fails the Job when the Jobs network cannot be made, with no rule in default', async () => {
     const denied = Object.assign(
       new Error("Required 'compute.networks.create' permission"),
