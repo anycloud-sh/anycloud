@@ -319,10 +319,13 @@ process.stdout.write(JSON.stringify({ environment: process.env, secret: 'new-pri
       new AbortController().signal,
     );
     const deadlineAt = Date.now() + 300;
+    // The waiter's clock starts after it reads the deadline, so on a busy
+    // host the probe's own deadline must outlast it.
     await expect(
       commands.waitFor(
         'cleanup call',
-        () => commands.run('aws', ['iam', 'get-user'], {}, deadlineAt, 100),
+        () =>
+          commands.run('aws', ['iam', 'get-user'], {}, deadlineAt + 5_000, 100),
         {
           intervalMs: 20,
           probeError: {
