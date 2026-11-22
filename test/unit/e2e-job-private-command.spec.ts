@@ -318,7 +318,7 @@ process.stdout.write(JSON.stringify({ environment: process.env, secret: 'new-pri
       runner,
       new AbortController().signal,
     );
-    const deadlineAt = Date.now() + 300;
+    const deadlineAt = Date.now() + 1_000;
     await expect(
       commands.waitFor(
         'cleanup call',

@@ -42,7 +42,7 @@ export const retryTransientProbeError: ProbeRetryPolicy = {
   retry: (error) => !PERMANENT_PROBE_FAILURE.test(errorMessage(error)),
 };
 
-class WaitDeadlineExceeded extends Error {}
+export class WaitDeadlineExceeded extends Error {}
 
 export class WaitTimeoutError extends Error {}
 

@@ -64,6 +64,10 @@ const output = (
 
 const TWO = smi([{ bus: '00000000:18:00.0' }, { bus: '00000000:2A:00.0' }]);
 
+/** The host's boot time, in Unix seconds. */
+const bootSeconds = () =>
+  Number(/^btime (\d+)$/m.exec(readFileSync('/proc/stat', 'utf8'))![1]);
+
 describe('GPU health from nvidia-smi and the kernel journal', () => {
   it('reports healthy GPUs, listing an Xid that needs no reset', () => {
     expect(
@@ -428,9 +432,11 @@ describe('the GPU health command on a host', () => {
     mkdirSync(gpu.cache, { recursive: true, mode: 0o700 });
     writeFileSync(join(gpu.cache, 'out'), '');
     writeFileSync(join(gpu.cache, 'rc'), '124\n');
-    // The hang was cut off five minutes ago, this boot.
-    const fiveMinutesAgo = new Date(Date.now() - 300_000);
-    utimesSync(join(gpu.cache, 'rc'), fiveMinutesAgo, fiveMinutesAgo);
+    // The hang was cut off this boot, five minutes ago on a host up that long.
+    const cutOff = new Date(
+      Math.max(bootSeconds(), Math.floor(Date.now() / 1_000) - 300) * 1_000,
+    );
+    utimesSync(join(gpu.cache, 'rc'), cutOff, cutOff);
     expect((await gpu.read()).health).toMatchObject({
       state: 'unhealthy',
       detail: 'nvidia-smi did not answer within 30 s',
@@ -444,11 +450,7 @@ describe('the GPU health command on a host', () => {
       smi([{ bus: '00000000:18:00.0' }]),
     );
     writeFileSync(join(before.cache, 'rc'), '0\n');
-    const boot = new Date(
-      (Number(/^btime (\d+)$/m.exec(readFileSync('/proc/stat', 'utf8'))![1]) -
-        10) *
-        1_000,
-    );
+    const boot = new Date((bootSeconds() - 10) * 1_000);
     utimesSync(join(before.cache, 'rc'), boot, boot);
     expect((await before.read()).health).toMatchObject({
       state: 'unknown',
