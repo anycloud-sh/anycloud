@@ -98,9 +98,9 @@ type ClusterInventory = Pick<
 const API_CREATE = 'api create' satisfies CliPath;
 const API_DELETE = 'api delete' satisfies CliPath;
 
-/** The group a `from_release` CLI creates and deletes with: 0.1.78 and earlier had `cluster create|delete`. */
+/** The group a `from_release` CLI creates and deletes with: 0.1.80 and earlier had `cluster create|delete`. */
 const releasedLifecycleGroup = (version: string): 'cluster' | 'api' =>
-  semver.lte(version, '0.1.78') ? 'cluster' : 'api';
+  semver.lte(version, '0.1.80') ? 'cluster' : 'api';
 
 /**
  * Lane S6's `api delete --json` report (`DeleteReport`): what was deleted

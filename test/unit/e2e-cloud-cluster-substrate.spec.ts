@@ -722,7 +722,7 @@ describe('AWS cluster substrate', () => {
       undefined,
       {
         fromRelease: {
-          version: '0.1.65',
+          version: '0.1.80', // the last release with `cluster create|delete`
           installerDirectory: '/tmp/installer',
           cli: {
             run: vi.fn(async (args: readonly string[]) => {
