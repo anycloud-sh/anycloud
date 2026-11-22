@@ -795,11 +795,9 @@ and asks the owner to remove them. After a hosted API's database is restored
 from a backup, everyone rotates: the backup holds the tokens it had when it was
 taken.
 
-A hosted API older than API tokens has no exchange route, and the CLI sends it
-your GitHub sign-in instead, so `api upgrade` keeps working. An older CLI
-can't sign in to a hosted API that issues tokens: update the CLI first. The
-Python SDK has no such fallback: upgrade a hosted API with
-`anycloud api upgrade` before upgrading the SDK.
+The CLI sends your GitHub sign-in only to the exchange, so it can't sign in
+to a hosted API older than API tokens (0.1.70): upgrade that API with its own
+release's CLI first.
 
 The hosted API also keeps the GitHub sign-in from your last login, for private
 images, Service URLs and clusters. When GitHub stops accepting it,
