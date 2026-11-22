@@ -361,6 +361,16 @@ describe('Secret files on the Workload poll', () => {
           ),
         { timeout: 5_000 },
       );
+
+      // A save while it runs wakes its poll too.
+      await secrets.save({ name: 'hf', values: { HF_TOKEN: 'rotated' } });
+      await vi.waitFor(
+        () =>
+          expect(DockerManager.prototype.writeSecretFiles).toHaveBeenCalledWith(
+            expect.objectContaining({ values: { HF_TOKEN: 'rotated' } }),
+          ),
+        { timeout: 5_000 },
+      );
     } finally {
       await stopBackgroundServices();
       vi.mocked(tcpPing).mockResolvedValue(false);

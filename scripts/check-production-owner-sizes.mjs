@@ -61,7 +61,7 @@ export const ownerSizeCeilings = {
   'src/api/services/host-runtime/image-delivery.ts': 653, // 646 + 6: passes both pulls through pull-timing.ts and records its fields; +1: qualifies the transfer's image reference for ctr
   'src/api/services/workload-workflows/persistent-vm-repair.ts': 236, // 224 + 10; +2: forgets a failed restart's backoff once the host answers
   'src/api/services/host-runtime/vm-container-repair.ts': 192, // 182 + 10
-  'src/api/services/workload-workflows/workload-pipeline.ts': 504, // 494 + 10; 498 after the outcome port
+  'src/api/services/workload-workflows/workload-pipeline.ts': 509, // 494 + 10; 498 after the outcome port; +9: polls a Workload that names Secrets once its pipeline settles, so a Secret saved during its start reaches it
   'src/api/services/workload-workflows/provisioning-scheduler.ts': 398, // 388 + 10 (390 after an earlier split); 394 after the outcome port
   'src/api/services/workload-workflows/targeted-job.ts': 113, // 97 + 10 (120 before an earlier change moved the retry budget to its writer) + 6 (deletes a spot pool Job's managed checkpoint bucket before its cleanup completes)
   'src/api/services/credential-auth-failure.ts': 86, // 76 + 10 (85 after an earlier split)
