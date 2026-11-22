@@ -349,24 +349,38 @@ export class JobRecoveryTransport {
       const read = async (args: string[]) =>
         privateJobJson(
           await this.#session.aws(args, attempt.region, deadlineAt),
-        ) as any;
-      const vpcId = (
-        await read([
-          'ec2',
-          'describe-instances',
-          '--instance-ids',
-          attempt.cloudId,
-        ])
-      )?.Reservations?.[0]?.Instances?.[0]?.VpcId;
+        );
+      const instances = await read([
+        'ec2',
+        'describe-instances',
+        '--instance-ids',
+        attempt.cloudId,
+      ]);
+      const reservation =
+        isRecord(instances) && Array.isArray(instances.Reservations)
+          ? (instances.Reservations[0] as unknown)
+          : undefined;
+      const vm =
+        isRecord(reservation) && Array.isArray(reservation.Instances)
+          ? (reservation.Instances[0] as unknown)
+          : undefined;
+      const vpcId = isRecord(vm) ? vm.VpcId : undefined;
       if (typeof vpcId !== 'string' || !/^vpc-[a-f0-9]+$/u.test(vpcId))
         throw new Error('Network observation found no VPC');
-      const vpc = (await read(['ec2', 'describe-vpcs', '--vpc-ids', vpcId]))
-        ?.Vpcs?.[0];
-      const name =
-        vpc?.VpcId === vpcId
-          ? vpc.Tags?.find((tag: any) => tag.Key === 'Name')?.Value
+      const vpcs = await read(['ec2', 'describe-vpcs', '--vpc-ids', vpcId]);
+      const vpc =
+        isRecord(vpcs) && Array.isArray(vpcs.Vpcs)
+          ? (vpcs.Vpcs[0] as unknown)
           : undefined;
-      return typeof name === 'string' ? name : `${vpcId} (unnamed)`;
+      const name =
+        isRecord(vpc) && vpc.VpcId === vpcId && Array.isArray(vpc.Tags)
+          ? (vpc.Tags as unknown[]).find(
+              (tag) => isRecord(tag) && tag.Key === 'Name',
+            )
+          : undefined;
+      return isRecord(name) && typeof name.Value === 'string'
+        ? name.Value
+        : `${vpcId} (unnamed)`;
     }
     const vm = privateJobJson(
       await this.#session.gcp(

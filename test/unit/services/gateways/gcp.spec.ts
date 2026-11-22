@@ -1641,7 +1641,7 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
       await gcp.compute().newVM({ ...newVMProps(null), ingressSpec });
       const { tags, networkInterfaces } =
-        insert.mock.calls[0]?.[0].instanceResource;
+        insert.mock.calls[0]![0].instanceResource;
       return [networkInterfaces[0].network, tags.items];
     };
     expect(await tags(buildJobIngressSpec([], true))).toEqual([

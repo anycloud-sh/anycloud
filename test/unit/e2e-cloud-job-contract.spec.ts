@@ -804,6 +804,10 @@ function harness(
                   : ['Image pulled successfully with containerd transfer'],
         };
       },
+      network: async (fixture) => {
+        calls.push(`network:${fixture.ref.id}`);
+        return 'anycloud-jobs';
+      },
       diskTier: async (fixture, attempt) => {
         calls.push(`disk:${fixture.ref.id}`);
         const diskCase = fixture.diskTierCase!;
