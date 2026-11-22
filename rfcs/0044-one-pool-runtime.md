@@ -1,7 +1,7 @@
 # RFC 0044: One pool runtime
 
 > Status: Superseded — node pools, Kubernetes Deployments and node pool
-> Services were removed (migrations 0171 and 0172); VM Jobs and VM Services
+> Services were removed (migrations 0172 and 0173); VM Jobs and VM Services
 > replace them.
 > Date: 2026-10-03
 > Author: Claude draft, for Luis Fernando De Pombo

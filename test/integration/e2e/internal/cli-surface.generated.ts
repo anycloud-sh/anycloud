@@ -9,7 +9,7 @@ export const cliSurface = {
   'api access ls': { args: [], options: ['json'] },
   'api access remove': { args: ['[github-user-or-id]'], options: ['service='] },
   'api access rm': { args: ['[github-user-or-id]'], options: ['service='] },
-  'api create': { args: ['<name>'], options: ['cloud=', 'region=', 'zone=', 'vm-type=', 'checkpoint-bucket=', 'json'] },
+  'api create': { args: ['<name>'], options: ['cloud=', 'region=', 'zone=', 'vm-type=', 'checkpoint-bucket=', 'sign-in-apps=', 'json'] },
   'api delete': { args: ['<id-or-name>'], options: ['json', 'delete-buckets', 'cloud=', 'region=', 'checkpoint-bucket=', 'delete-vms', 'skip-cloud', 'confirm='] },
   'api describe': { args: [], options: ['watch', 'interval=', 'json'] },
   'api list': { args: [], options: ['json'] },

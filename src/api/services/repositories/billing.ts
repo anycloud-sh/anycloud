@@ -54,7 +54,7 @@ export interface VmCostSettlement {
 }
 
 const GROUP_INDEX = 'idx_vms_pending_cost_group';
-// Must match the idx_vms_pending_cost_group expressions exactly (0172).
+// Must match the idx_vms_pending_cost_group expressions exactly (0173).
 const KEY_EXPRESSIONS = [
   "CASE WHEN v.workload_id IS NOT NULL THEN 'anycloud_deployment' ELSE 'anycloud_resource' END",
   'COALESCE(v.cluster_id, v.workload_id)',

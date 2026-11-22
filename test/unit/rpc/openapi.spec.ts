@@ -297,7 +297,7 @@ describe('production oRPC OpenAPI document', () => {
     );
 
     expect(operations).toHaveLength(countContractProcedures(apiContract));
-    expect(operations).toHaveLength(53);
+    expect(operations).toHaveLength(54);
     expect(operationIds.every(Boolean)).toBe(true);
     expect(new Set(operationIds).size).toBe(operationIds.length);
     expect(
@@ -331,7 +331,7 @@ describe('production oRPC OpenAPI document', () => {
     expect(document.servers).toEqual([
       { url: 'http://localhost:8080/v1', description: 'Local API' },
     ]);
-    expect(Object.keys(document.paths ?? {})).toHaveLength(38);
+    expect(Object.keys(document.paths ?? {})).toHaveLength(39);
     expect(document.paths).toMatchObject({
       '/workloads': {
         get: expect.any(Object),

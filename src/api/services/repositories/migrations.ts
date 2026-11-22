@@ -39,8 +39,8 @@ const FOREIGN_KEY_REBUILD_MIGRATIONS: ReadonlySet<string> = new Set([
   '0127_cluster_steps.sql',
   '0139_node_pool_region_optional.sql',
   '0165_cluster_record.sql',
-  '0171_remove_deployments.sql',
-  '0172_remove_node_pools.sql',
+  '0172_remove_deployments.sql',
+  '0173_remove_node_pools.sql',
 ]);
 const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', '..', 'migrations');
 

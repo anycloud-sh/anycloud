@@ -660,7 +660,7 @@ Each table, with its purpose, its writer and the invariants it carries:
   which refuses a downgrade. `_migrations`
   records each applied migration.
 
-Migrations 0171 and 0172 removed node pools, Deployments, the Jobs and
+Migrations 0172 and 0173 removed node pools, Deployments, the Jobs and
 Services that targeted them, and their history (the `node_pools`,
 `deployments`, `pool_occupancy`, `pod_attempts` and `workload_attempts` tables
 and the pool and Deployment columns of `workloads`, `vms` and

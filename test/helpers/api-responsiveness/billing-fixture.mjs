@@ -42,7 +42,7 @@ async function billingSchema(db) {
   const [workload] = await db.query(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='workloads'",
   );
-  // Before 0171 and 0172, a spec could belong to a Deployment and a VM to a
+  // Before 0172 and 0173, a spec could belong to a Deployment and a VM to a
   // node pool; later layouts read those owners as NULL.
   const has = async (table, column) =>
     (

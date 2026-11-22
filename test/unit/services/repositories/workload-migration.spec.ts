@@ -245,7 +245,7 @@ describe('0105 Workload rename through the current schema', () => {
         kubernetes_root_installations: 'clusters',
         root_installation_id: 'cluster_id',
       };
-      // 0171 and 0172 drop the Deployment and node pool columns.
+      // 0172 and 0173 drop the Deployment and node pool columns.
       const removed: Record<string, string[]> = {
         workloads: [
           'deployment_id',
@@ -274,7 +274,7 @@ describe('0105 Workload rename through the current schema', () => {
         ) {
           continue;
         }
-        // 0171 and 0172 drop the Deployment and node pool tables, empty here.
+        // 0172 and 0173 drop the Deployment and node pool tables, empty here.
         if (table === 'deployments' || table === 'node_pools') {
           expect(rows.filter(survives)).toEqual([]);
           expect(after.tables[table]).toBeUndefined();

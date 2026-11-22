@@ -3,7 +3,7 @@ import type { MigrationDatabase } from './migration-database.js';
 
 /**
  * Every Workload owns one container spec. Before Deployments were removed
- * (0171), a targeted Job on a user Deployment owned none, and before
+ * (0172), a targeted Job on a user Deployment owned none, and before
  * `deployments.managed` (0146), no targeted Job owned one.
  */
 export function auditContainerSpecOwnership(
