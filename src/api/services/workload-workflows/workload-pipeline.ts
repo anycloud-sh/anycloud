@@ -495,7 +495,7 @@ export async function wakeWorkloadPipeline(
     .catch((error) =>
       log.error('Workload pipeline runner failed', { id: workloadId, error }),
     )
-    // A Secret saved during the start woke no poll, so poll the Workload now.
+    // This poll delivers a Secret saved during the start, before Running.
     .then(() => deps.store.getWorkload(workloadId))
     .then((row) =>
       row?.secretNames?.length
