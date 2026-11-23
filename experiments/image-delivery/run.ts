@@ -294,38 +294,36 @@ function awsCloud(): Cloud {
       let lastError: unknown;
       for (const vmType of ['m8i.xlarge', 'm7i.xlarge', 'm7a.xlarge']) {
         try {
-          const run = () =>
-            ec2([
-              'run-instances',
-              '--image-id',
-              fromBaked ? baked : ami,
-              '--instance-type',
-              vmType,
-              '--security-group-ids',
-              group,
-              '--user-data',
-              `file://${userDataFile}`,
-              '--block-device-mappings',
-              JSON.stringify([
-                {
-                  DeviceName: rootDevice,
-                  // backmesh-4's gp3; the fast arm takes gp3's ceiling for 100 GB.
-                  Ebs: {
-                    VolumeSize: 100,
-                    VolumeType: 'gp3',
-                    Iops: fastDisk ? 16_000 : 4_000,
-                    Throughput: fastDisk ? 1_000 : 500,
-                    DeleteOnTermination: true,
-                  },
+          const out = await ec2([
+            'run-instances',
+            '--image-id',
+            fromBaked ? baked : ami,
+            '--instance-type',
+            vmType,
+            '--security-group-ids',
+            group,
+            '--user-data',
+            `file://${userDataFile}`,
+            '--block-device-mappings',
+            JSON.stringify([
+              {
+                DeviceName: rootDevice,
+                // backmesh-4's gp3; the fast arm takes gp3's ceiling for 100 GB.
+                Ebs: {
+                  VolumeSize: 100,
+                  VolumeType: 'gp3',
+                  Iops: fastDisk ? 16_000 : 4_000,
+                  Throughput: fastDisk ? 1_000 : 500,
+                  DeleteOnTermination: true,
                 },
-              ]),
-              '--metadata-options',
-              'HttpTokens=required',
-              '--tag-specifications',
-              AWS_TAGS('instance', name),
-              AWS_TAGS('volume', name),
-            ]);
-          const out = await retrying(run, /RequestLimitExceeded/, 10, 5_000);
+              },
+            ]),
+            '--metadata-options',
+            'HttpTokens=required',
+            '--tag-specifications',
+            AWS_TAGS('instance', name),
+            AWS_TAGS('volume', name),
+          ]);
           const id = out.Instances[0].InstanceId as string;
           for (;;) {
             const described = await retrying(
@@ -494,15 +492,22 @@ function gcpCloud(): Cloud {
     },
     async setup() {},
     async registry(runId) {
-      await gcloud([
-        'artifacts',
-        'repositories',
-        'create',
-        `${PREFIX}-${runId}`,
-        '--repository-format=docker',
-        `--location=${GCP_REGION}`,
-        `--labels=${TAG_KEY}=${TAG_VALUE}`,
-      ]);
+      // The CI role's permissions for this, which the run's role step may
+      // have just added, take a few minutes to apply.
+      await retrying(
+        () =>
+          gcloud([
+            'artifacts',
+            'repositories',
+            'create',
+            `${PREFIX}-${runId}`,
+            '--repository-format=docker',
+            `--location=${GCP_REGION}`,
+            `--labels=${TAG_KEY}=${TAG_VALUE}`,
+          ]),
+        /permission: artifactregistry/,
+        30,
+      );
       return {
         host: `${GCP_REGION}-docker.pkg.dev`,
         repo: `${project()}/${PREFIX}-${runId}/runner`,
@@ -1190,6 +1195,8 @@ function figures(t: Trial) {
   const launchToKernel =
     t.kernelAt === undefined ? null : t.kernelAt - t.launchedAt;
   const kernelToStepEnd = m['container-stepped'] ?? null;
+  const fromLaunch = (mark: number | null) =>
+    launchToKernel !== null && mark !== null ? launchToKernel + mark : null;
   return {
     ok: t.facts['step-rc'] === '0' && 'container-started' in m,
     pull,
@@ -1203,10 +1210,8 @@ function figures(t: Trial) {
         ? m['container-stepped']! - m['container-started']!
         : null,
     launchToKernel,
-    launchToStepEnd:
-      launchToKernel !== null && kernelToStepEnd !== null
-        ? launchToKernel + kernelToStepEnd
-        : null,
+    launchToContainer: fromLaunch(m['container-started'] ?? null),
+    launchToStepEnd: fromLaunch(kernelToStepEnd),
   };
 }
 type Figures = ReturnType<typeof figures>;
@@ -1219,6 +1224,7 @@ const FIGURES: (keyof Omit<Figures, 'ok'>)[] = [
   'kernelToContainer',
   'firstStep',
   'launchToKernel',
+  'launchToContainer',
   'launchToStepEnd',
 ];
 
@@ -1235,6 +1241,7 @@ function summarize(trials: Trial[]) {
     const landed: Record<string, string> = {};
     for (const arm of [...new Set(trials.map((t) => t.arm))]) {
       const all = trials.filter((t) => t.cloud === cloud && t.arm === arm);
+      if (!all.length) continue;
       const ok = all.map(figures).filter((f) => f.ok);
       // Each VM type the arm's trials landed on, and how many.
       const types = new Map<string, number>();
@@ -1244,7 +1251,9 @@ function summarize(trials: Trial[]) {
       arms[arm] = {
         trials: all.length,
         ok: ok.length,
-        // Each VM type a trial landed on, and how many.
+        // Hosts whose kernel started before the create call: Azure hands out
+        // pre-booted VMs, whose kernel-relative figures include the wait.
+        preBooted: ok.filter((f) => f.launchToKernel! < 0).length,
         ...Object.fromEntries(
           FIGURES.map((key) => [
             key,
@@ -1263,7 +1272,11 @@ function summarize(trials: Trial[]) {
         .filter((f) => f.ok && f[key] !== null)
         .map((f) => f[key] as number);
     for (const [arm, values] of Object.entries(arms)) {
-      for (const key of ['launchToStepEnd', 'kernelToContainer'] as const) {
+      for (const key of [
+        'launchToStepEnd',
+        'launchToContainer',
+        'kernelToContainer',
+      ] as const) {
         const own = okValues(arm, key);
         values[`${key}Min`] = round(own.length ? Math.min(...own) : null);
         values[`${key}Max`] = round(own.length ? Math.max(...own) : null);
@@ -1284,8 +1297,8 @@ function summarize(trials: Trial[]) {
 
 function table(summary: ReturnType<typeof summarize>): string {
   const rows = [
-    '| Cloud | Arm | VM types | ok | pull s | pull MB | MB/s | kernel→container s (range) | p | first step s | step MB | launch→kernel s | launch→step end s (range) | win s | p |',
-    '| ----- | --- | -------- | -- | ------ | ------- | ---- | -------------------------- | - | ------------ | ------- | --------------- | ------------------------- | ----- | - |',
+    '| Cloud | Arm | VM types | ok | pre-booted | pull s | pull MB | MB/s | kernel→container s (range) | p | launch→container s (range) | p | first step s | step MB | launch→kernel s | launch→step end s (range) | win s | p |',
+    '| ----- | --- | -------- | -- | ---------- | ------ | ------- | ---- | -------------------------- | - | -------------------------- | - | ------------ | ------- | --------------- | ------------------------- | ----- | - |',
   ];
   const ranged = (v: Record<string, number | null>, key: string) =>
     v[key] == null ? '—' : `${v[key]} (${v[`${key}Min`]}–${v[`${key}Max`]})`;
@@ -1294,7 +1307,7 @@ function table(summary: ReturnType<typeof summarize>): string {
   for (const [cloud, { arms, landed }] of Object.entries(summary))
     for (const [arm, v] of Object.entries(arms))
       rows.push(
-        `| ${cloud} | ${arm} | ${landed[arm]} | ${v.ok}/${v.trials} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${ranged(v, 'kernelToContainer')} | ${p(v.kernelToContainerP)} | ${v.firstStep ?? '—'} | ${v.stepMB ?? '—'} | ${v.launchToKernel ?? '—'} | ${ranged(v, 'launchToStepEnd')} | ${v.launchToStepEndWin ?? '—'} | ${p(v.launchToStepEndP)} |`,
+        `| ${cloud} | ${arm} | ${landed[arm]} | ${v.ok}/${v.trials} | ${v.preBooted} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${ranged(v, 'kernelToContainer')} | ${p(v.kernelToContainerP)} | ${ranged(v, 'launchToContainer')} | ${p(v.launchToContainerP)} | ${v.firstStep ?? '—'} | ${v.stepMB ?? '—'} | ${v.launchToKernel ?? '—'} | ${ranged(v, 'launchToStepEnd')} | ${v.launchToStepEndWin ?? '—'} | ${p(v.launchToStepEndP)} |`,
       );
   return `${rows.join('\n')}\n`;
 }
@@ -1449,14 +1462,23 @@ async function measureCloud(
       writeFileSync(file, userData(arm, pull, mirror, publicKey), {
         mode: 0o600,
       });
-      trial.launchedAt = Date.now() / 1000;
+      // A request refused for the account's limits is tried again later, and
+      // the launch timed from the try that started it.
+      vm = await retrying(
+        () => {
+          trial.launchedAt = Date.now() / 1000;
+          return cloud.launch(vmName, file, {
+            disk: spec.disk,
+            baked: spec.baked && rep >= 0,
+            noResourceDisk: spec.noResourceDisk,
+          });
+        },
+        /RequestLimitExceeded|Quota 'CPUS/,
+        60,
+        15_000,
+      );
       if (spec.baked && rep >= 0)
         trial.sinceBake = Math.round(trial.launchedAt - bakedAt);
-      vm = await cloud.launch(vmName, file, {
-        disk: spec.disk,
-        baked: spec.baked && rep >= 0,
-        noResourceDisk: spec.noResourceDisk,
-      });
       trial.vmType = vm.vmType;
       parse(trial, await collect(vm.ip));
       console.log(name, arm, rep, JSON.stringify(figures(trial)));
