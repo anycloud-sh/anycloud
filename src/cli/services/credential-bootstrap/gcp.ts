@@ -185,7 +185,7 @@ async function assertOwnedAccount(
  * role connections may share it, so this never removes a permission and
  * cleanup never deletes it.
  */
-async function ensureAnycloudRole(
+export async function ensureAnycloudRole(
   transport: GCPTransport,
   projectId: string,
 ): Promise<string> {

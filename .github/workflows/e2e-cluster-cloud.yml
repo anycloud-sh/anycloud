@@ -290,6 +290,12 @@ jobs:
           az login --service-principal --username "$AZURE_CLIENT_ID" --password "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
           az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 
+      # The hosted stage's GCP workloads run as CI's standing account, which
+      # holds the published Anycloud role and no predefined runtime role.
+      - name: Bind CI's GCP account to the published Anycloud role
+        if: ${{ !inputs.sweep_only }}
+        run: npx tsx ci/gcp-anycloud-role.ts
+
       - name: Run E2E test - e2e-cluster-cloud
         id: tests
         if: ${{ !inputs.sweep_only }}
