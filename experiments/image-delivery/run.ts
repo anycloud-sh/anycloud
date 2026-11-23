@@ -97,8 +97,10 @@ interface Launched {
 interface Cloud {
   /** Signs in and finds the account. */
   login(): Promise<void>;
-  /** The network and the same-region registry. */
-  setup(runId: string): Promise<Registry>;
+  /** What the VMs need to take SSH. */
+  setup(runId: string): Promise<void>;
+  /** The same-region registry. */
+  registry(runId: string): Promise<Registry>;
   launch(
     name: string,
     userDataFile: string,
@@ -253,6 +255,8 @@ function awsCloud(): Cloud {
         '--cidr',
         '0.0.0.0/0',
       ]);
+    },
+    async registry(runId) {
       const repo = `${PREFIX}-${runId}/runner`;
       const created = await json('aws', [
         'ecr',
@@ -471,7 +475,8 @@ function gcpCloud(): Cloud {
         `--key-file=${keyFile}`,
       ]);
     },
-    async setup(runId) {
+    async setup() {},
+    async registry(runId) {
       await gcloud([
         'artifacts',
         'repositories',
@@ -598,14 +603,21 @@ function gcpCloud(): Cloud {
           await gcloud([...kind, 'delete', name]).catch((error) =>
             console.warn(String(error)),
           );
+      // With the Artifact Registry API disabled there are none.
       const repos = async () =>
         (
-          (await gcloud([
+          ((await gcloud([
             'artifacts',
             'repositories',
             'list',
             `--location=${GCP_REGION}`,
-          ])) as any[]
+          ]).catch((error: unknown) => {
+            if (
+              /SERVICE_DISABLED|has no attribute 'content'/.test(String(error))
+            )
+              return [];
+            throw error;
+          })) ?? []) as any[]
         )
           .map((r) => (r.name as string).split('/').pop()!)
           .filter((name) => name.startsWith(`${PREFIX}-`));
@@ -706,6 +718,8 @@ function azureCloud(): Cloud {
         '--access',
         'Allow',
       ]);
+    },
+    async registry(runId) {
       const name = `imagedelivery${runId}`;
       const registry = await az([
         'acr',
@@ -1289,7 +1303,8 @@ async function copyImages(registries: Registry[], runId: string) {
 
 async function measureCloud(
   name: CloudName,
-  registry: Registry,
+  /** The cloud's registry, or why it has none. */
+  registry: Registry | string,
   estargz: string,
   arms: Arm[],
   count: number,
@@ -1323,10 +1338,14 @@ async function measureCloud(
       trial.error = 'skipped: past the run deadline';
       return trial;
     }
+    if (spec.source !== 'ghcr' && typeof registry === 'string') {
+      trial.error = `skipped: no same-region registry: ${registry}`;
+      return trial;
+    }
     let vm: Launched | undefined;
     try {
       const pull: Pull = { ref: IMAGE };
-      if (spec.source !== 'ghcr') {
+      if (spec.source !== 'ghcr' && typeof registry !== 'string') {
         const password = await registry.password();
         const digest = spec.source === 'estargz' ? estargz : DIGEST;
         pull.ref = `${registry.host}/${registry.repo}@${digest}`;
@@ -1429,10 +1448,17 @@ async function run(
   );
   await installTools();
   await Promise.all(clouds.map((c) => CLOUDS[c].cloud.login()));
+  await Promise.all(clouds.map((c) => CLOUDS[c].cloud.setup(runId)));
+  // A cloud without its registry still runs the arms that pull from GHCR.
   const registries = await Promise.all(
-    clouds.map((c) => CLOUDS[c].cloud.setup(runId)),
+    clouds.map((c) =>
+      CLOUDS[c].cloud
+        .registry(runId)
+        .catch((error: unknown) => String(error).slice(0, 600)),
+    ),
   );
-  const estargz = await copyImages(registries, runId);
+  const made = registries.filter((r): r is Registry => typeof r !== 'string');
+  const estargz = made.length ? await copyImages(made, runId) : '';
   console.log(
     `Images copied (${Math.round((Date.now() - started) / 1000)} s); eStargz ${estargz}`,
   );
