@@ -1,6 +1,6 @@
 # m8g against m8a and m8i
 
-- Status: Ready, not yet dispatched.
+- Status: Builds complete; spot samples in progress.
 - Decision record: it asks whether AWS Graviton `m8g` (arm64) builds faster
   or cheaper than `m8a` (AMD) and `m8i` (Intel) at the same vCPU count. It
   also asks whether `m8g` has the spot capacity that
@@ -76,7 +76,89 @@ anycloud's shared Job network is not the run's, and stays.
 
 ## Result
 
-Pending.
+### Builds
+
+[Run 45257034278](https://github.com/anycloud-sh/anycloud/actions/runs/45257034278)
+(`8431c0d97`, 2026-11-23, us-east-2) ran ten rounds of six VMs. 59 of 60
+reported; one `m8i.xlarge` never uploaded its log, for reasons the run
+didn't capture. Cleanup found nothing left. Every arm built all five
+projects: no build failed on arm64.
+
+**m8g is about as fast as m8i at the same vCPU count and about 30% slower
+than m8a. It costs the least per build on demand because its price is the
+lowest.** The table gives each arm's median for the eight timed commands
+together, in seconds, then that time's on-demand cost.
+
+| Size    | m8g             | m8i             | m8a             | m8g/m8i | m8g/m8a |
+| ------- | --------------- | --------------- | --------------- | ------- | ------- |
+| xlarge  | 145.9 ($0.0073) | 155.5 ($0.0091) | 109.1 ($0.0074) | 0.94    | 1.34    |
+| 4xlarge | 99.8 ($0.0199)  | 96.6 ($0.0227)  | 75.9 ($0.0205)  | 1.03    | 1.31    |
+
+- **Against m8i, by command.** m8g is faster on `docker build` (0.87 at
+  xlarge, 0.91 at 4xlarge) and on Go (0.84–0.89; `go build` ties at
+  4xlarge, p = 0.38). It is slower on rust (1.14 and 1.43), TypeScript
+  (1.08–1.24) and Python (1.07–1.13). Every difference but that `go build`
+  has p < 0.01.
+- **Against m8a.** m8a is faster on every command, by 1.11–2.03×. All have
+  p = 0.00018, the normal approximation's floor at n = 10 with no overlap.
+- **sysbench cpu.** On one thread, m8g does 3,331 events/s, the same as m8i
+  (3,325); m8a does 5,553. On every vCPU, m8g is 1.90× m8i, because a
+  Graviton vCPU is a whole core. m8a is 1.66× m8g there.
+- **CPUs.** m8g is Neoverse-V2 (Graviton4), one thread per core.
+- **This harness's figures differ from anycloud's.** m8a's `docker build`
+  takes 54.7 s here and 46.7 s in [m8a-vs-m8i](../m8a-vs-m8i/README.md)'s VM
+  Jobs. Ubuntu's `docker.io` stands in for anycloud's Docker, so compare arms
+  within one experiment only.
+
+`report.md` in the evidence has every command's medians, ranges, ratios and
+p values.
+
+### Cost per VM
+
+[Run 45272188687](https://github.com/anycloud-sh/anycloud/actions/runs/45272188687)
+repeated three rounds with marks for where each VM's time goes. 18 of 18
+reported and cleanup found nothing left. Whole-VM time is mostly this
+harness's own setup. Installing `docker.io` took a median 21 s on arm64,
+but 45–113 s on amd64, where Ubuntu's EC2 archive mirror was slower. So
+whole-VM cost here overstates m8g's lead. The build phase leaves that setup
+out: it runs from sysbench's end to the builds' end, and covers the clones,
+fetches and builds that a CI job does. Costs are medians at the catalog's
+us-east-2 list prices.
+
+| Arm           | Uptime | Uptime cost | Build phase | On demand | Spot ($/h)       |
+| ------------- | ------ | ----------- | ----------- | --------- | ---------------- |
+| `m8g.xlarge`  | 293 s  | $0.0146     | 173 s       | $0.0086   | $0.0029 (0.0606) |
+| `m8a.xlarge`  | 325 s  | $0.0220     | 142 s       | $0.0096   | $0.0026 (0.0651) |
+| `m8i.xlarge`  | 364 s  | $0.0214     | 179 s       | $0.0105   | $0.0034 (0.068)  |
+| `m8g.4xlarge` | 258 s  | $0.0515     | 136 s       | $0.0272   | $0.0099 (0.2619) |
+| `m8a.4xlarge` | 307 s  | $0.0831     | 109 s       | $0.0293   | $0.0110 (0.3653) |
+| `m8i.4xlarge` | 271 s  | $0.0638     | 135 s       | $0.0317   | $0.0100 (0.2662) |
+
+On demand, m8g's build phase costs 0.82 of m8i's at xlarge and 0.86 at
+4xlarge. Against m8a it is 0.90 and 0.93. At spot list prices the three
+are within about 30% of each other, and m8a is cheapest at xlarge. Running
+m8g in anycloud would first need arm64 VM Jobs.
+
+### Spot capacity
+
+Each sample tries a spot launch of every type in every zone of anycloud's
+Job network, one at a time.
+[Run 45271021250](https://github.com/anycloud-sh/anycloud/actions/runs/45271021250)
+(13:37 PST) predates the retry on rate limiting. Six of its us-east-2
+attempts were throttled, so its us-east-2 figures are incomplete. Its
+zones that launched, by region:
+
+| Type          | us-east-1 | us-east-2 | us-west-2 |
+| ------------- | --------- | --------- | --------- |
+| `m8g.xlarge`  | 0 of 6    | 1 of 3    | 1 of 4    |
+| `m8a.xlarge`  | 2 of 6    | 0 of 3    | 1 of 4    |
+| `m8i.xlarge`  | 4 of 6    | 0 of 3    | 4 of 4    |
+| `m8g.4xlarge` | 5 of 6    | 2 of 3    | 2 of 4    |
+| `m8a.4xlarge` | 1 of 6    | 0 of 3    | 4 of 4    |
+| `m8i.4xlarge` | 1 of 6    | 0 of 3    | 4 of 4    |
+
+us-east-1e offers none of the six (`Unsupported`). The 17:00, 22:00 and
+06:00 PST samples are pending.
 
 ## Promotion criteria
 

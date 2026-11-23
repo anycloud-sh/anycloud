@@ -645,19 +645,25 @@ function report(
   lines.push(
     '### Cost per VM',
     '',
-    "The median of each VM's uptime (boot to upload) times the catalog's us-east-2 list price; spot is the median of its zones' spot prices.",
+    "Each VM's uptime (boot to upload) and its build phase (sysbench's end to the builds' end: clones, fetches and builds), as medians, times the catalog's us-east-2 list price; spot is the median of its zones' spot prices. Uptime includes the harness's Docker install, which Ubuntu's amd64 mirror makes slower than its arm64 one; the build phase leaves it out.",
     '',
-    '| Arm | Uptime | On-demand $/h | Cost on demand | Spot $/h | Cost on spot |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Arm | Uptime | Build phase | On-demand $/h | Uptime cost | Build-phase cost | Spot $/h | Build-phase cost on spot |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
   );
   for (const arm of ARMS) {
     const up = of(arm).flatMap((r) => r.uptimeSeconds ?? []);
+    const build = of(arm).flatMap((r) =>
+      r.marks?.['builds-done'] && r.marks['sysbench-done']
+        ? [r.marks['builds-done'] - r.marks['sysbench-done']]
+        : [],
+    );
     const p = price[`${arm} ${BUILD_REGION}`];
     if (!up.length || !p) continue;
     const spotPrice = median(p.spot);
-    const hours = median(up) / 3600;
+    const dollars = (xs: number[], rate: number) =>
+      xs.length ? `$${((median(xs) / 3600) * rate).toFixed(4)}` : '';
     lines.push(
-      `| ${arm} | ${fmt(median(up))} s | ${p.onDemand} | $${(hours * p.onDemand).toFixed(4)} | ${spotPrice} | $${(hours * spotPrice).toFixed(4)} |`,
+      `| ${arm} | ${fmt(median(up))} s | ${build.length ? `${fmt(median(build))} s` : ''} | ${p.onDemand} | ${dollars(up, p.onDemand)} | ${dollars(build, p.onDemand)} | ${spotPrice} | ${dollars(build, spotPrice)} |`,
     );
   }
   const phases = [...new Set(ok.flatMap((r) => Object.keys(r.marks ?? {})))];
