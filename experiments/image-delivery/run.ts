@@ -449,7 +449,6 @@ const GCP_REGION = 'us-east4';
 function gcpCloud(): Cloud {
   const gcloud = (args: string[]) =>
     json('gcloud', [...args, '--format=json', '--quiet']);
-  let network = '';
   let bakedImage = '';
   const project = () => required('GCP_PROJECT_ID');
   return {
@@ -473,23 +472,6 @@ function gcpCloud(): Cloud {
       ]);
     },
     async setup(runId) {
-      network = `${PREFIX}-${runId}`;
-      await gcloud([
-        'compute',
-        'networks',
-        'create',
-        network,
-        '--subnet-mode=auto',
-      ]);
-      await gcloud([
-        'compute',
-        'firewall-rules',
-        'create',
-        `${network}-ssh`,
-        `--network=${network}`,
-        '--allow=tcp:22',
-        '--source-ranges=0.0.0.0/0',
-      ]);
       await gcloud([
         'artifacts',
         'repositories',
@@ -518,7 +500,10 @@ function gcpCloud(): Cloud {
               name,
               `--zone=${zone}`,
               `--machine-type=${vmType}`,
-              `--network=${network}`,
+              // The product's VM Jobs network, and its standing SSH rule's tag:
+              // the CI account can make networks but not delete them.
+              '--network=anycloud-jobs',
+              '--tags=anycloud-jobs',
               '--boot-disk-size=100GB',
               // The API's default type, which the product's medium tier on
               // n2 leaves in place; `--disk-tier high` asks for pd-ssd.
@@ -606,9 +591,13 @@ function gcpCloud(): Cloud {
       const images = ['compute', 'images'];
       const firewalls = ['compute', 'firewall-rules'];
       const networks = ['compute', 'networks'];
+      // Earlier runs made their own networks; the list below reports any
+      // this account can't delete.
       for (const kind of [images, firewalls, networks])
         for (const name of await list(kind))
-          await gcloud([...kind, 'delete', name]);
+          await gcloud([...kind, 'delete', name]).catch((error) =>
+            console.warn(String(error)),
+          );
       const repos = async () =>
         (
           (await gcloud([
