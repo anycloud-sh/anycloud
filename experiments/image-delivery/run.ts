@@ -62,14 +62,21 @@ const STEP =
   'echo "int main(){return 0;}" | gcc -x c - -o /tmp/a && /tmp/a; rc=$?; ' +
   'echo stepped $(cut -d" " -f1 /proc/uptime); exit $rc';
 
+type CloudName = 'aws' | 'gcp' | 'azure';
 type Source = 'ghcr' | 'regional' | 'estargz';
+/** `fast` is each cloud's faster root disk; `balanced` is GCP's pd-balanced. */
+type Disk = 'fast' | 'balanced';
 interface ArmSpec {
   source: Source;
   /** The transfer service's max_concurrent_downloads, instead of 3. */
   downloads?: number;
   lazy?: boolean;
   baked?: boolean;
-  fastDisk?: boolean;
+  disk?: Disk;
+  /** Azure's size with no resource disk, which the baked arm needs. */
+  noResourceDisk?: boolean;
+  /** The clouds the arm runs on, when not all. */
+  clouds?: CloudName[];
 }
 const ARMS = {
   ghcr: { source: 'ghcr' },
@@ -77,8 +84,15 @@ const ARMS = {
   'ghcr-c10': { source: 'ghcr', downloads: 10 },
   'regional-c10': { source: 'regional', downloads: 10 },
   lazy: { source: 'estargz', lazy: true },
-  baked: { source: 'ghcr', baked: true },
-  'fast-disk': { source: 'ghcr', fastDisk: true },
+  baked: { source: 'ghcr', baked: true, noResourceDisk: true },
+  'fast-disk': { source: 'ghcr', disk: 'fast' },
+  'balanced-disk': { source: 'ghcr', disk: 'balanced', clouds: ['gcp'] },
+  // The baked arm's control on Azure: its VM type, with the image pulled.
+  'no-resource-disk': {
+    source: 'ghcr',
+    noResourceDisk: true,
+    clouds: ['azure'],
+  },
 } satisfies Record<string, ArmSpec>;
 type Arm = keyof typeof ARMS;
 
@@ -104,7 +118,7 @@ interface Cloud {
   launch(
     name: string,
     userDataFile: string,
-    opts: { fastDisk?: boolean; baked?: boolean; noResourceDisk?: boolean },
+    opts: { disk?: Disk; baked?: boolean; noResourceDisk?: boolean },
   ): Promise<Launched>;
   remove(vm: Launched): Promise<void>;
   /** Stops a prepared VM and makes the baked image from its disk. */
@@ -275,40 +289,43 @@ function awsCloud(): Cloud {
         password: () => sh('aws', ['ecr', 'get-login-password']),
       };
     },
-    async launch(name, userDataFile, { fastDisk, baked: fromBaked }) {
+    async launch(name, userDataFile, { disk, baked: fromBaked }) {
+      const fastDisk = disk === 'fast';
       let lastError: unknown;
       for (const vmType of ['m8i.xlarge', 'm7i.xlarge', 'm7a.xlarge']) {
         try {
-          const out = await ec2([
-            'run-instances',
-            '--image-id',
-            fromBaked ? baked : ami,
-            '--instance-type',
-            vmType,
-            '--security-group-ids',
-            group,
-            '--user-data',
-            `file://${userDataFile}`,
-            '--block-device-mappings',
-            JSON.stringify([
-              {
-                DeviceName: rootDevice,
-                // backmesh-4's gp3; the fast arm takes gp3's ceiling for 100 GB.
-                Ebs: {
-                  VolumeSize: 100,
-                  VolumeType: 'gp3',
-                  Iops: fastDisk ? 16_000 : 4_000,
-                  Throughput: fastDisk ? 1_000 : 500,
-                  DeleteOnTermination: true,
+          const run = () =>
+            ec2([
+              'run-instances',
+              '--image-id',
+              fromBaked ? baked : ami,
+              '--instance-type',
+              vmType,
+              '--security-group-ids',
+              group,
+              '--user-data',
+              `file://${userDataFile}`,
+              '--block-device-mappings',
+              JSON.stringify([
+                {
+                  DeviceName: rootDevice,
+                  // backmesh-4's gp3; the fast arm takes gp3's ceiling for 100 GB.
+                  Ebs: {
+                    VolumeSize: 100,
+                    VolumeType: 'gp3',
+                    Iops: fastDisk ? 16_000 : 4_000,
+                    Throughput: fastDisk ? 1_000 : 500,
+                    DeleteOnTermination: true,
+                  },
                 },
-              },
-            ]),
-            '--metadata-options',
-            'HttpTokens=required',
-            '--tag-specifications',
-            AWS_TAGS('instance', name),
-            AWS_TAGS('volume', name),
-          ]);
+              ]),
+              '--metadata-options',
+              'HttpTokens=required',
+              '--tag-specifications',
+              AWS_TAGS('instance', name),
+              AWS_TAGS('volume', name),
+            ]);
+          const out = await retrying(run, /RequestLimitExceeded/, 10, 5_000);
           const id = out.Instances[0].InstanceId as string;
           for (;;) {
             const described = await retrying(
@@ -493,7 +510,7 @@ function gcpCloud(): Cloud {
         password: () => sh('gcloud', ['auth', 'print-access-token']),
       };
     },
-    async launch(name, userDataFile, { fastDisk, baked }) {
+    async launch(name, userDataFile, { disk, baked }) {
       let lastError: unknown;
       for (const zone of ['a', 'b', 'c'].map((z) => `${GCP_REGION}-${z}`)) {
         for (const vmType of ['n2-standard-4', 'n2d-standard-4']) {
@@ -512,7 +529,7 @@ function gcpCloud(): Cloud {
               '--boot-disk-size=100GB',
               // The API's default type, which the product's medium tier on
               // n2 leaves in place; `--disk-tier high` asks for pd-ssd.
-              `--boot-disk-type=${fastDisk ? 'pd-ssd' : 'pd-standard'}`,
+              `--boot-disk-type=${disk ? { fast: 'pd-ssd', balanced: 'pd-balanced' }[disk] : 'pd-standard'}`,
               ...(baked
                 ? [`--image=${bakedImage}`]
                 : [
@@ -603,7 +620,6 @@ function gcpCloud(): Cloud {
           await gcloud([...kind, 'delete', name]).catch((error) =>
             console.warn(String(error)),
           );
-      // With the Artifact Registry API disabled there are none.
       const repos = async () =>
         (
           ((await gcloud([
@@ -611,13 +627,7 @@ function gcpCloud(): Cloud {
             'repositories',
             'list',
             `--location=${GCP_REGION}`,
-          ]).catch((error: unknown) => {
-            if (
-              /SERVICE_DISABLED|has no attribute 'content'/.test(String(error))
-            )
-              return [];
-            throw error;
-          })) ?? []) as any[]
+          ])) ?? []) as any[]
         )
           .map((r) => (r.name as string).split('/').pop()!)
           .filter((name) => name.startsWith(`${PREFIX}-`));
@@ -744,7 +754,7 @@ function azureCloud(): Cloud {
             .accessToken,
       };
     },
-    async launch(name, userDataFile, { fastDisk, baked, noResourceDisk }) {
+    async launch(name, userDataFile, { disk, baked, noResourceDisk }) {
       // A baked image can't keep its stores on Standard_D4ads_v5's resource
       // disk, which is empty at boot: it, and its builder, take the size
       // with none.
@@ -763,7 +773,7 @@ function azureCloud(): Cloud {
         '--os-disk-size-gb',
         '100',
         '--storage-sku',
-        fastDisk ? 'Premium_LRS' : 'Standard_LRS',
+        disk === 'fast' ? 'Premium_LRS' : 'Standard_LRS',
         '--custom-data',
         userDataFile,
         '--vnet-name',
@@ -843,7 +853,6 @@ function azureCloud(): Cloud {
 
 // ---------------------------------------------------------------- the host side
 
-type CloudName = 'aws' | 'gcp' | 'azure';
 const CLOUDS: Record<CloudName, { cloud: Cloud; mirror: string }> = {
   aws: { cloud: awsCloud(), mirror: 'us-east-2.ec2' },
   gcp: { cloud: gcpCloud(), mirror: `${GCP_REGION}.gce` },
@@ -1077,6 +1086,8 @@ interface Trial {
   name: string;
   vmType?: string;
   launchedAt: number;
+  /** A baked trial's launch, in seconds after its image was ready. */
+  sinceBake?: number;
   kernelAt?: number;
   marks: Record<string, number>;
   facts: Record<string, string>;
@@ -1129,6 +1140,41 @@ function median(values: number[]): number | null {
   return sorted.length % 2
     ? sorted[mid]!
     : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * The two-sided exact Mann-Whitney U test's p-value for samples `a` and `b`:
+ * how often a split of the pooled values gives a U as far from the middle.
+ * Ties count a half.
+ */
+function mannWhitneyP(a: number[], b: number[]): number | null {
+  const [n, m] = [a.length, b.length];
+  if (!n || !m) return null;
+  let u = 0;
+  for (const x of a) for (const y of b) u += x < y ? 1 : x === y ? 0.5 : 0;
+  // ways[i][j][k]: orderings of i values from a and j from b with U = k.
+  const ways: number[][][] = [];
+  for (let i = 0; i <= n; i++) {
+    ways.push([]);
+    for (let j = 0; j <= m; j++) {
+      const row = new Array(i * j + 1).fill(0);
+      if (!i || !j) row[0] = 1;
+      else
+        // The largest value is from a (adding nothing) or from b (adding i).
+        for (let k = 0; k <= i * j; k++)
+          row[k] =
+            (ways[i - 1]![j]![k] ?? 0) +
+            (k >= i ? ways[i]![j - 1]![k - i]! : 0);
+      ways[i]!.push(row);
+    }
+  }
+  const counts = ways[n]![m]!;
+  const total = counts.reduce((x, y) => x + y, 0);
+  const tail = Math.min(
+    counts.filter((_, k) => k <= u).reduce((x, y) => x + y, 0),
+    counts.filter((_, k) => k >= u).reduce((x, y) => x + y, 0),
+  );
+  return Math.min(1, (2 * tail) / total);
 }
 
 const round = (value: number | null, digits = 1) =>
@@ -1210,12 +1256,25 @@ function summarize(trials: Trial[]) {
       };
     }
     const base = arms.ghcr;
-    for (const values of Object.values(arms)) {
+    const okValues = (arm: string, key: keyof Figures) =>
+      trials
+        .filter((t) => t.cloud === cloud && t.arm === arm)
+        .map(figures)
+        .filter((f) => f.ok && f[key] !== null)
+        .map((f) => f[key] as number);
+    for (const [arm, values] of Object.entries(arms)) {
       for (const key of ['launchToStepEnd', 'kernelToContainer'] as const) {
+        const own = okValues(arm, key);
+        values[`${key}Min`] = round(own.length ? Math.min(...own) : null);
+        values[`${key}Max`] = round(own.length ? Math.max(...own) : null);
         values[`${key}Win`] =
           base?.[key] != null && values[key] != null
             ? round(base[key]! - values[key]!)
             : null;
+        values[`${key}P`] =
+          arm === 'ghcr'
+            ? null
+            : round(mannWhitneyP(okValues('ghcr', key), own), 4);
       }
     }
     byCloud[cloud] = { arms, landed };
@@ -1225,13 +1284,17 @@ function summarize(trials: Trial[]) {
 
 function table(summary: ReturnType<typeof summarize>): string {
   const rows = [
-    '| Cloud | Arm | VM types | ok | pull s | pull MB | MB/s | kernel→container s | first step s | launch→kernel s | launch→step end s | win s |',
-    '| ----- | --- | -------- | -- | ------ | ------- | ---- | ------------------ | ------------ | --------------- | ----------------- | ----- |',
+    '| Cloud | Arm | VM types | ok | pull s | pull MB | MB/s | kernel→container s (range) | p | first step s | step MB | launch→kernel s | launch→step end s (range) | win s | p |',
+    '| ----- | --- | -------- | -- | ------ | ------- | ---- | -------------------------- | - | ------------ | ------- | --------------- | ------------------------- | ----- | - |',
   ];
+  const ranged = (v: Record<string, number | null>, key: string) =>
+    v[key] == null ? '—' : `${v[key]} (${v[`${key}Min`]}–${v[`${key}Max`]})`;
+  const p = (value: number | null | undefined) =>
+    value == null ? '—' : value < 0.001 ? '<0.001' : value;
   for (const [cloud, { arms, landed }] of Object.entries(summary))
     for (const [arm, v] of Object.entries(arms))
       rows.push(
-        `| ${cloud} | ${arm} | ${landed[arm]} | ${v.ok}/${v.trials} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${v.kernelToContainer ?? '—'} | ${v.firstStep ?? '—'} | ${v.launchToKernel ?? '—'} | ${v.launchToStepEnd ?? '—'} | ${v.launchToStepEndWin ?? '—'} |`,
+        `| ${cloud} | ${arm} | ${landed[arm]} | ${v.ok}/${v.trials} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${ranged(v, 'kernelToContainer')} | ${p(v.kernelToContainerP)} | ${v.firstStep ?? '—'} | ${v.stepMB ?? '—'} | ${v.launchToKernel ?? '—'} | ${ranged(v, 'launchToStepEnd')} | ${v.launchToStepEndWin ?? '—'} | ${p(v.launchToStepEndP)} |`,
       );
   return `${rows.join('\n')}\n`;
 }
@@ -1336,6 +1399,7 @@ async function measureCloud(
   const publicKey = readFileSync(join(state, 'key.pub'), 'utf8');
   const slot = limiter(parallel);
   const trials: Trial[] = [];
+  let bakedAt = 0;
 
   /** One trial; rep -1 is the bake's builder, which the bake stops and removes. */
   const trialOf = async (arm: Arm, rep: number): Promise<Trial> => {
@@ -1386,10 +1450,12 @@ async function measureCloud(
         mode: 0o600,
       });
       trial.launchedAt = Date.now() / 1000;
+      if (spec.baked && rep >= 0)
+        trial.sinceBake = Math.round(trial.launchedAt - bakedAt);
       vm = await cloud.launch(vmName, file, {
-        fastDisk: spec.fastDisk,
+        disk: spec.disk,
         baked: spec.baked && rep >= 0,
-        noResourceDisk: spec.baked,
+        noResourceDisk: spec.noResourceDisk,
       });
       trial.vmType = vm.vmType;
       parse(trial, await collect(vm.ip));
@@ -1406,48 +1472,46 @@ async function measureCloud(
     }
   };
 
-  const plain = arms.filter((arm) => arm !== 'baked');
+  const cloudArms = arms.filter((arm) => {
+    const only: CloudName[] | undefined = (ARMS[arm] as ArmSpec).clouds;
+    return !only || only.includes(name);
+  });
+  // The image is baked first, so the baked arm's trials interleave with
+  // the others' from the first round.
+  let bakeError = '';
+  if (cloudArms.includes('baked')) {
+    // The builder prepares as the baseline does; its disk becomes the image.
+    const builder = await trialOf('baked', -1);
+    const vm = builder.facts.builder
+      ? (JSON.parse(builder.facts.builder) as Launched)
+      : undefined;
+    try {
+      if (!vm || builder.error) throw new Error(`builder: ${builder.error}`);
+      await ssh(vm.ip, 'cloud-init clean --logs && sync', 120_000);
+      await cloud.bake(vm, runId);
+      bakedAt = Date.now() / 1000;
+    } catch (error) {
+      bakeError = `bake failed: ${String(error).slice(0, 800)}`;
+      console.warn(name, bakeError);
+    } finally {
+      if (vm) await cloud.remove(vm).catch(() => {});
+    }
+  }
   const work: Promise<unknown>[] = [];
   for (let rep = 0; rep < count; rep++)
-    for (const arm of plain) work.push(slot(() => trialOf(arm, rep)));
-  if (arms.includes('baked')) {
-    work.push(
-      (async () => {
-        // The builder prepares as the baseline does; its disk becomes the image.
-        const builder = await slot(() => trialOf('baked', -1));
-        const vm = builder.facts.builder
-          ? (JSON.parse(builder.facts.builder) as Launched)
-          : undefined;
-        try {
-          if (!vm || builder.error)
-            throw new Error(`builder: ${builder.error}`);
-          await ssh(vm.ip, 'cloud-init clean --logs && sync', 120_000);
-          await cloud.bake(vm, runId);
-        } catch (error) {
-          console.warn(name, 'bake failed', String(error));
-          for (let rep = 0; rep < count; rep++)
-            trials.push({
-              cloud: name,
-              arm: 'baked',
-              rep,
-              name: '',
-              launchedAt: 0,
-              marks: {},
-              facts: {},
-              error: `bake failed: ${String(error).slice(0, 800)}`,
-            });
-          return;
-        } finally {
-          if (vm) await cloud.remove(vm).catch(() => {});
-        }
-        await Promise.all(
-          Array.from({ length: count }, (_, rep) =>
-            slot(() => trialOf('baked', rep)),
-          ),
-        );
-      })(),
-    );
-  }
+    for (const arm of cloudArms)
+      if (arm === 'baked' && bakeError)
+        trials.push({
+          cloud: name,
+          arm,
+          rep,
+          name: '',
+          launchedAt: 0,
+          marks: {},
+          facts: {},
+          error: bakeError,
+        });
+      else work.push(slot(() => trialOf(arm, rep)));
   await Promise.all(work);
   return trials;
 }
