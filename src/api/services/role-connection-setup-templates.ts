@@ -220,7 +220,8 @@ ${JSON.stringify(gcpRole, null, 2)}
 ROLE
 # Only adds: other credentials may need what a newer release added.
 gcloud iam roles create "$CUSTOM_ROLE" --project="$PROJECT_ID" --file=anycloud-role.json \\
-  || gcloud iam roles update "$CUSTOM_ROLE" --project="$PROJECT_ID" --add-permissions=${gcpRole.includedPermissions.join(',')} --quiet
+  || gcloud iam roles update "$CUSTOM_ROLE" --project="$PROJECT_ID" --add-permissions=${gcpRole.includedPermissions.join(',')} --quiet \\
+  || fail "Role $CUSTOM_ROLE is deleted, disabled or unreadable. Undelete or enable it, or set ANYCLOUD_ROLE_CUSTOM_ROLE to a new ID."
 gcloud iam service-accounts describe "$SERVICE_ACCOUNT" >/dev/null 2>&1 \\
   || gcloud iam service-accounts create "$ACCOUNT" --display-name="Anycloud role connection"
 retry gcloud projects add-iam-policy-binding "$PROJECT_ID" --condition=None \\

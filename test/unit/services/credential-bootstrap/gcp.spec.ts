@@ -423,14 +423,47 @@ describe('0038/S3 GCP generation ownership', () => {
     );
   });
 
-  it('refuses a deleted role before creating the account', async () => {
+  it.each([{ deleted: true }, { stage: 'DISABLED' }])(
+    'refuses a role with %j before creating the account',
+    async (state) => {
+      const name = `projects/${project.projectId}/roles/anycloud`;
+      customRoles[name] = { ...anycloudRole, name, ...state };
+      await expect(
+        generateGCPCredentials(await getGCPGenerationPreview(operator, 'test')),
+      ).rejects.toThrow('GCP role anycloud is deleted, disabled or unreadable');
+      expect(account).toBeUndefined();
+      expect(mutations()).toEqual([]);
+    },
+  );
+
+  it('reads the role again after a concurrent change makes its etag stale', async () => {
+    vi.useFakeTimers();
     const name = `projects/${project.projectId}/roles/anycloud`;
-    customRoles[name] = { ...anycloudRole, name, deleted: true };
-    await expect(
-      generateGCPCredentials(await getGCPGenerationPreview(operator, 'test')),
-    ).rejects.toThrow('GCP role anycloud is deleted');
-    expect(account).toBeUndefined();
-    expect(mutations()).toEqual([]);
+    // A newer release added a permission after this invocation's first read.
+    const extra = 'compute.instances.stop';
+    customRoles[name] = {
+      ...anycloudRole,
+      name,
+      includedPermissions: ['compute.instances.get'],
+    };
+    const implementation = request.getMockImplementation()!;
+    let conflicted = false;
+    request.mockImplementation(async (...args) => {
+      if (args[2] === 'PATCH' && !conflicted) {
+        conflicted = true;
+        customRoles[name]!.includedPermissions.push(extra);
+        throw new GCPBootstrapError('Stale etag', 409, 'ABORTED');
+      }
+      return implementation(...args);
+    });
+    const pending = generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(new Set(customRoles[name].includedPermissions)).toEqual(
+      new Set([...anycloudRole.includedPermissions, extra]),
+    );
   });
 
   it('0047/S8 never reads or grants on the default Compute service account', async () => {

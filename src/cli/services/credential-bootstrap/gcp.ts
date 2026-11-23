@@ -46,6 +46,7 @@ const roleSchema = z.object({
   etag: z.string().min(1),
   includedPermissions: z.array(z.string()).default([]),
   deleted: z.boolean().optional(),
+  stage: z.string().optional(),
 });
 const keySchema = z.object({
   type: z.literal('service_account'),
@@ -200,8 +201,7 @@ async function ensureAnycloudRole(
         if (isCode(error, 'NOT_FOUND')) return undefined;
         throw error;
       });
-  let role = await read();
-  if (!role) {
+  if (!(await read())) {
     try {
       await transport.request(
         'iam',
@@ -217,29 +217,34 @@ async function ensureAnycloudRole(
       // Another invocation created it first.
       if (!isCode(error, 'ALREADY_EXISTS')) throw error;
     }
-    role = await read();
-    if (!role)
-      throw new Error(
-        `GCP role ${GCP_ANYCLOUD_ROLE_ID} exists but can't be read; reconcile manually.`,
-      );
   }
-  if (role.deleted)
-    throw new Error(
-      `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted; undelete it or reconcile manually.`,
+  const addMissing = async () => {
+    const role = await read();
+    if (!role || role.deleted || role.stage === 'DISABLED')
+      throw new Error(
+        `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted, disabled or unreadable; undelete or enable it, or reconcile manually.`,
+      );
+    const missing = anycloudRole.includedPermissions.filter(
+      (permission) => !role.includedPermissions.includes(permission),
     );
-  const missing = anycloudRole.includedPermissions.filter(
-    (permission) => !role.includedPermissions.includes(permission),
-  );
-  if (missing.length)
-    await transport.request(
-      'iam',
-      `${path}?updateMask=includedPermissions`,
-      'PATCH',
-      {
-        includedPermissions: [...role.includedPermissions, ...missing],
-        etag: role.etag,
-      },
-    );
+    if (missing.length)
+      await transport.request(
+        'iam',
+        `${path}?updateMask=includedPermissions`,
+        'PATCH',
+        {
+          includedPermissions: [...role.includedPermissions, ...missing],
+          etag: role.etag,
+        },
+      );
+  };
+  // A concurrent change to the role makes its etag stale: read it again.
+  await withRetry(addMissing, 'GCP role update', {
+    maxAttempts: 4,
+    waitMs: 1_000,
+    jitter: false,
+    shouldRetry: (error) => isCode(error, 'ABORTED'),
+  });
   return name;
 }
 
