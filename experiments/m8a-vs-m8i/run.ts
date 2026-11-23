@@ -42,7 +42,7 @@ const JOB_TIMEOUT_MS = 40 * 60_000;
 const COST_CAP_USD = 8;
 const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
 const SPOT_REFUSAL =
-  /InsufficientInstanceCapacity|capacity-not-available|MaxSpotInstanceCountExceeded|SpotMaxPriceTooLow|UnfulfillableCapacity/;
+  /sufficient \S+ capacity in the Availability Zone you requested \(([a-z0-9-]+)\)/g;
 
 const ARMS = [
   'm8a.xlarge',
@@ -434,37 +434,44 @@ async function spot() {
           'sleep',
           '60',
         ]);
-        const vm = await until(`${id}'s VM`, SPOT_LAUNCH_WAIT_MS, async () => {
-          const [row] = await query<{
-            availability_zone: string | null;
-            created_at: number;
-          }>(
-            `SELECT availability_zone, created_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at LIMIT 1`,
-          );
-          return row;
-        }).catch(() => undefined);
+        // A VM row exists from "Creating VM"; its zone is set once EC2 has
+        // accepted the launch.
+        const outcome = await until(
+          `${id}'s VM`,
+          SPOT_LAUNCH_WAIT_MS,
+          async () => {
+            const [row] = await query<{ state: string; zone: string | null }>(
+              `SELECT w.state, (SELECT v.availability_zone FROM vms v WHERE v.workload_id = w.id AND v.availability_zone IS NOT NULL LIMIT 1) AS zone FROM workloads w WHERE w.id = '${id}'`,
+            );
+            return row?.zone || row?.state === 'failed' ? row : undefined;
+          },
+        ).catch(() => undefined);
+        const seconds = Math.round((Date.now() - submitted) / 1000);
         await cli(['terminate', id]).catch(() => undefined);
         return {
           id,
           arm,
           region,
-          launched: vm !== undefined,
-          zone: vm?.availability_zone ?? null,
-          secondsToVm: vm
-            ? Math.round((vm.created_at - submitted) / 1000)
-            : null,
+          zone: outcome?.zone ?? null,
+          outcome: outcome?.zone
+            ? `launched within ${seconds} s`
+            : (outcome?.state ?? 'no VM within 10 min'),
         };
       }),
     ),
   );
   await verifyClean(inventory);
-  // The API's capacity refusals, by Job.
+  // The zones whose capacity refusals the API logged, by Job.
   const log = readFileSync(join(state, 'api.log'), 'utf8').split('\n');
   const results = launches.map((launch) => ({
     ...launch,
-    refusals: log.filter(
-      (line) => line.includes(launch.id) && SPOT_REFUSAL.test(line),
-    ).length,
+    refusedZones: [
+      ...new Set(
+        log
+          .filter((line) => line.includes(launch.id))
+          .flatMap((line) => [...line.matchAll(SPOT_REFUSAL)].map((m) => m[1])),
+      ),
+    ],
   }));
   evidence('spot-launches.json', results);
   console.log(JSON.stringify(results, null, 2));
