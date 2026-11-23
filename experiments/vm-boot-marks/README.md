@@ -164,6 +164,28 @@ lags: with snapd masked, a second `diagnose` shows every unit slow from 10 s
 to 30 s. `setvtrgb` took 3.5 s, containerd 7–11 s and sshd 4–9 s. That points
 to the whole host being saturated, by I/O or CPU, rather than to one unit.
 
+### Interleaved A/B, ten Jobs per arm
+
+Run 45186881279 (`2ca4bab54`) ran the branch beside its baseline
+(`baseline.patch`: no early pull, Azure's user data skips its pull, and no
+snapd mask). It alternated submissions in two rounds of five per arm, on AWS
+and GCP. Every Job landed on `m8i.xlarge` or `n2-standard-4` and gave marks.
+Cleanup left 0 VMs. Network stage to container start, in seconds:
+
+| Target | Baseline median (range) | Branch median (range) | Mann-Whitney  |
+| ------ | ----------------------- | --------------------- | ------------- |
+| AWS    | 13.3 (11.8–57.2)        | 12.1 (11.6–19.3)      | U=15, p=0.008 |
+| GCP    | 43.4 (27.0–56.1)        | 38.2 (27.2–55.4)      | U=49, p=0.94  |
+
+- **AWS: faster.** The early pull starts about 0.8 s sooner on every Job.
+  Slow GHCR pulls made the tails (three baseline Jobs at 29–62 s to
+  `pull-end`, one branch Job at 23.5 s), so the median's 1.2 s overstates the
+  typical gain a little.
+- **GCP: no measured change**, either from the early pull or from masking
+  snapd, so `524c38acd` drops the mask. GCP's stall goes to a follow-up.
+- Azure's cut stands on runs 45099715079 and 45170484343. Per Job, network
+  stage to container start went from 26.5–32.9 s to 21.6–24.4 s.
+
 ## Cost
 
 About $1 (proposed): fifteen 4-vCPU VMs, each up for 2–5 minutes, at on-demand

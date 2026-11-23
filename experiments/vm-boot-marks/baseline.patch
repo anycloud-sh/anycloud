@@ -29,7 +29,7 @@ index fb96615bf..ab2de3477 100644
  docker image inspect "$AC_PULL_IMAGE" >/dev/null
  `;
 diff --git a/src/api/services/job-host.ts b/src/api/services/job-host.ts
-index 74f2963d0..1e8698180 100644
+index 5769025a9..1e8698180 100644
 --- a/src/api/services/job-host.ts
 +++ b/src/api/services/job-host.ts
 @@ -19,7 +19,7 @@ import {
@@ -52,30 +52,7 @@ index 74f2963d0..1e8698180 100644
  import {
    pullNeedsRegistryAuth,
    resolveWorkloadImage,
-@@ -168,21 +164,13 @@ const PRE_PULL_ATTEMPT_SECONDS = 300;
- /** Bounds the user data's unpigz install, short of waitForJobHostDocker's wait. */
- const JOB_HOST_UNPIGZ_SECONDS = 60;
- 
--/**
-- * Units that compete with a Job at first boot: apt's timers and
-- * unattended-upgrades, and snapd, whose seeding of GCP's google-cloud-cli
-- * snap held up systemd's other jobs, sshd's and containerd's among them, for
-- * 10-20 s (experiments/vm-boot-marks). A Job host runs no snaps.
-- */
-+/** Apt's timers and unattended-upgrades, which compete with a Job at first boot. */
- const JOB_HOST_MASKED_UNITS = [
-   'apt-daily.timer',
-   'apt-daily-upgrade.timer',
-   'apt-daily.service',
-   'apt-daily-upgrade.service',
-   'unattended-upgrades.service',
--  'snapd.socket',
--  'snapd.service',
--  'snapd.seeded.service',
- ];
- 
- /**
-@@ -305,54 +293,15 @@ start_docker() {
+@@ -297,54 +293,15 @@ start_docker() {
    return 1
  }`;
  
@@ -136,7 +113,7 @@ index 74f2963d0..1e8698180 100644
   */
  function jobHostPrepareScript({
    prePullImage,
-@@ -379,34 +328,8 @@ export -f fetch_deb install_unpigz
+@@ -371,34 +328,8 @@ export -f fetch_deb install_unpigz
  { timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz && ${bootMark('unpigz-installed')}; } >"$dir/unpigz.log" 2>&1 & unpigz=$!
  # All finish before the unit can exit, so dpkg is never cut off mid-install.
  wait "$docker"; d=$?
@@ -172,7 +149,7 @@ index 74f2963d0..1e8698180 100644
  [ "$d" = 0 ] && [ "$i" = 0 ] && start_docker 2>>"$dir/docker-install.log"
  s=$?
  [ "$s" = 0 ] && ${bootMark('docker-ready')}
-@@ -415,10 +338,24 @@ s=$?
+@@ -407,10 +338,24 @@ s=$?
  echo $s > "$dir/docker"
  ${
    prePullImage
@@ -199,14 +176,3 @@ index 74f2963d0..1e8698180 100644
  # A timed-out attempt hands over at once: its layers are what's slow.
  if [ "$rc" != 0 ] && [ "$rc" != 124 ]; then
    echo docker-fallback > "$dir/method"
-@@ -443,8 +380,8 @@ echo $rc > "$dir/pull"`
-  * cloud-init's network stage, before sshd and cloud-init's later stages. It
-  * adds the API's key for root, starts the host's preparation in its own unit
-  * (no default dependencies, so systemd starts it at once rather than after
-- * boot), and masks apt's timers and snapd, so initializeVM's first-boot
-- * settle is short. bootcmd runs on every boot; the preparation is idempotent.
-+ * boot), and masks apt's timers, so initializeVM's first-boot settle is
-+ * short. bootcmd runs on every boot; the preparation is idempotent.
-  */
- export function generateJobHostUserData(
-   sshKeys: SSHKeys,
