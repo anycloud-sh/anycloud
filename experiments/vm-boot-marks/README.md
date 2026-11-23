@@ -4,8 +4,10 @@
   45170484343 (`5b8adaed5`) measured the first cuts against it, and run
   45179926574 (`095d1965a`) added a snapd mask. Run 45186881279 (`2ca4bab54`)
   compared the branch with its baseline, interleaved, ten Jobs per arm on AWS
-  and GCP. Every run gave marks from all its Jobs and confirmed cleanup. The
-  results are below.
+  and GCP. Diagnose runs 45239655498, 45240676652 and 45241630793 traced
+  GCP's stall to its serial console, and run 45242641541 (`aed67c660`)
+  measured that cut, interleaved, ten Jobs per arm. Every run gave marks
+  from all its Jobs and confirmed cleanup. The results are below.
 - Decision record: backmesh/backmesh#97, row C14. A backmesh runner's
   queued→first step is 44 s against GitHub's 4 s; 18–22 s of it is between
   the runner VM's kernel start and its container's start, and nothing split
@@ -17,14 +19,15 @@
   the named targets (`aws`, `gcp`, `azure`); `--count=N` sets the Jobs per
   target (default 5). `--rounds=R` runs R rounds
   of them. `--baseline` also builds this checkout with `baseline.patch`
-  applied, which is `job-host.ts` and `containerd-transfer.ts` as they were
-  before the cuts (`6cff6a5c2`). It runs that API beside the branch's and
-  alternates each round's submissions between the two, so both arms meet the
-  same cloud at the same time. Regenerate the patch whenever those files
-  change: `git diff HEAD 6cff6a5c2 -- src/api/services/job-host.ts
-src/api/services/containerd-transfer.ts`. `["diagnose", "gcp"]` holds three `ubuntu:24.04`
-  Jobs running and saves each host's systemd ordering, critical chains and
-  journal (`diagnose-<id>.txt`), then cleans up.
+  applied, which removes the cut under test: now the serial-console cut
+  (`492cc664e`). It runs that API beside the branch's and alternates each
+  round's submissions between the two, so both arms meet the same cloud at
+  the same time. Regenerate the patch for each cut:
+  `git diff HEAD <cut>~1 -- src/api/services/job-host.ts`.
+  `["diagnose", "gcp"]` holds three `ubuntu:24.04` Jobs running and saves
+  each host's systemd ordering, critical chains, journal, pressure and disk
+  counters, PID 1's counters and what writes to the serial console
+  (`diagnose-<id>.txt`), then cleans up.
 
 ## What it measures
 
@@ -191,10 +194,49 @@ Cleanup left 0 VMs. Network stage to container start, in seconds:
 - Azure's cut stands on runs 45099715079 and 45170484343. Per Job, network
   stage to container start went from 26.5–32.9 s to 21.6–24.4 s.
 
+### GCP's serial console
+
+The diagnose runs read each host's counters from boot. GCP's I/O and CPU
+pressure stalls matched AWS's (about 2 s and 1 s in all), so the host was not
+saturated. The serial console was: it had sent about 370 KB, against AWS's
+30 KB, which takes about 32 s at 115200 baud. GCP's Ubuntu image has
+`/etc/rsyslog.d/90-google.conf` copy `daemon,kern.*` to `/dev/console`, and
+systemd writes each unit's status line to the same console. Once
+`secureboot-db`'s `sbkeysync --verbose` logs 75 KB at about 11 s, systemd
+waits on the console and starts about one unit every 0.7 s. containerd's
+start, the guest agent and so sshd all waited in that queue.
+
+The user data's bootcmd now removes that rule before rsyslog starts; the
+journal keeps every message. Run 45242641541 ran it beside `baseline.patch`
+(the same branch without the cut), alternating submissions in two rounds of
+five per arm. Every Job landed on `n2-standard-4`, gave marks and completed,
+and cleanup left 0 VMs. Network stage to container start, in seconds:
+
+| Target | Baseline median (range) | Branch median (range) | Mann-Whitney  |
+| ------ | ----------------------- | --------------------- | ------------- |
+| GCP    | 40.4 (28.3–47.1)        | 29.1 (24.2–37.6)      | U=14, p=0.007 |
+
+Medians of the marks, seconds after the kernel started:
+
+| Mark               | Baseline | Branch |
+| ------------------ | -------- | ------ |
+| `containerd-ready` | 21.4     | 11.3   |
+| `guest-agent`      | 19.0     | 11.9   |
+| `ssh-service`      | 23.1     | 11.6   |
+| `api-ssh`          | 28.3     | 12.8   |
+| `pull-end`         | 46.6     | 35.3   |
+| container started  | 47.3     | 36.1   |
+
+The pull, 24 s from `pull-start` to `pull-end`, is now GCP's critical path.
+It is bound by the `pd-standard` disk, whose default is a separate decision.
+The rule exists only in GCP's image, so on AWS and Azure the `rm -f` finds
+nothing and the run leaves them out.
+
 ## Cost
 
 About $1 a run of fifteen 4-vCPU VMs, each up for 2–5 minutes, at on-demand
-prices of $0.17–0.20 an hour. The interleaved run's 40 VMs cost about $3.
+prices of $0.17–0.20 an hour. The interleaved run's 40 VMs cost about $3,
+the serial-console A/B's 20 about $1.50, and the diagnose runs' 10 under $1.
 
 ## Cleanup
 
