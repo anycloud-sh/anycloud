@@ -11,8 +11,9 @@
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments` `[]`
   and `cleanup_arguments` `["cleanup"]`. `--rounds=<n>` (default 10),
   `--parallel=<n>` (rounds at a time, default 3) and `--region=<region>`
-  (default us-east-2) change the run. `report <results.json...>` rewrites
-  the report from saved results without a cloud.
+  (default us-east-2) change the run. `["spot"]` measures spot capacity
+  instead (below). `report <results.json...>` rewrites the report from saved
+  results without a cloud.
 
 ## What it measures
 
@@ -54,6 +55,17 @@ these are k6's base images and modules.
 
 Every Job's log and the raw `results.json` are in the evidence.
 
+## Spot capacity
+
+`spot` asks EC2's `GetSpotPlacementScores` for one instance of each arm in
+us-east-1, us-east-2 and us-west-2, by region and by zone. Scores run from 1
+to 10. Then it starts one spot VM Job (`alpine:3.20`, `sleep 60`) per arm and
+region through anycloud, all at once. For each, it records whether a VM
+launched within 10 minutes, the zone, the time to the VM, and how many
+capacity refusals the API logged for that Job. The results go to
+`spot-scores.json` and `spot-launches.json`. The twelve Jobs cost a few
+cents.
+
 ## Cost
 
 At most $10. The catalog's us-east-2 on-demand prices are `m8a.xlarge`
@@ -81,8 +93,9 @@ security group are not the run's; they stay.
 rounds, 40 Jobs, none failed. The VMs cost $1.41 at list price, and cleanup
 found no instance or volume left.
 
-**At the same vCPU count, m8a takes 64–88% of m8i's time on every build
-command, and costs less per build despite its 15% higher hourly price.** Every m8a run
+**At the same vCPU count, m8a takes 0.64–0.88 of m8i's time on every build
+command. Over a Job's whole VM time it costs 0.91 of m8i at xlarge and 0.98
+at 4xlarge.** The 0.88 is `uv sync` at 4xlarge, which takes under a second. Every m8a run
 beat every m8i run in each command but the sub-second `uv sync`. Seconds are
 medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
 
@@ -98,6 +111,8 @@ medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
 | typescript install | 1.7 (1.6–1.8)    | 2.6 (2.5–2.7)    | 0.66  | 1.7 (1.7–1.8)    | 2.3 (2.2–2.6)    | 0.74  |
 | **All eight**      | **102.4**        | **146.5**        | 0.70  | **67.0**         | **87.7**         | 0.76  |
 | Cost of all eight  | $0.0069          | $0.0086          | 0.80  | $0.0181          | $0.0206          | 0.88  |
+| VM time per Job    | 229 s            | 288 s            | 0.80  | 199 s            | 232 s            | 0.86  |
+| Cost per Job       | $0.0155          | $0.0169          | 0.91  | $0.0537          | $0.0547          | 0.98  |
 
 - **Significance.** Mann-Whitney p is 0.00018 for every command but
   `uv sync` (0.0073 at xlarge and 0.0017 at 4xlarge). 0.00018 is the normal
@@ -110,13 +125,18 @@ medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
   (1.68×). On every vCPU it is 3.2× at both sizes: 22,190 against 6,999,
   and 88,429 against 28,006. sysbench's prime loop gains almost nothing from
   a core's second thread, so the all-vCPU figure overstates the build gain.
-  The builds' 0.64–0.87 is the figure to quote.
+  The builds' 0.64–0.88 is the figure to quote.
 - **Size.** The gain is larger at 4 vCPUs (0.70 overall) than at 16 (0.76).
   A likely cause is that the builds' serial parts, such as linking, weigh
   more at 16 vCPUs; the run doesn't measure it.
-- **Per-Job VM time.** This covers boot, pulls, clones and the builds. The
-  medians were 229 s on `m8a.xlarge` and 288 s on `m8i.xlarge`, and 199 s
-  and 232 s at 4xlarge.
+- **Cost.** "Cost of all eight" prices only the timed commands. A Job's VM
+  time also includes boot, image pulls, clones and the untimed fetches, all of
+  which m8a's higher hourly price applies to. "Cost per Job" is the median of
+  each Job's VM time multiplied by its price, and is the figure to quote.
+- **Scope.** The figures are for on-demand capacity and say nothing about
+  spot capacity for m8a. The builds ran in containers on the VM, with
+  `cargo fetch` and `go mod download` untimed, so they aren't GitHub
+  workflow times. There is no comparison with GitHub's runners.
 
 ## Promotion criteria
 

@@ -5,6 +5,7 @@
  *
  * `run [--rounds=10] [--parallel=3] [--region=us-east-2]` starts the branch's
  * API and runs rounds of one Job per arm, `--parallel` rounds at a time.
+ * `spot` reports m8a's and m8i's spot capacity in three US regions.
  * `cleanup` restarts the API from the run's state directory, terminates the
  * inventory's Jobs and checks AWS for anything left. `report <results.json...>`
  * rewrites the report from saved results, without a cloud.
@@ -26,6 +27,7 @@ import {
   DescribeInstancesCommand,
   DescribeVolumesCommand,
   EC2Client,
+  GetSpotPlacementScoresCommand,
 } from '@aws-sdk/client-ec2';
 import { writeLocalApiToken } from '../../test/integration/helpers/local-api-token.js';
 
@@ -38,6 +40,9 @@ const API_URL = `http://127.0.0.1:${PORT}`;
 const JOB_TIMEOUT_MS = 40 * 60_000;
 // Stops starting rounds once the VMs' list-price cost reaches this.
 const COST_CAP_USD = 8;
+const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
+const SPOT_REFUSAL =
+  /InsufficientInstanceCapacity|capacity-not-available|MaxSpotInstanceCountExceeded|SpotMaxPriceTooLow|UnfulfillableCapacity/;
 
 const ARMS = [
   'm8a.xlarge',
@@ -53,7 +58,7 @@ const PAIRS: [Arm, Arm][] = [
 
 interface Inventory {
   runId: string;
-  region: string;
+  regions: string[];
   jobs: string[];
 }
 
@@ -195,7 +200,7 @@ async function runJob(
     '--credentials',
     'aws-spike',
     '--regions',
-    inventory.region,
+    inventory.regions[0]!,
     '--vm-type',
     arm,
     '--disk-size',
@@ -270,12 +275,13 @@ function shuffle<T>(items: readonly T[]): T[] {
 const costOf = (r: JobResult) =>
   ((r.vmSeconds ?? 0) / 3600) * (r.pricePerHour ?? 0);
 
-async function run(rounds: number, parallel: number, region: string) {
+/** Records an empty inventory, then starts the API with CI's AWS credentials. */
+async function setUp(regions: string[]): Promise<Inventory> {
   mkdirSync(state, { recursive: true });
   mkdirSync(output, { recursive: true });
   const inventory: Inventory = {
     runId: randomBytes(3).toString('hex'),
-    region,
+    regions,
     jobs: [],
   };
   writeFileSync(inventoryPath, JSON.stringify(inventory));
@@ -284,6 +290,11 @@ async function run(rounds: number, parallel: number, region: string) {
     AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID'),
     AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY'),
   });
+  return inventory;
+}
+
+async function run(rounds: number, parallel: number, region: string) {
+  const inventory = await setUp([region]);
   const results: JobResult[] = [];
   const save = () => {
     evidence('results.json', { region, results });
@@ -335,35 +346,127 @@ async function verifyClean(inventory: Inventory) {
     );
     return left?.n === 0 ? true : undefined;
   });
-  const ec2 = new EC2Client({ region: inventory.region });
   const filter = { Name: 'tag:anycloud_deployment', Values: inventory.jobs };
-  const instances = inventory.jobs.length
-    ? ((
-        await ec2.send(
-          new DescribeInstancesCommand({
-            Filters: [
-              filter,
-              {
-                Name: 'instance-state-name',
-                Values: ['pending', 'running', 'stopping', 'stopped'],
-              },
-            ],
-          }),
-        )
-      ).Reservations?.flatMap((r) => r.Instances ?? []) ?? [])
-    : [];
-  const volumes = inventory.jobs.length
-    ? ((await ec2.send(new DescribeVolumesCommand({ Filters: [filter] })))
-        .Volumes ?? [])
-    : [];
-  const left = {
-    instances: instances.map((i) => i.InstanceId),
-    volumes: volumes.map((v) => v.VolumeId),
-  };
+  const left = { instances: [] as string[], volumes: [] as string[] };
+  for (const region of inventory.jobs.length ? inventory.regions : []) {
+    const ec2 = new EC2Client({ region });
+    const { Reservations } = await ec2.send(
+      new DescribeInstancesCommand({
+        Filters: [
+          filter,
+          {
+            Name: 'instance-state-name',
+            Values: ['pending', 'running', 'stopping', 'stopped'],
+          },
+        ],
+      }),
+    );
+    const { Volumes } = await ec2.send(
+      new DescribeVolumesCommand({ Filters: [filter] }),
+    );
+    left.instances.push(
+      ...(Reservations ?? []).flatMap((r) =>
+        (r.Instances ?? []).map((i) => i.InstanceId!),
+      ),
+    );
+    left.volumes.push(...(Volumes ?? []).map((v) => v.VolumeId!));
+  }
   evidence('cleanup.json', { jobs: inventory.jobs.length, left });
   if (left.instances.length || left.volumes.length) {
     throw new Error(`AWS resources remain: ${JSON.stringify(left)}`);
   }
+}
+
+const SPOT_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2'];
+
+/**
+ * Spot capacity for each arm: EC2's placement scores (1–10) for one instance
+ * in each region and in each of its zones, then one real spot VM Job per arm
+ * and region through anycloud, which reports whether a VM launched, where,
+ * and the capacity refusals the API logged on the way.
+ */
+async function spot() {
+  const ec2 = new EC2Client({ region: 'us-east-1' });
+  const scores: Record<string, unknown> = {};
+  for (const arm of ARMS) {
+    for (const single of [false, true]) {
+      const { SpotPlacementScores } = await ec2.send(
+        new GetSpotPlacementScoresCommand({
+          InstanceTypes: [arm],
+          TargetCapacity: 1,
+          SingleAvailabilityZone: single,
+          RegionNames: SPOT_REGIONS,
+        }),
+      );
+      scores[`${arm} ${single ? 'zones' : 'regions'}`] = (
+        SpotPlacementScores ?? []
+      ).map((s) => `${s.AvailabilityZoneId ?? s.Region} ${s.Score}`);
+    }
+  }
+  evidence('spot-scores.json', scores);
+  console.log(JSON.stringify(scores, null, 2));
+
+  const inventory = await setUp(SPOT_REGIONS);
+  const launches = await Promise.all(
+    SPOT_REGIONS.flatMap((region) =>
+      ARMS.map(async (arm) => {
+        const id = `m8-${inventory.runId}-spot-${region.replace(/-/g, '')}-${arm.replace('.', '-')}`;
+        inventory.jobs.push(id);
+        writeFileSync(inventoryPath, JSON.stringify(inventory));
+        const submitted = Date.now();
+        await cli([
+          'job',
+          'alpine:3.20',
+          '--id',
+          id,
+          '--credentials',
+          'aws-spike',
+          '--regions',
+          region,
+          '--vm-type',
+          arm,
+          '--spot',
+          '--max-retries',
+          '0',
+          '--no-checkpoint',
+          '--',
+          'sleep',
+          '60',
+        ]);
+        const vm = await until(`${id}'s VM`, SPOT_LAUNCH_WAIT_MS, async () => {
+          const [row] = await query<{
+            availability_zone: string | null;
+            created_at: number;
+          }>(
+            `SELECT availability_zone, created_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at LIMIT 1`,
+          );
+          return row;
+        }).catch(() => undefined);
+        await cli(['terminate', id]).catch(() => undefined);
+        return {
+          id,
+          arm,
+          region,
+          launched: vm !== undefined,
+          zone: vm?.availability_zone ?? null,
+          secondsToVm: vm
+            ? Math.round((vm.created_at - submitted) / 1000)
+            : null,
+        };
+      }),
+    ),
+  );
+  await verifyClean(inventory);
+  // The API's capacity refusals, by Job.
+  const log = readFileSync(join(state, 'api.log'), 'utf8').split('\n');
+  const results = launches.map((launch) => ({
+    ...launch,
+    refusals: log.filter(
+      (line) => line.includes(launch.id) && SPOT_REFUSAL.test(line),
+    ).length,
+  }));
+  evidence('spot-launches.json', results);
+  console.log(JSON.stringify(results, null, 2));
 }
 
 async function cleanup() {
@@ -488,6 +591,8 @@ if (command === 'run') {
     Number(flag('parallel', '3')),
     flag('region', 'us-east-2'),
   );
+} else if (command === 'spot') {
+  await spot();
 } else if (command === 'cleanup') {
   await cleanup();
 } else if (command === 'report') {
