@@ -151,7 +151,7 @@ parser's rules. Both cleanups found nothing left.
 
 **m8a spot is not a viable first choice.** EC2 refused m8a in at least one
 zone on 9 of the 10 m8a launches that weren't throttled. m8i was refused on 2
-of 12. Every refused zone costs the launch 25–45 s before anycloud tries the
+of 12. Every refused zone costs the launch 25–55 s before anycloud tries the
 next, which is about the 44 s m8a saves over the eight timed xlarge commands.
 `m8a.4xlarge` got no spot VM in us-east-2, backmesh's region, in either
 sample: all three zones refused it, twice each time. This matches the 22 of
