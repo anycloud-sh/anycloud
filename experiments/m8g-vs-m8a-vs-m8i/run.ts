@@ -60,6 +60,8 @@ interface JobResult {
   ok: boolean;
   zone: string;
   uptimeSeconds: number | null;
+  /** Seconds since boot at each `MARK` the user data and guest print. */
+  marks: Record<string, number>;
   timings: Record<string, number>;
   sysbench: Record<string, number>;
   lscpu: Record<string, string>;
@@ -206,15 +208,19 @@ function userData(uploadUrl: string) {
   return `#!/bin/bash
 (sleep ${GUEST_DEADLINE_MIN * 60}; shutdown -h now) &
 export DEBIAN_FRONTEND=noninteractive
+mark() { echo "MARK $1 $(cut -d' ' -f1 /proc/uptime)"; }
 {
+  mark user-data
   # cloud-init's own apt run can hold the lock for a while after boot.
   for _ in $(seq 30); do
     apt-get update -qq && apt-get install -y -qq docker.io >/dev/null && break
     sleep 10
   done
+  mark docker-installed
   echo ${guest} | base64 -d > /guest.sh
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\
     -v /guest.sh:/guest.sh docker:27-cli sh /guest.sh
+  mark guest-done
   echo "UPTIME $(cut -d' ' -f1 /proc/uptime)"
 } > /bench.log 2>&1
 curl -sf -X PUT -H 'Content-Type: text/plain' --upload-file /bench.log '${uploadUrl}'
@@ -227,6 +233,7 @@ function parseLog(log: string) {
   const sysbench: Record<string, number> = {};
   const lscpu: Record<string, string> = {};
   const failedBuilds: string[] = [];
+  const marks: Record<string, number> = {};
   let uptime: number | null = null;
   for (const raw of log.split('\n')) {
     const line = raw.trim();
@@ -238,6 +245,8 @@ function parseLog(log: string) {
     if (cpu) lscpu[cpu[1]!] = cpu[2]!;
     const failed = /^BENCH_FAIL (\S+)/.exec(line);
     if (failed) failedBuilds.push(failed[1]!);
+    const mark = /^MARK (\S+) ([\d.]+)$/.exec(line);
+    if (mark) marks[mark[1]!] = Number(mark[2]);
     const up = /^UPTIME ([\d.]+)$/.exec(line);
     if (up) uptime = Number(up[1]);
   }
@@ -247,6 +256,7 @@ function parseLog(log: string) {
     lscpu,
     uptime,
     failedBuilds,
+    marks,
     done: log.includes('BENCH_DONE'),
   };
 }
@@ -334,6 +344,7 @@ async function run(rounds: number, parallel: number) {
       sysbench: parsed.sysbench,
       lscpu: parsed.lscpu,
       failedBuilds: parsed.failedBuilds,
+      marks: parsed.marks,
       ...(parsed.done
         ? {}
         : { failure: log.split('\n').slice(-40).join('\n') }),
@@ -642,6 +653,25 @@ function report(
     lines.push(
       `| ${arm} | ${fmt(median(up))} s | ${p.onDemand} | $${(hours * p.onDemand).toFixed(4)} | ${spotPrice} | $${(hours * spotPrice).toFixed(4)} |`,
     );
+  }
+  const phases = [...new Set(ok.flatMap((r) => Object.keys(r.marks ?? {})))];
+  if (phases.length) {
+    lines.push(
+      '',
+      "### Where a VM's time goes",
+      '',
+      'Median seconds since boot at each mark.',
+      '',
+      `| Arm | ${phases.join(' | ')} |`,
+      `| --- | ${phases.map(() => '---').join(' | ')} |`,
+    );
+    for (const arm of ARMS) {
+      const at = (phase: string) =>
+        of(arm).flatMap((r) => r.marks?.[phase] ?? []);
+      lines.push(
+        `| ${arm} | ${phases.map((p) => (at(p).length ? fmt(median(at(p))) : '')).join(' | ')} |`,
+      );
+    }
   }
   lines.push('', '### CPUs', '');
   for (const arm of ARMS) {
