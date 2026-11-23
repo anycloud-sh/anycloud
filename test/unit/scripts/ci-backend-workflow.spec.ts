@@ -734,23 +734,6 @@ describe('CI backend workflow policy', () => {
     expect(action).toContain("''|backmesh|hosted)");
     expect(action).toContain('effective_backend=${CI_BACKEND_INPUT:-backmesh}');
   });
-
-  it('installs the runner tools before the jobs that use cloud CLIs', () => {
-    const jobs: Record<string, string[]> = {
-      'e2e-cluster-cloud.yml': ['e2e-cluster-cloud'],
-      'integration.yml': ['cloud-sad-tests', 'credentials-onboarding-e2e'],
-      'tests.yml': ['credentials-integration'],
-      'release.yml': ['published-cli-canary'],
-    };
-    for (const [file, names] of Object.entries(jobs)) {
-      const blocks = jobBlocks(workflowSource(file));
-      for (const name of names) {
-        expect(blocks.get(name), `${file}:${name}`).toContain(
-          'run: bash ci/install-runner-tools.sh',
-        );
-      }
-    }
-  });
 });
 
 describe('CI base images', () => {

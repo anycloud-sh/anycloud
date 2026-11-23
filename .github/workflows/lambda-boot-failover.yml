@@ -49,8 +49,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v6

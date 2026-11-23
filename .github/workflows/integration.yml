@@ -317,8 +317,6 @@ jobs:
           node-version: '22'
           cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
 
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - name: Check cloud toolchain
         run: bash ci/check-cloud-tools.sh
 
@@ -381,8 +379,6 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -414,8 +410,6 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -547,8 +541,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
@@ -634,8 +626,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v6

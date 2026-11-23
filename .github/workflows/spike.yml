@@ -56,9 +56,6 @@ jobs:
           GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
           GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
         run: npx tsx ci/gcp-roles.ts
-      # Cloud CLIs, which an experiment may use.
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - name: Run experiment
         timeout-minutes: 85
         env: &spike-environment

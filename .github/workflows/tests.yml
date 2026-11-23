@@ -246,8 +246,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - name: Check cloud toolchain
         run: bash ci/check-cloud-tools.sh
 

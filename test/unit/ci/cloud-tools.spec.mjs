@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 const script = fileURLToPath(
   new URL('../../../ci/check-cloud-tools.sh', import.meta.url),
 );
-const tools = ['aws', 'az', 'gcloud', 'gsutil'];
+const tools = ['aws', 'az', 'gcloud'];
 const directories = [];
 
 afterEach(() => {
@@ -55,7 +55,6 @@ describe('CI cloud toolchain prerequisite', () => {
       'aws --version',
       'az version --output none',
       'gcloud --version',
-      'gsutil version',
     ]);
   });
 
