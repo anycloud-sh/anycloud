@@ -25,7 +25,9 @@ export function bootMark(name: string): string {
 /**
  * `systemd_marks`: systemd's times for the steps before the user data:
  * userspace, cloud-init's first stage, the network online, cloud-init's
- * network stage (cloud-init.service before cloud-init 24.3) and sshd. A unit
+ * network stage (cloud-init.service before cloud-init 24.3) and sshd; then
+ * what can hold up a login: sshd's own start (socket-activated on Ubuntu
+ * 24.04), logins opening, and GCP's guest agent and snapd's seeding. A unit
  * that never started reports 0 and is left out.
  */
 export const SYSTEMD_BOOT_MARKS = `systemd_mark() {
@@ -41,6 +43,10 @@ systemd_marks() {
     systemd_mark cloud-init-network cloud-init.service InactiveExitTimestampMonotonic
   systemd_mark sshd ssh.socket ActiveEnterTimestampMonotonic ||
     systemd_mark sshd ssh.service ActiveEnterTimestampMonotonic
+  systemd_mark ssh-service ssh.service ActiveEnterTimestampMonotonic
+  systemd_mark user-sessions systemd-user-sessions.service ActiveEnterTimestampMonotonic
+  systemd_mark guest-agent google-guest-agent.service ActiveEnterTimestampMonotonic
+  systemd_mark snapd-seeded snapd.seeded.service ActiveEnterTimestampMonotonic
 }`;
 
 /**
