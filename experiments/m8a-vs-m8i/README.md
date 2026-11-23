@@ -138,10 +138,61 @@ medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
   `cargo fetch` and `go mod download` untimed, so they aren't GitHub
   workflow times. There is no comparison with GitHub's runners.
 
+### Spot capacity
+
+Two `spot` samples, both on 2026-11-23 at 11:20 and 11:34 PST:
+[run 45247427638](https://github.com/anycloud-sh/anycloud/actions/runs/45247427638)
+and [run 45249880642](https://github.com/anycloud-sh/anycloud/actions/runs/45249880642).
+In the first, twelve launches at once hit the account's RunInstances rate
+limit twice, so the second spaced them 10 s apart. The second's report step
+failed on the API's non-JSON migration lines, which is fixed since. Both
+samples' figures below come from the retained `api.log`, with the fixed
+parser's rules. Both cleanups found nothing left.
+
+**m8a spot is not a viable first choice.** EC2 refused m8a in at least one
+zone on 9 of the 10 m8a launches that weren't throttled. m8i was refused on 2
+of 12. Every refused zone costs the launch 25–45 s before anycloud tries the
+next, which is about the 44 s m8a saves over the eight timed xlarge commands.
+`m8a.4xlarge` got no spot VM in us-east-2, backmesh's region, in either
+sample: all three zones refused it, twice each time. This matches the 22 of
+24 m8a spot refusals in us-east-2 that backmesh's `classes.ts` cites.
+
+| Arm           | Region    | Launch (sample 1, 2)   | Zones refused (sample 1, 2) |
+| ------------- | --------- | ---------------------- | --------------------------- |
+| `m8a.xlarge`  | us-east-1 | 82 s, 24 s             | 2, 1                        |
+| `m8a.xlarge`  | us-east-2 | 143 s (throttled), 3 s | 0, 0                        |
+| `m8a.xlarge`  | us-west-2 | 78 s, 37 s             | 2, 1                        |
+| `m8a.4xlarge` | us-east-1 | 55 s, 37 s             | 1, 1                        |
+| `m8a.4xlarge` | us-east-2 | none, none             | 3, 3 (each tried twice)     |
+| `m8a.4xlarge` | us-west-2 | 31 s, 38 s             | 1, 1                        |
+| `m8i.xlarge`  | us-east-1 | 4 s, 94 s              | 0, 2                        |
+| `m8i.xlarge`  | us-east-2 | 3 s, 3 s               | 0, 0                        |
+| `m8i.xlarge`  | us-west-2 | 4 s, 3 s               | 0, 0                        |
+| `m8i.4xlarge` | us-east-1 | 128 s, 3 s             | 5, 0                        |
+| `m8i.4xlarge` | us-east-2 | 3 s, 2 s               | 0, 0                        |
+| `m8i.4xlarge` | us-west-2 | 4 s, 3 s               | 0, 0                        |
+
+Launch is the time from the API resolving the target to the VM
+initializing. The refusals were `InsufficientInstanceCapacity`, except one
+`Unsupported` in us-east-1e.
+
+EC2's placement scores (1–10, for one instance) agreed in both samples. By
+region, `m8a.xlarge` scored 1 in all three and `m8i.xlarge` scored 3.
+`m8a.4xlarge` scored 3 in us-east-1 and us-west-2 and 1 in us-east-2;
+`m8i.4xlarge` scored the same, except us-east-2 rose from 1 to 3 in the
+second sample. By zone, `m8a.xlarge` scored 1 everywhere, and `m8i.xlarge`
+scored 3 in most us-west-2 zones and in use2-az3.
+
+Both samples are from one time of day. Re-dispatching `["spot"]` at other
+times would show whether m8a spot frees up. On-demand m8a launched all 20 of
+its Jobs at once in the build run.
+
 ## Promotion criteria
 
-None. A clear m8a gain would become a separate backmesh change that prefers
-m8a for its labels, filed with these figures.
+None. m8a's build gain is clear, but its spot capacity isn't there in these
+samples, so no backmesh change is proposed for spot classes. Putting m8a
+first for backmesh's on-demand classes would be a separate backmesh change,
+filed with these figures.
 
 ## Deletion criteria
 

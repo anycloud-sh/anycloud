@@ -470,7 +470,8 @@ async function spot() {
   // moved on from, the last zone's capacity refusal, and rate limiting.
   const log = readFileSync(join(state, 'api.log'), 'utf8')
     .split('\n')
-    .filter(Boolean)
+    // The API also prints its migrations, which aren't JSON.
+    .filter((line) => line.startsWith('{'))
     .map(
       (line) =>
         JSON.parse(line) as {
