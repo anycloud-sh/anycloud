@@ -1,6 +1,7 @@
 # VM boot marks
 
-- Status: Written, not yet run. The coordinator dispatches it after review.
+- Status: Run 45099715079 (`2f01caa2d`, 2026-11-23): all 15 Jobs gave
+  marks, and cleanup was confirmed. The results are below.
 - Decision record: backmesh/backmesh#97, row C14. A backmesh runner's
   queued→first step is 44 s against GitHub's 4 s; 18–22 s of it is between
   the runner VM's kernel start and its container's start, and nothing split
@@ -54,6 +55,43 @@ The user data's pieces and the API's run side by side; `container-run` waits
 for both. `jobs.json` has every Job's marks, the bytes its pull fetched
 (`pull-bytes`), its image-pull telemetry and the API's step times. The run
 fails unless every target has marks from all its Jobs.
+
+## Result
+
+Run 45099715079 (`2f01caa2d`, 2026-11-23). Each value is the median of five
+Jobs, in seconds; the marks are seconds after the kernel started.
+
+| Piece                         | AWS  | GCP  | Azure |
+| ----------------------------- | ---- | ---- | ----- |
+| kernel to user data           | 5.5  | 7.8  | 8.1   |
+| Docker install and start      | 5.1  | 17.3 | 8.5   |
+| image pull (user data)        | 8.9  | 19.7 | —     |
+| kernel to sshd                | 7.8  | 10.7 | 14.5  |
+| sshd to the API reaching SSH  | 1.5  | 14.6 | 2.5   |
+| cloud-init status --wait      | 2.5  | 2.7  | 1.2   |
+| API host setup                | 1.2  | 2.0  | 2.9   |
+| pull wait to docker run       | 5.0  | 15.6 | 16.5  |
+| docker run to start           | 0.1  | 0.1  | 2.2   |
+| **kernel to container start** | 20.1 | 47.7 | 38.6  |
+
+The pulls fetched 777 MB on AWS and 753 MB on GCP.
+
+- **AWS (20.1 s): the user data is the critical path.** It starts at 5.5 s,
+  then installs and starts Docker (5.1 s, of which 4.4 s is the static
+  archive's download and unpack) and pulls the image (8.9 s). The API's
+  steps end at 16.0 s and then wait for the pull.
+- **GCP (47.7 s): something stalls for about 15 s.** Docker's archive lands at
+  11.2 s, but `start_docker` doesn't finish until 25.8 s. The API's first SSH
+  command runs at 25.4 s, although sshd was up at 10.7 s. On every Job the two
+  land within 0.6 s of each other, which points to one blocker for both. After
+  it, the pull takes 19.7 s, twice AWS's time for the same bytes.
+- **Azure (38.6 s): the pull is on the API's path.** `Standard_D4ads_v5` has a
+  resource disk, so the user data skips its pull (initializeVM moves the image
+  stores there). The pull then runs over SSH from `api-pull` (20.7 s) and takes
+  16.5 s. The boot itself is slow: the network is online at 14.5 s.
+- `cloud-init status --wait` and the API's host setup are off the critical
+  path on AWS and GCP, where the API waits for the pull anyway. On Azure they
+  matter only until the pull moves into the user data.
 
 ## Cost
 
