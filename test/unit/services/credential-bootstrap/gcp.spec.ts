@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'crypto';
+import anycloudRole from '../../../../src/shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   gcpOperator,
@@ -12,7 +13,6 @@ import {
 import {
   generateGCPCredentials,
   getGCPGenerationPreview,
-  GCP_CONTROLLER_PROJECT_ROLES,
   GCP_GENERATION_DESCRIPTION_PREFIX,
   validateGCPGenerationName,
 } from '../../../../src/cli/services/credential-bootstrap/gcp.js';
@@ -60,6 +60,12 @@ type Policy = {
   }>;
 };
 let policies: Record<string, Policy>;
+type CustomRole = typeof anycloudRole & {
+  name: string;
+  deleted?: boolean;
+  etag?: string;
+};
+let customRoles: Record<string, CustomRole>;
 const request = vi.fn<GCPTransport['request']>();
 afterEach(() => vi.useRealTimers());
 
@@ -68,6 +74,7 @@ beforeEach(() => {
   account = undefined;
   keys = [];
   projectNumber = project.projectNumber;
+  customRoles = {};
   policies = Object.fromEntries(
     ['iam', 'projects'].map((service) => [
       service,
@@ -88,6 +95,22 @@ beforeEach(() => {
   request.mockImplementation(async (service, path, method = 'GET', body) => {
     if (service === 'projects' && method === 'GET')
       return { ...project, projectNumber };
+    if (path.includes('/roles')) {
+      const roles = `/v1/projects/${project.projectId}/roles`;
+      if (path === roles && method === 'POST') {
+        const { roleId, role } = body as { roleId: string; role: CustomRole };
+        const name = `projects/${project.projectId}/roles/${roleId}`;
+        if (customRoles[name])
+          throw new GCPBootstrapError('Exists', 409, 'ALREADY_EXISTS');
+        customRoles[name] = { ...role, name };
+        return structuredClone(customRoles[name]);
+      }
+      const name = path.slice(4).split('?')[0]!;
+      const role = customRoles[name];
+      if (!role) throw new GCPBootstrapError('Missing role', 404, 'NOT_FOUND');
+      if (method === 'PATCH') Object.assign(role, body);
+      return structuredClone({ etag: 'current-etag', ...role });
+    }
     if (path.endsWith(':getIamPolicy'))
       return structuredClone(policies[service]);
     if (path.endsWith(':setIamPolicy')) {
@@ -150,10 +173,22 @@ beforeEach(() => {
   });
 });
 
+/** Every permission the project's IAM policy grants `email` through roles. */
+const grantedPermissions = (email: string) =>
+  policies.projects.bindings
+    .filter(
+      ({ members, condition }) =>
+        !condition && members.includes(`serviceAccount:${email}`),
+    )
+    .flatMap(({ role }) => customRoles[role]?.includedPermissions ?? []);
+
+/** Writes this invocation owns; the shared role is checked on its own. */
 const mutations = () =>
   request.mock.calls.filter(
     ([, path, method]) =>
-      method !== undefined && !path.endsWith(':getIamPolicy'),
+      method !== undefined &&
+      !path.endsWith(':getIamPolicy') &&
+      !path.includes('/roles'),
   );
 
 describe('0038/S3 GCP generation ownership', () => {
@@ -285,7 +320,7 @@ describe('0038/S3 GCP generation ownership', () => {
     expect(generated.ownership).toMatchObject({
       uniqueId: accountId,
       keyIds: [keyId],
-      projectRoles: [...GCP_CONTROLLER_PROJECT_ROLES],
+      projectRoles: [`projects/${project.projectId}/roles/anycloud`],
     });
     expect(account?.description).toBe(
       `${GCP_GENERATION_DESCRIPTION_PREFIX}${generated.ownership.invocationId}`,
@@ -311,6 +346,124 @@ describe('0038/S3 GCP generation ownership', () => {
       `/v1/projects/${project.projectId}/serviceAccounts/${accountId}/keys/${keyId}`,
       `/v1/projects/${project.projectId}/serviceAccounts/${accountId}`,
     ]);
+  });
+
+  it.each([
+    ['a project without the role', undefined],
+    [
+      'a role from an older release',
+      { includedPermissions: ['compute.instances.get'] },
+    ],
+  ])(
+    'grants a generated key every permission the published role names, in %s',
+    async (_case, existing) => {
+      const name = `projects/${project.projectId}/roles/anycloud`;
+      if (existing) customRoles[name] = { ...anycloudRole, ...existing, name };
+      const generated = await generateGCPCredentials(
+        await getGCPGenerationPreview(operator, 'test'),
+      );
+      // VM Jobs make their own network on first use (RFC 0053), so a key
+      // missing compute.networks.create can't launch one.
+      expect(new Set(grantedPermissions(generated.clientEmail))).toEqual(
+        new Set(anycloudRole.includedPermissions),
+      );
+      await generated.cleanup();
+      expect(grantedPermissions(generated.clientEmail)).toEqual([]);
+      // Other credentials and role connections may share the role.
+      expect(customRoles[name]?.deleted).toBeUndefined();
+    },
+  );
+
+  it('only adds permissions to an existing role, under its etag', async () => {
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    // A newer release's or an administrator's permission.
+    const extra = 'compute.instances.stop';
+    customRoles[name] = {
+      ...anycloudRole,
+      name,
+      includedPermissions: ['compute.instances.get', extra],
+      etag: 'role-etag',
+    };
+    await generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    expect(new Set(customRoles[name].includedPermissions)).toEqual(
+      new Set([...anycloudRole.includedPermissions, extra]),
+    );
+    expect(
+      request.mock.calls.filter(([, , method]) => method === 'PATCH'),
+    ).toEqual([
+      [
+        'iam',
+        `/v1/${name}?updateMask=includedPermissions`,
+        'PATCH',
+        expect.objectContaining({ etag: 'role-etag' }),
+      ],
+    ]);
+  });
+
+  it('reads and updates a role another generation created first', async () => {
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    const implementation = request.getMockImplementation()!;
+    request.mockImplementation(async (...args) => {
+      // The other invocation's create lands between this one's read and create.
+      if (args[2] === 'POST' && args[1].endsWith('/roles'))
+        customRoles[name] = {
+          ...anycloudRole,
+          name,
+          includedPermissions: ['compute.instances.get'],
+        };
+      return implementation(...args);
+    });
+    const generated = await generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    expect(new Set(grantedPermissions(generated.clientEmail))).toEqual(
+      new Set(anycloudRole.includedPermissions),
+    );
+  });
+
+  it.each([{ deleted: true }, { stage: 'DISABLED' }])(
+    'refuses a role with %j before creating the account',
+    async (state) => {
+      const name = `projects/${project.projectId}/roles/anycloud`;
+      customRoles[name] = { ...anycloudRole, name, ...state };
+      await expect(
+        generateGCPCredentials(await getGCPGenerationPreview(operator, 'test')),
+      ).rejects.toThrow('GCP role anycloud is deleted, disabled or unreadable');
+      expect(account).toBeUndefined();
+      expect(mutations()).toEqual([]);
+    },
+  );
+
+  it('reads the role again after a concurrent change makes its etag stale', async () => {
+    vi.useFakeTimers();
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    // A newer release added a permission after this invocation's first read.
+    const extra = 'compute.instances.stop';
+    customRoles[name] = {
+      ...anycloudRole,
+      name,
+      includedPermissions: ['compute.instances.get'],
+    };
+    const implementation = request.getMockImplementation()!;
+    let conflicted = false;
+    request.mockImplementation(async (...args) => {
+      if (args[2] === 'PATCH' && !conflicted) {
+        conflicted = true;
+        customRoles[name]!.includedPermissions.push(extra);
+        throw new GCPBootstrapError('Stale etag', 409, 'ABORTED');
+      }
+      return implementation(...args);
+    });
+    const pending = generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(new Set(customRoles[name].includedPermissions)).toEqual(
+      new Set([...anycloudRole.includedPermissions, extra]),
+    );
   });
 
   it('0047/S8 never reads or grants on the default Compute service account', async () => {

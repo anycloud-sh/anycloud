@@ -1,5 +1,6 @@
 import { createPrivateKey, randomUUID } from 'crypto';
 import { z } from 'zod';
+import anycloudRole from '../../../shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
 import { errorMessage } from '../../../shared/log-diagnostics.js';
 import { withRetry } from '../../../shared/utils.js';
 import type { GCPOperator } from './gcp-cli-runner.js';
@@ -9,12 +10,8 @@ import {
   type GCPTransport,
 } from './gcp-transport.js';
 
-// RFC 0038 preserves the pre-removal generator's grants (6b3c2b6c).
-export const GCP_CONTROLLER_PROJECT_ROLES = [
-  'roles/compute.instanceAdmin.v1',
-  'roles/compute.securityAdmin',
-  'roles/storage.admin',
-] as const;
+// The published role, as role connections get it (gcp-anycloud-role.json).
+export const GCP_ANYCLOUD_ROLE_ID = 'anycloud';
 export const GCP_GENERATION_DESCRIPTION_PREFIX =
   'AnyCloud credential generation ';
 
@@ -45,6 +42,12 @@ const policySchema = z
       .default([]),
   })
   .passthrough();
+const roleSchema = z.object({
+  etag: z.string().min(1),
+  includedPermissions: z.array(z.string()).default([]),
+  deleted: z.boolean().optional(),
+  stage: z.string().optional(),
+});
 const keySchema = z.object({
   type: z.literal('service_account'),
   project_id: z.string(),
@@ -174,6 +177,75 @@ async function assertOwnedAccount(
       'GCP service-account ownership changed; refusing to mutate it.',
     );
   }
+}
+
+/**
+ * Create the project's published role, or add the published permissions an
+ * existing one lacks, as the role-connection setup does. Other credentials and
+ * role connections may share it, so this never removes a permission and
+ * cleanup never deletes it.
+ */
+async function ensureAnycloudRole(
+  transport: GCPTransport,
+  projectId: string,
+): Promise<string> {
+  const name = `projects/${projectId}/roles/${GCP_ANYCLOUD_ROLE_ID}`;
+  const path = `/v1/${name}`;
+  const isCode = (error: unknown, code: string) =>
+    error instanceof GCPBootstrapError && error.code === code;
+  const read = () =>
+    transport
+      .request('iam', path)
+      .then((role) => decode(role, roleSchema))
+      .catch((error: unknown) => {
+        if (isCode(error, 'NOT_FOUND')) return undefined;
+        throw error;
+      });
+  if (!(await read())) {
+    try {
+      await transport.request(
+        'iam',
+        `/v1/projects/${projectId}/roles`,
+        'POST',
+        {
+          roleId: GCP_ANYCLOUD_ROLE_ID,
+          role: anycloudRole,
+        },
+      );
+      return name;
+    } catch (error) {
+      // Another invocation created it first.
+      if (!isCode(error, 'ALREADY_EXISTS')) throw error;
+    }
+  }
+  const addMissing = async () => {
+    const role = await read();
+    if (!role || role.deleted || role.stage === 'DISABLED')
+      throw new Error(
+        `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted, disabled or unreadable; undelete or enable it, or reconcile manually.`,
+      );
+    const missing = anycloudRole.includedPermissions.filter(
+      (permission) => !role.includedPermissions.includes(permission),
+    );
+    if (missing.length)
+      await transport.request(
+        'iam',
+        `${path}?updateMask=includedPermissions`,
+        'PATCH',
+        {
+          includedPermissions: [...role.includedPermissions, ...missing],
+          etag: role.etag,
+        },
+      );
+  };
+  // A concurrent change to the role makes its etag stale: read it again.
+  await withRetry(addMissing, 'GCP role update', {
+    maxAttempts: 4,
+    waitMs: 1_000,
+    jitter: false,
+    shouldRetry: (error) => isCode(error, 'ABORTED'),
+  });
+  return name;
 }
 
 async function changeGrants(
@@ -355,6 +427,8 @@ export async function generateGCPCredentials(
   const invocationId = randomUUID();
   let owned: GCPGenerationOwnership | undefined;
   try {
+    // Before the account, so an operator who can't manage roles leaves nothing.
+    const role = await ensureAnycloudRole(transport, operator.projectId);
     const account = decode(
       await transport.request(
         'iam',
@@ -386,8 +460,8 @@ export async function generateGCPCredentials(
       keyIds: [],
       projectRoles: [],
     };
-    await changeGrants(transport, owned, GCP_CONTROLLER_PROJECT_ROLES, true);
-    owned.projectRoles.push(...GCP_CONTROLLER_PROJECT_ROLES);
+    await changeGrants(transport, owned, [role], true);
+    owned.projectRoles.push(role);
     await assertOwnedAccount(transport, owned, true);
     const response = decode(
       await transport.request(

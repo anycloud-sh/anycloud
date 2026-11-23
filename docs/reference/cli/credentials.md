@@ -247,14 +247,17 @@ with both `--gcloud-account` and `--project-id`.
 Enable the IAM, Cloud Resource Manager, Compute Engine, Cloud Storage, and
 Security Token Service APIs
 beforehand. The operator needs permission to inspect the project and service
-accounts, create service accounts and keys, update the project IAM policy, and
-delete the created resources for cleanup.
+accounts, create and update project custom roles (`roles/iam.roleAdmin`),
+create service accounts and keys, update the project IAM policy, and delete the
+created resources for cleanup.
 
-The new service account, `anycloud-<credential-name>`, receives project roles
-`roles/compute.instanceAdmin.v1`, `roles/compute.securityAdmin`, and
-`roles/storage.admin`. Anycloud attaches no service account to its VMs, so it
-needs no grant on the default Compute service account. An administrator can
-grant the narrower [`Anycloud` role](#gcp-permissions) instead.
+The new service account, `anycloud-<credential-name>`, receives only the
+project's [`Anycloud` role](#gcp-permissions) (`projects/PROJECT_ID/roles/anycloud`).
+Generation creates the role, or adds the published permissions an existing one
+lacks; it never removes one. Cleanup removes the grant and keeps the role, which other
+credentials and role connections may share. Anycloud attaches no service
+account to its VMs, so it needs no grant on the default Compute service
+account.
 
 Generation names use 1–21 lowercase letters, digits, or hyphens, ending in a
 letter or digit. Generation cannot overwrite an existing credential or service
@@ -460,7 +463,7 @@ one, ask whoever administers the account for either of these:
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | AWS      | Access keys for a dedicated Anycloud IAM user with [`AnycloudAccess`](#aws-permissions)                                                          | Create IAM users, add inline policies, and create access keys ([operator permissions](#aws-operator-permissions)) |
 | Azure    | The application ID, secret, subscription ID, and tenant ID for a service principal with Contributor or the [`Anycloud` role](#azure-permissions) | Create Entra applications and assign roles on the subscription                                                    |
-| GCP      | A JSON key for a dedicated Anycloud service account with the [`Anycloud` role](#gcp-permissions)                                                 | Create service accounts and keys, and grant project IAM roles                                                     |
+| GCP      | A JSON key for a dedicated Anycloud service account with the [`Anycloud` role](#gcp-permissions)                                                 | Create custom roles, service accounts and keys, and grant project IAM roles                                       |
 
 The identity needs the grants listed for generation under its provider above.
 With credentials, rerun `anycloud credentials new` and enter them. With

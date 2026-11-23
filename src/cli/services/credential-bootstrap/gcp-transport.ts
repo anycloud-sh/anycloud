@@ -22,7 +22,7 @@ export interface GCPTransport {
   request(
     service: GCPService,
     path: string,
-    method?: 'GET' | 'POST' | 'DELETE',
+    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     body?: unknown,
   ): Promise<unknown>;
 }
