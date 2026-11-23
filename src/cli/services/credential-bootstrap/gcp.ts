@@ -43,6 +43,7 @@ const policySchema = z
   })
   .passthrough();
 const roleSchema = z.object({
+  etag: z.string().min(1),
   includedPermissions: z.array(z.string()).default([]),
   deleted: z.boolean().optional(),
 });
@@ -178,9 +179,10 @@ async function assertOwnedAccount(
 }
 
 /**
- * Create the project's published role, or bring an existing one up to the
- * published permissions, as the role-connection setup does. It may be shared
- * with other credentials and role connections, so cleanup never deletes it.
+ * Create the project's published role, or add the published permissions an
+ * existing one lacks, as the role-connection setup does. Other credentials and
+ * role connections may share it, so this never removes a permission and
+ * cleanup never deletes it.
  */
 async function ensureAnycloudRole(
   transport: GCPTransport,
@@ -188,32 +190,55 @@ async function ensureAnycloudRole(
 ): Promise<string> {
   const name = `projects/${projectId}/roles/${GCP_ANYCLOUD_ROLE_ID}`;
   const path = `/v1/${name}`;
-  let role: z.infer<typeof roleSchema>;
-  try {
-    role = decode(await transport.request('iam', path), roleSchema);
-  } catch (error) {
-    if (!(error instanceof GCPBootstrapError) || error.code !== 'NOT_FOUND')
-      throw error;
-    await transport.request('iam', `/v1/projects/${projectId}/roles`, 'POST', {
-      roleId: GCP_ANYCLOUD_ROLE_ID,
-      role: anycloudRole,
-    });
-    return name;
+  const isCode = (error: unknown, code: string) =>
+    error instanceof GCPBootstrapError && error.code === code;
+  const read = () =>
+    transport
+      .request('iam', path)
+      .then((role) => decode(role, roleSchema))
+      .catch((error: unknown) => {
+        if (isCode(error, 'NOT_FOUND')) return undefined;
+        throw error;
+      });
+  let role = await read();
+  if (!role) {
+    try {
+      await transport.request(
+        'iam',
+        `/v1/projects/${projectId}/roles`,
+        'POST',
+        {
+          roleId: GCP_ANYCLOUD_ROLE_ID,
+          role: anycloudRole,
+        },
+      );
+      return name;
+    } catch (error) {
+      // Another invocation created it first.
+      if (!isCode(error, 'ALREADY_EXISTS')) throw error;
+    }
+    role = await read();
+    if (!role)
+      throw new Error(
+        `GCP role ${GCP_ANYCLOUD_ROLE_ID} exists but can't be read; reconcile manually.`,
+      );
   }
   if (role.deleted)
     throw new Error(
       `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted; undelete it or reconcile manually.`,
     );
-  const published = [...anycloudRole.includedPermissions].sort();
-  if (
-    JSON.stringify([...role.includedPermissions].sort()) !==
-    JSON.stringify(published)
-  )
+  const missing = anycloudRole.includedPermissions.filter(
+    (permission) => !role.includedPermissions.includes(permission),
+  );
+  if (missing.length)
     await transport.request(
       'iam',
       `${path}?updateMask=includedPermissions`,
       'PATCH',
-      { includedPermissions: published },
+      {
+        includedPermissions: [...role.includedPermissions, ...missing],
+        etag: role.etag,
+      },
     );
   return name;
 }

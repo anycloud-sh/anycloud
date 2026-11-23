@@ -247,14 +247,14 @@ with both `--gcloud-account` and `--project-id`.
 Enable the IAM, Cloud Resource Manager, Compute Engine, Cloud Storage, and
 Security Token Service APIs
 beforehand. The operator needs permission to inspect the project and service
-accounts, create and update project custom roles, create service accounts and
-keys, update the project IAM policy, and delete the created resources for
-cleanup.
+accounts, create and update project custom roles (`roles/iam.roleAdmin`),
+create service accounts and keys, update the project IAM policy, and delete the
+created resources for cleanup.
 
 The new service account, `anycloud-<credential-name>`, receives only the
 project's [`Anycloud` role](#gcp-permissions) (`projects/PROJECT_ID/roles/anycloud`).
-Generation creates the role, or updates an existing one to the published
-permissions. Cleanup removes the grant and keeps the role, which other
+Generation creates the role, or adds the published permissions an existing one
+lacks; it never removes one. Cleanup removes the grant and keeps the role, which other
 credentials and role connections may share. Anycloud attaches no service
 account to its VMs, so it needs no grant on the default Compute service
 account.

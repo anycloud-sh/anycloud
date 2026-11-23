@@ -6,6 +6,7 @@ import { join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { JWT } from 'google-auth-library';
 import anycloudRole from '../../../../src/shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
+import { errorMessage } from '../../../../src/shared/log-diagnostics.js';
 import { withRetry } from '../../../../src/shared/utils.js';
 import {
   spawnCliInPty,
@@ -215,7 +216,8 @@ describe('GCP live credentials onboarding terminal', () => {
         expect(typeof saved.privateKey).toBe('string');
         const privateKey = String(saved.privateKey);
         cli.registerSecret(privateKey);
-        // A new grant takes a few minutes to reach every IAM check.
+        // Google's token endpoint can refuse a new key, and a new grant
+        // reach IAM checks, minutes after creation.
         const notYetGranted = new Error('Grant not yet visible');
         let missing: string[] = [];
         await withRetry(
@@ -233,7 +235,9 @@ describe('GCP live credentials onboarding terminal', () => {
             waitMs: 10_000,
             exponentialBackoff: false,
             jitter: false,
-            shouldRetry: (error) => error === notYetGranted,
+            shouldRetry: (error) =>
+              error === notYetGranted ||
+              /invalid_grant/.test(errorMessage(error)),
           },
         ).catch((error: unknown) => {
           if (error !== notYetGranted) throw error;

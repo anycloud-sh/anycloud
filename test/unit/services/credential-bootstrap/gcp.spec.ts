@@ -109,7 +109,7 @@ beforeEach(() => {
       const role = customRoles[name];
       if (!role) throw new GCPBootstrapError('Missing role', 404, 'NOT_FOUND');
       if (method === 'PATCH') Object.assign(role, body);
-      return structuredClone(role);
+      return structuredClone({ etag: 'current-etag', ...role });
     }
     if (path.endsWith(':getIamPolicy'))
       return structuredClone(policies[service]);
