@@ -410,7 +410,8 @@ async function spot() {
   const launches = await Promise.all(
     SPOT_REGIONS.flatMap((region) =>
       ARMS.map(async (arm) => {
-        const id = `m8-${inventory.runId}-spot-${region.replace(/-/g, '')}-${arm.replace('.', '-')}`;
+        // Such as m8s-1a2b3c-use2-a4; IDs are at most 28 characters.
+        const id = `m8s-${inventory.runId}-${region.replace(/^us-(\w)\w+-/, 'us$1')}-${arm[2]}${arm.includes('4x') ? 4 : 1}`;
         inventory.jobs.push(id);
         writeFileSync(inventoryPath, JSON.stringify(inventory));
         const submitted = Date.now();
