@@ -1091,7 +1091,7 @@ function parse(trial: Trial, text: string) {
     if (name === 'clock') {
       trial.kernelAt = Number(values[0]) - Number(values[1]);
     } else if (
-      !/^(prepare-|step-rc$|error$)/.test(name) &&
+      !/^(prepare-(method|pull|docker)|step-rc|error)$/.test(name) &&
       values.length === 1 &&
       /^-?\d+(\.\d+)?$/.test(values[0]!)
     ) {
