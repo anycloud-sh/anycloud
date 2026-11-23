@@ -381,7 +381,7 @@ async function runInstance(
   spot: boolean,
   calls: Call[],
   client = region.fast,
-): Promise<Launched | null> {
+): Promise<Launched | Call> {
   for (let throttled = 0; ; throttled++) {
     const started = Date.now();
     const call: Call = {
@@ -430,7 +430,7 @@ async function runInstance(
         await sleep(1_000);
         continue;
       }
-      return null;
+      return call;
     }
   }
 }
@@ -444,9 +444,10 @@ async function sequential(
   for (const { region, type, zones } of candidates) {
     for (const subnet of region.subnets.get(type) ?? []) {
       if (zones && !zones.includes(subnet.zone)) continue;
-      const launched = await runInstance(region, type, subnet, spot, calls);
-      if (launched) return launched;
-      if (!ZONE_REFUSALS.has(calls.at(-1)!.code!)) break;
+      // Its own result: parallel chains share `calls`.
+      const result = await runInstance(region, type, subnet, spot, calls);
+      if ('id' in result) return result;
+      if (!ZONE_REFUSALS.has(result.code!)) break;
     }
   }
   return null;
@@ -659,7 +660,10 @@ async function anycloudTrial(
       ? {
           id,
           region: region.name,
-          zone: row.zone,
+          // The API stores the zone's suffix.
+          zone: row.zone.startsWith(row.region)
+            ? row.zone
+            : `${row.region}${row.zone.slice(-1)}`,
           type: row.vm_type,
           spot: true,
           at: acceptedAt,
@@ -822,7 +826,7 @@ async function attribute(regions: Region[], trials: Trial[], probes: Call[]) {
     calls,
     region.gateway,
   );
-  if (launched) await terminate(regions, [launched]);
+  if ('id' in launched) await terminate(regions, [launched]);
   probes.push(
     ...calls.map((c) => ({ ...c, op: 'RunInstances (gateway client)' })),
   );
