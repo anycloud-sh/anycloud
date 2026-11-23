@@ -1,6 +1,6 @@
 {
   "title": "Anycloud CI",
-  "description": "What CI's own harness, cluster seed and catalog do with CI's GCP account beyond the published Anycloud role (ci/gcp-anycloud-role.ts).",
+  "description": "What CI's own harness, cluster seed and catalog do with CI's GCP account beyond the published Anycloud role (src/shared/cloud-policies/gcp-anycloud-role.json); ci/gcp-roles.ts applies both.",
   "stage": "GA",
   "includedPermissions": [
     "compute.disks.get",

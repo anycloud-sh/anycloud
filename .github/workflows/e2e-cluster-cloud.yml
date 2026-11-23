@@ -173,6 +173,11 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      # CI's standing GCP account holds the published Anycloud role, CI's own
+      # role and no predefined runtime role; bind them before anything uses it.
+      - name: Bind CI's GCP account to its roles
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Log in to GHCR
         uses: ./.github/actions/ghcr-login
         with:
@@ -289,13 +294,6 @@ jobs:
           gcloud config set project "$GCP_PROJECT_ID" --quiet
           az login --service-principal --username "$AZURE_CLIENT_ID" --password "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
           az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-
-      # The hosted stage's GCP workloads run as CI's standing account, which
-      # holds the published Anycloud role, CI's own role and no predefined
-      # runtime role.
-      - name: Bind CI's GCP account to its roles
-        if: ${{ !inputs.sweep_only }}
-        run: npx tsx ci/gcp-roles.ts
 
       - name: Run E2E test - e2e-cluster-cloud
         id: tests

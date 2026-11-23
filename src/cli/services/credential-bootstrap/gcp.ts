@@ -242,9 +242,9 @@ export async function ensureGCPRole(
   };
   // A concurrent change to the role makes its etag stale: read it again.
   await withRetry(addMissing, 'GCP role update', {
-    maxAttempts: 4,
+    maxAttempts: 8,
     waitMs: 1_000,
-    jitter: false,
+    maxWaitMs: 8_000,
     shouldRetry: (error) => isCode(error, 'ABORTED'),
   });
   return name;

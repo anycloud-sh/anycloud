@@ -50,6 +50,12 @@ jobs:
           cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
+      - name: Bind CI's GCP account to its roles
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+        run: npx tsx ci/gcp-roles.ts
       # Cloud CLIs, which an experiment may use.
       - name: Install runner tools
         run: bash ci/install-runner-tools.sh

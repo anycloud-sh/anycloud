@@ -48,6 +48,13 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      - name: Bind CI's GCP account to its roles
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Clone current catalog for regression validation
         env:
           CATALOG_DEPLOY_KEY: ${{ secrets.CATALOG_DEPLOY_KEY }}

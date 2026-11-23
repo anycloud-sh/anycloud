@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { loadYaml } from '@kubernetes/client-node';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import anycloudRole from '../../../src/shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
 import ciRole from '../../../ci/gcp-ci-role.json' with { type: 'json' };
@@ -166,6 +166,50 @@ describe("CI's GCP account on the published Anycloud role and CI's own role", ()
     ]);
   });
 
+  it('on main, removes permissions the files no longer list', async () => {
+    const state = {
+      roles: {
+        [product]: [
+          ...anycloudRole.includedPermissions,
+          'compute.instances.reset',
+        ],
+        [ci]: ciRole.includedPermissions,
+      },
+      bindings: [
+        { role: product, members: [member] },
+        { role: ci, members: [member] },
+      ],
+    };
+    const { transport, writes } = fakeProject(state);
+    await bindCIRoles(transport, projectId, email, { exact: true });
+    expect(writes).toEqual(['update anycloud']);
+    expect(state.roles).toEqual(documents);
+  });
+
+  it('elsewhere, keeps them and warns', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const state = {
+      roles: {
+        [product]: anycloudRole.includedPermissions,
+        [ci]: [...ciRole.includedPermissions, 'compute.instances.reset'],
+      },
+      bindings: [
+        { role: product, members: [member] },
+        { role: ci, members: [member] },
+      ],
+    };
+    const { transport, writes } = fakeProject(state);
+    await bindCIRoles(transport, projectId, email);
+    expect(writes).toEqual([]);
+    expect(state.roles[ci]).toContain('compute.instances.reset');
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^::warning::.*anycloud_ci.*compute\.instances\.reset/u,
+      ),
+    );
+    log.mockRestore();
+  });
+
   it("keeps the product's permissions out of CI's own role", () => {
     expect(
       ciRole.includedPermissions.filter((p) =>
@@ -182,20 +226,35 @@ describe("CI's GCP account on the published Anycloud role and CI's own role", ()
   });
 });
 
-describe('workflows bind the roles before GCP members run', () => {
-  it.each([
-    ['e2e-job.yml', 'e2e-job-vitest'],
-    ['e2e-cluster-cloud.yml', 'e2e-cluster-cloud'],
-  ])('%s', (file, job) => {
-    const steps = (
-      loadYaml(readFileSync(`.github/workflows/${file}`, 'utf8')) as {
-        jobs: Record<string, { steps: Array<{ id?: string; run?: string }> }>;
-      }
-    ).jobs[job].steps;
+describe('every job holding the GCP key binds the roles before using it', () => {
+  type Step = { id?: string; run?: string; env?: object; uses?: string };
+  const jobs = readdirSync('.github/workflows').flatMap((file) =>
+    Object.entries(
+      (
+        loadYaml(readFileSync(`.github/workflows/${file}`, 'utf8')) as {
+          jobs: Record<string, { env?: object; steps?: Step[] }>;
+        }
+      ).jobs,
+    )
+      .filter(([, job]) => JSON.stringify(job).includes('GCP_PRIVATE_KEY'))
+      .map(([name, job]) => [`${file} ${name}`, job.steps ?? []] as const),
+  );
+
+  it('finds them', () => expect(jobs.length).toBeGreaterThan(15));
+
+  it.each(jobs)('%s', (_, steps) => {
     const bind = steps.findIndex((step) =>
       step.run?.includes('npx tsx ci/gcp-roles.ts'),
     );
     expect(bind).toBeGreaterThan(-1);
-    expect(bind).toBeLessThan(steps.findIndex((step) => step.id === 'tests'));
+    const firstUse = steps.findIndex(
+      (step, index) =>
+        index !== bind &&
+        (step.id === 'tests' ||
+          /GCP_|gcloud|e2e\.sh|ci\/(?:cleanup|canary|run-spike)|fetch-catalog|yarn tsx|npx tsx/u.test(
+            JSON.stringify({ run: step.run, env: step.env }),
+          )),
+    );
+    expect(bind).toBeLessThan(firstUse === -1 ? Infinity : firstUse);
   });
 });

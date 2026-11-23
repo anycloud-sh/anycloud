@@ -67,6 +67,11 @@ export async function createGCPTransport(
   if (!token || /\s/.test(token)) {
     throw new GCPBootstrapError('gcloud returned an invalid access token.');
   }
+  return gcpTransport(token);
+}
+
+/** Dispatch each IAM write exactly once with an access token. */
+export function gcpTransport(token: string): GCPTransport {
   return {
     async request(service, path, method = 'GET', body) {
       if (!path.startsWith('/v1/projects/') || path.includes('://')) {
