@@ -139,10 +139,10 @@ jobs:
         run: bash ci/aws-account-redaction.sh mask
 
       # GCP members run as CI's standing account, which holds the published
-      # Anycloud role and no predefined runtime role.
-      - name: Bind CI's GCP account to the published Anycloud role
+      # Anycloud role, CI's own role and no predefined runtime role.
+      - name: Bind CI's GCP account to its roles
         if: steps.select.outputs.selected == 'true' && startsWith(matrix.test, 'gcp-')
-        run: npx tsx ci/gcp-anycloud-role.ts
+        run: npx tsx ci/gcp-roles.ts
 
       - name: Run Job - ${{ matrix.test }}
         id: tests

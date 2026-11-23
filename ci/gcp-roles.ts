@@ -1,11 +1,12 @@
 /**
- * Puts CI's standing GCP identity on the published Anycloud role, the one a
- * customer's role connection or `--generate` key gets: create the role or add
- * the permissions it lacks, then bind the account to it. GCP runs hold no
- * predefined runtime role, so a permission missing from
+ * Puts CI's standing GCP account on two custom roles and nothing else at
+ * runtime: the published Anycloud role a customer's role connection or
+ * `--generate` key gets, and `anycloud_ci` (gcp-ci-role.json) for what CI's
+ * harness, cluster seed and catalog do beyond the product. Each is created or
+ * given the permissions it lacks, never narrowed, so a permission missing from
  * gcp-anycloud-role.json fails CI as it would fail a customer.
  *
- * Usage: npx tsx ci/gcp-anycloud-role.ts (GCP_PROJECT_ID, GCP_CLIENT_EMAIL,
+ * Usage: npx tsx ci/gcp-roles.ts (GCP_PROJECT_ID, GCP_CLIENT_EMAIL and
  * GCP_PRIVATE_KEY set).
  */
 
@@ -15,7 +16,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import anycloudRole from '../src/shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
-import { ensureAnycloudRole } from '../src/cli/services/credential-bootstrap/gcp.js';
+import ciRole from './gcp-ci-role.json' with { type: 'json' };
+import { ensureGCPRole } from '../src/cli/services/credential-bootstrap/gcp.js';
 import {
   gcpOperator,
   runGcloud,
@@ -32,12 +34,15 @@ interface Policy {
   bindings?: Array<{ role: string; members: string[]; condition?: unknown }>;
 }
 
-export async function bindAnycloudRole(
+export async function bindCIRoles(
   transport: GCPTransport,
   projectId: string,
   email: string,
 ): Promise<void> {
-  const role = await ensureAnycloudRole(transport, projectId);
+  const roles = [
+    await ensureGCPRole(transport, projectId),
+    await ensureGCPRole(transport, projectId, 'anycloud_ci', ciRole),
+  ];
   const member = `serviceAccount:${email}`;
   const path = `/v1/projects/${projectId}`;
   const bindOnce = async () => {
@@ -48,37 +53,43 @@ export async function bindAnycloudRole(
       { options: { requestedPolicyVersion: 3 } },
     )) as Policy;
     const bindings = policy.bindings ?? [];
-    const binding = bindings.find((b) => b.role === role && !b.condition);
-    if (binding?.members.includes(member)) return;
-    if (binding) binding.members.push(member);
-    else bindings.push({ role, members: [member] });
+    let changed = false;
+    for (const role of roles) {
+      const binding = bindings.find((b) => b.role === role && !b.condition);
+      if (binding?.members.includes(member)) continue;
+      changed = true;
+      if (binding) binding.members.push(member);
+      else bindings.push({ role, members: [member] });
+    }
+    if (!changed) return;
     await transport.request('projects', `${path}:setIamPolicy`, 'POST', {
       policy: { ...policy, bindings },
     });
   };
   // Parallel GCP members bind at once; a stale etag reads the policy again.
-  await withRetry(bindOnce, 'GCP Anycloud role binding', {
+  await withRetry(bindOnce, 'GCP CI role binding', {
     maxAttempts: 6,
     waitMs: 500,
     shouldRetry: (error) =>
       error instanceof GCPBootstrapError && error.code === 'ABORTED',
   });
   // A new binding takes a while to take effect; the members start right after.
-  const notYet = new Error(
-    `${email} does not yet hold every ${role} permission`,
-  );
+  const permissions = [
+    ...anycloudRole.includedPermissions,
+    ...ciRole.includedPermissions,
+  ];
+  const notYet = new Error(`${email} does not yet hold every CI permission`);
   await withRetry(
     async () => {
-      const { permissions = [] } = (await transport.request(
+      const { permissions: held = [] } = (await transport.request(
         'projects',
         `${path}:testIamPermissions`,
         'POST',
-        { permissions: anycloudRole.includedPermissions },
+        { permissions },
       )) as { permissions?: string[] };
-      if (permissions.length !== anycloudRole.includedPermissions.length)
-        throw notYet;
+      if (held.length !== permissions.length) throw notYet;
     },
-    'GCP Anycloud role propagation',
+    'GCP CI role propagation',
     {
       maxAttempts: 20,
       waitMs: 1_000,
@@ -94,7 +105,7 @@ async function main(): Promise<void> {
   const privateKey = process.env.GCP_PRIVATE_KEY?.replace(/\\n/gu, '\n');
   if (!projectId || !email || !privateKey)
     throw new Error('Set GCP_PROJECT_ID, GCP_CLIENT_EMAIL and GCP_PRIVATE_KEY');
-  const root = await mkdtemp(join(tmpdir(), 'gcp-anycloud-role-'));
+  const root = await mkdtemp(join(tmpdir(), 'gcp-roles-'));
   try {
     const key = join(root, 'key.json');
     await writeFile(
@@ -113,12 +124,12 @@ async function main(): Promise<void> {
       ['auth', 'activate-service-account', email, `--key-file=${key}`],
       environment,
     );
-    await bindAnycloudRole(
+    await bindCIRoles(
       await createGCPTransport(gcpOperator(email, projectId, environment)),
       projectId,
       email,
     );
-    console.log(`${email} holds projects/${projectId}/roles/anycloud`);
+    console.log(`${email} holds the anycloud and anycloud_ci roles`);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
