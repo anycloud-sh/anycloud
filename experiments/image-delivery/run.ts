@@ -1062,7 +1062,7 @@ async function collect(ip: string): Promise<string> {
   const deadline = Date.now() + 15 * 60_000;
   for (;;) {
     try {
-      return await ssh(ip, SSH_COLLECT, 11 * 60_000);
+      return await ssh(ip, SSH_COLLECT, 12.5 * 60_000);
     } catch (error) {
       if (Date.now() > deadline) throw error;
       await sleep(3_000);
@@ -1177,15 +1177,28 @@ const FIGURES: (keyof Omit<Figures, 'ok'>)[] = [
 ];
 
 function summarize(trials: Trial[]) {
-  const byCloud: Record<string, Record<string, unknown>> = {};
+  const byCloud: Record<
+    string,
+    {
+      arms: Record<string, Record<string, number | null>>;
+      landed: Record<string, string>;
+    }
+  > = {};
   for (const cloud of [...new Set(trials.map((t) => t.cloud))]) {
     const arms: Record<string, Record<string, number | null>> = {};
+    const landed: Record<string, string> = {};
     for (const arm of [...new Set(trials.map((t) => t.arm))]) {
       const all = trials.filter((t) => t.cloud === cloud && t.arm === arm);
       const ok = all.map(figures).filter((f) => f.ok);
+      // Each VM type the arm's trials landed on, and how many.
+      const types = new Map<string, number>();
+      for (const t of all)
+        types.set(t.vmType ?? '—', (types.get(t.vmType ?? '—') ?? 0) + 1);
+      landed[arm] = [...types].map(([type, n]) => `${type}×${n}`).join(' ');
       arms[arm] = {
         trials: all.length,
         ok: ok.length,
+        // Each VM type a trial landed on, and how many.
         ...Object.fromEntries(
           FIGURES.map((key) => [
             key,
@@ -1205,22 +1218,20 @@ function summarize(trials: Trial[]) {
             : null;
       }
     }
-    byCloud[cloud] = arms;
+    byCloud[cloud] = { arms, landed };
   }
   return byCloud;
 }
 
 function table(summary: ReturnType<typeof summarize>): string {
   const rows = [
-    '| Cloud | Arm | ok | pull s | pull MB | MB/s | kernel→container s | first step s | launch→kernel s | launch→step end s | win s |',
-    '| ----- | --- | -- | ------ | ------- | ---- | ------------------ | ------------ | --------------- | ----------------- | ----- |',
+    '| Cloud | Arm | VM types | ok | pull s | pull MB | MB/s | kernel→container s | first step s | launch→kernel s | launch→step end s | win s |',
+    '| ----- | --- | -------- | -- | ------ | ------- | ---- | ------------------ | ------------ | --------------- | ----------------- | ----- |',
   ];
-  for (const [cloud, arms] of Object.entries(summary))
-    for (const [arm, v] of Object.entries(
-      arms as Record<string, Record<string, number | null>>,
-    ))
+  for (const [cloud, { arms, landed }] of Object.entries(summary))
+    for (const [arm, v] of Object.entries(arms))
       rows.push(
-        `| ${cloud} | ${arm} | ${v.ok}/${v.trials} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${v.kernelToContainer ?? '—'} | ${v.firstStep ?? '—'} | ${v.launchToKernel ?? '—'} | ${v.launchToStepEnd ?? '—'} | ${v.launchToStepEndWin ?? '—'} |`,
+        `| ${cloud} | ${arm} | ${landed[arm]} | ${v.ok}/${v.trials} | ${v.pull ?? '—'} | ${v.pullMB ?? '—'} | ${v.pullMBps ?? '—'} | ${v.kernelToContainer ?? '—'} | ${v.firstStep ?? '—'} | ${v.launchToKernel ?? '—'} | ${v.launchToStepEnd ?? '—'} | ${v.launchToStepEndWin ?? '—'} |`,
       );
   return `${rows.join('\n')}\n`;
 }
