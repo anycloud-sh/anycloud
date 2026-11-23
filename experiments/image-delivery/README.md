@@ -166,4 +166,6 @@ None. A lever this run favours gets its own design row and its own A/B.
 
 ## Deletion criteria
 
-Delete this directory once the image-delivery decision it informs is made.
+Delete this directory once the image-delivery decision it informs is made,
+with the permissions `ci/gcp-ci-role.json` holds for it (its description
+names them).
