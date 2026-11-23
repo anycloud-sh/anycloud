@@ -41,8 +41,8 @@ const JOB_TIMEOUT_MS = 40 * 60_000;
 // Stops starting rounds once the VMs' list-price cost reaches this.
 const COST_CAP_USD = 8;
 const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
-const SPOT_REFUSAL =
-  /sufficient \S+ capacity in the Availability Zone you requested \(([a-z0-9-]+)\)/g;
+// The last zone's refusal, which ends the launch attempt.
+const LAST_ZONE_REFUSAL = /Availability Zone you requested \(([a-z0-9-]+)\)/;
 
 const ARMS = [
   'm8a.xlarge',
@@ -409,11 +409,16 @@ async function spot() {
   const inventory = await setUp(SPOT_REGIONS);
   const launches = await Promise.all(
     SPOT_REGIONS.flatMap((region) =>
-      ARMS.map(async (arm) => {
+      ARMS.map(async (arm, index) => {
         // Such as m8s-1a2b3c-use2-a4; IDs are at most 28 characters.
         const id = `m8s-${inventory.runId}-${region.replace(/^us-(\w)\w+-/, 'us$1')}-${arm[2]}${arm.includes('4x') ? 4 : 1}`;
         inventory.jobs.push(id);
         writeFileSync(inventoryPath, JSON.stringify(inventory));
+        // Spaced out: twelve launches at once hit the account's
+        // RunInstances rate limit in run 45247427638.
+        await sleep(
+          (SPOT_REGIONS.indexOf(region) * ARMS.length + index) * 10_000,
+        );
         const submitted = Date.now();
         await cli([
           'job',
@@ -461,17 +466,33 @@ async function spot() {
     ),
   );
   await verifyClean(inventory);
-  // The zones whose capacity refusals the API logged, by Job.
-  const log = readFileSync(join(state, 'api.log'), 'utf8').split('\n');
+  // EC2's refusals the API logged, by Job: `<zone> <code>` for each zone it
+  // moved on from, the last zone's capacity refusal, and rate limiting.
+  const log = readFileSync(join(state, 'api.log'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          message: string;
+          id?: string;
+          vmId?: string;
+          zone?: string;
+          code?: string;
+          error?: { message?: string };
+        },
+    );
   const results = launches.map((launch) => ({
     ...launch,
-    refusedZones: [
-      ...new Set(
-        log
-          .filter((line) => line.includes(launch.id))
-          .flatMap((line) => [...line.matchAll(SPOT_REFUSAL)].map((m) => m[1])),
-      ),
-    ],
+    refusals: log
+      .filter((e) => e.id === launch.id || e.vmId?.startsWith(`${launch.id}-`))
+      .flatMap((e) => {
+        if (e.zone && e.code) return [`${e.zone} ${e.code}`];
+        const error = e.error?.message ?? '';
+        const zone = LAST_ZONE_REFUSAL.exec(error)?.[1];
+        if (zone) return [`${zone} InsufficientInstanceCapacity`];
+        return error.includes('throttled') ? ['RunInstances throttled'] : [];
+      }),
   }));
   evidence('spot-launches.json', results);
   console.log(JSON.stringify(results, null, 2));
