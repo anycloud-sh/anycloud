@@ -12,9 +12,6 @@
   `["run"]` and `cleanup_arguments` `["cleanup"]`. `--rounds=N` (default 20),
   `--workers=W` per size (default 2) and `--minutes=M` (default 70, when no
   new round starts) bound the run.
-- Promotion: none; the fix's own unit test covers the behaviour.
-- Deletion: after the fix merges and this README's results are copied into
-  its pull request.
 
 ## What it does
 
@@ -40,3 +37,12 @@ runner's temp directory; re-run `["cleanup"]` from the same job to resume.
 ## Results
 
 Pending.
+
+## Promotion criteria
+
+None: the fix's unit test in `test/unit/services/gateways/aws-jobs-network.spec.ts`
+covers the behaviour through the SDK's own retry path.
+
+## Deletion criteria
+
+Delete once the fix has merged and these results are in its pull request.
