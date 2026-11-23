@@ -127,6 +127,36 @@ Run 45170484343 against run 45099715079, medians in seconds:
 - The GCP pull itself is slow: 15–19 s to fetch and unpack 758 MB and 5 s to
   sync, against AWS's 5.5 s and 2.8 s.
 
+### GCP's stall, and snapd masked
+
+`diagnose` (runs 45174806678 and 45181016123) held three GCP Jobs running
+and read each host's systemd evidence:
+
+- `google-guest-agent.service` declares `Before=sshd.service`, Ubuntu's alias
+  for `ssh.service`, so sshd starts only after the guest agent (about 19 s).
+  Connections wait in `ssh.socket` until then. This ordering is by design: the
+  agent regenerates the host keys.
+- From 10 s to 30 s, systemd started about one unit every 0.67 s.
+  `snapd.seeded` took 20 s seeding the `google-cloud-cli` snap, and
+  `cloud-config.service` waits for it. containerd's start sat in that queue.
+
+`095d1965a` masks snapd from bootcmd, as apt's timers already are. In run
+45179926574, every Azure VM's uptime jumped about 54 minutes between
+`cloud-init-local` and the network stage, as a pre-provisioned VM's does. So
+this table counts from `cloud-init-network` to the container's start, in
+seconds (medians of five):
+
+| Run                   | AWS  | GCP  | Azure |
+| --------------------- | ---- | ---- | ----- |
+| 45099715079 (before)  | 14.9 | 40.0 | 31.5  |
+| 45170484343 (pull)    | 12.5 | 40.6 | 23.4  |
+| 45179926574 (+ snapd) | 12.6 | 35.4 | 23.1  |
+
+Masking snapd cut GCP by 5 s and changed nothing on AWS or Azure. GCP still
+lags: with snapd masked, a second `diagnose` shows every unit slow from 10 s
+to 30 s. `setvtrgb` took 3.5 s, containerd 7–11 s and sshd 4–9 s. That points
+to the whole host being saturated, by I/O or CPU, rather than to one unit.
+
 ## Cost
 
 About $1 (proposed): fifteen 4-vCPU VMs, each up for 2–5 minutes, at on-demand
