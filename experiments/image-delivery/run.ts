@@ -1022,15 +1022,17 @@ async function pullHeader(
 
 // ---------------------------------------------------------------- collecting
 
-const SSH_COLLECT = `for _ in $(seq 600); do [ -e /run/spike/done ] && break; sleep 1; done
-[ -e /run/spike/done ] || exit 3
+const SSH_COLLECT = `for _ in $(seq 660); do [ -e /run/spike/done ] && break; sleep 1; done
+[ -e /run/spike/done ] || echo "unfinished yes"
 echo "clock $(date +%s.%N) $(cut -d' ' -f1 /proc/uptime)"
 cat ${BOOT_MARKS_PATH}
 for f in method pull docker; do echo "prepare-$f $(cat /run/anycloud/prepare/$f 2>/dev/null || echo -)"; done
 echo "step-rc $(cat /run/spike/step-rc 2>/dev/null || echo -)"
 echo "error $(cat /run/spike/error 2>/dev/null || echo -)"
 echo ---
-tail -c 1500 /run/spike/step.log /run/spike/pull.log /run/spike/stargz.log /run/anycloud/prepare/pull.log 2>/dev/null || true`;
+tail -c 1500 /run/spike/step.log /run/spike/pull.log /run/spike/stargz.log /run/anycloud/prepare/pull.log /run/anycloud/prepare/docker-install.log 2>/dev/null
+[ -e /run/spike/done ] || systemctl status anycloud-prepare spike-measure --no-pager 2>&1 | tail -30
+true`;
 
 function ssh(ip: string, command: string, timeoutMs: number) {
   return sh(
@@ -1088,7 +1090,11 @@ function parse(trial: Trial, text: string) {
     const [name = '', ...values] = line.trim().split(/\s+/);
     if (name === 'clock') {
       trial.kernelAt = Number(values[0]) - Number(values[1]);
-    } else if (values.length === 1 && /^-?\d+(\.\d+)?$/.test(values[0]!)) {
+    } else if (
+      !/^(prepare-|step-rc$|error$)/.test(name) &&
+      values.length === 1 &&
+      /^-?\d+(\.\d+)?$/.test(values[0]!)
+    ) {
       trial.marks[name] = Number(values[0]);
     } else if (name) {
       trial.facts[name] = values.join(' ');
