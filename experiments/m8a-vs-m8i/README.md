@@ -60,7 +60,7 @@ Every Job's log and the raw `results.json` are in the evidence.
 `spot` asks EC2's `GetSpotPlacementScores` for one instance of each arm in
 us-east-1, us-east-2 and us-west-2, by region and by zone. Scores run from 1
 to 10. Then it starts one spot VM Job (`alpine:3.20`, `sleep 60`) per arm and
-region through anycloud, all at once. For each, it records whether a VM
+region through anycloud, 10 s apart. For each, it records whether a VM
 launched within 10 minutes, the zone, the time to the VM, and how many
 capacity refusals the API logged for that Job. The results go to
 `spot-scores.json` and `spot-launches.json`. The twelve Jobs cost a few
@@ -149,7 +149,7 @@ failed on the API's non-JSON migration lines, which is fixed since. Both
 samples' figures below come from the retained `api.log`, with the fixed
 parser's rules. Both cleanups found nothing left.
 
-**m8a spot is not a viable first choice.** EC2 refused m8a in at least one
+**In these two samples, m8a spot is not a viable first choice.** EC2 refused m8a in at least one
 zone on 9 of the 10 m8a launches that weren't throttled. m8i was refused on 2
 of 12. Every refused zone costs the launch 25–55 s before anycloud tries the
 next, which is about the 44 s m8a saves over the eight timed xlarge commands.
@@ -163,7 +163,7 @@ sample: all three zones refused it, twice each time. This matches the 22 of
 | `m8a.xlarge`  | us-east-2 | 143 s (throttled), 3 s | 0, 0                        |
 | `m8a.xlarge`  | us-west-2 | 78 s, 37 s             | 2, 1                        |
 | `m8a.4xlarge` | us-east-1 | 55 s, 37 s             | 1, 1                        |
-| `m8a.4xlarge` | us-east-2 | none, none             | 3, 3 (each tried twice)     |
+| `m8a.4xlarge` | us-east-2 | none (throttled), none | 3, 3 (each tried twice)     |
 | `m8a.4xlarge` | us-west-2 | 31 s, 38 s             | 1, 1                        |
 | `m8i.xlarge`  | us-east-1 | 4 s, 94 s              | 0, 2                        |
 | `m8i.xlarge`  | us-east-2 | 3 s, 3 s               | 0, 0                        |
@@ -172,8 +172,12 @@ sample: all three zones refused it, twice each time. This matches the 22 of
 | `m8i.4xlarge` | us-east-2 | 3 s, 2 s               | 0, 0                        |
 | `m8i.4xlarge` | us-west-2 | 4 s, 3 s               | 0, 0                        |
 
-Launch is the time from the API resolving the target to the VM
-initializing. The refusals were `InsufficientInstanceCapacity`, except one
+The table counts 10 of 12 m8a launches as not throttled, but sample 1's
+throttled `m8a.4xlarge` in us-east-2 was also refused in all three zones.
+Launch is the time from the API resolving the target to the VM initializing,
+read from `api.log`. `spot-launches.json` records something different: the
+time from submitting the Job to the first poll that saw the VM's zone, polled
+every 10 s. The refusals were `InsufficientInstanceCapacity`, except one
 `Unsupported` in us-east-1e.
 
 EC2's placement scores (1–10, for one instance) agreed in both samples. By
