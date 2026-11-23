@@ -200,7 +200,7 @@ async function setUp(arm: Arm, inventory: Inventory) {
   });
   await Promise.all(
     REGIONS.map(async (region) => {
-      const id = `ab-${inventory.runId}-${arm}-warm-${region}`;
+      const id = `ab-${inventory.runId}-${arm}-w-${region.replace(/^us-(\w)\w+-/, 'us$1')}`;
       record(inventory, arm, id);
       await cli(arm, [
         'job',
