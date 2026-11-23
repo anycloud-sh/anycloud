@@ -1,8 +1,11 @@
 # VM boot marks
 
 - Status: Run 45099715079 (`2f01caa2d`, 2026-11-23) split the time. Run
-  45170484343 (`5b8adaed5`) measured the first cuts against it. Both runs gave
-  marks from all 15 Jobs, and both confirmed cleanup. The results are below.
+  45170484343 (`5b8adaed5`) measured the first cuts against it, and run
+  45179926574 (`095d1965a`) added a snapd mask. Run 45186881279 (`2ca4bab54`)
+  compared the branch with its baseline, interleaved, ten Jobs per arm on AWS
+  and GCP. Every run gave marks from all its Jobs and confirmed cleanup. The
+  results are below.
 - Decision record: backmesh/backmesh#97, row C14. A backmesh runner's
   queued→first step is 44 s against GitHub's 4 s; 18–22 s of it is between
   the runner VM's kernel start and its container's start, and nothing split
@@ -177,7 +180,9 @@ Cleanup left 0 VMs. Network stage to container start, in seconds:
 | AWS    | 13.3 (11.8–57.2)        | 12.1 (11.6–19.3)      | U=15, p=0.008 |
 | GCP    | 43.4 (27.0–56.1)        | 38.2 (27.2–55.4)      | U=49, p=0.94  |
 
-- **AWS: faster.** The early pull starts about 0.8 s sooner on every Job.
+- **AWS: faster.** The branch arm ran at `2ca4bab54`, with the snapd mask
+  still in, but run 45179926574 showed the mask changes nothing on AWS, so
+  this gain is the early pull's. It starts about 0.8 s sooner on every Job.
   Slow GHCR pulls made the tails (three baseline Jobs at 29–62 s to
   `pull-end`, one branch Job at 23.5 s), so the median's 1.2 s overstates the
   typical gain a little.
@@ -188,8 +193,8 @@ Cleanup left 0 VMs. Network stage to container start, in seconds:
 
 ## Cost
 
-About $1 (proposed): fifteen 4-vCPU VMs, each up for 2–5 minutes, at on-demand
-prices of $0.17–0.20 an hour.
+About $1 a run of fifteen 4-vCPU VMs, each up for 2–5 minutes, at on-demand
+prices of $0.17–0.20 an hour. The interleaved run's 40 VMs cost about $3.
 
 ## Cleanup
 
