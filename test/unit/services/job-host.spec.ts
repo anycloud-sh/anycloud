@@ -65,7 +65,7 @@ function parse(userData: string): { bootcmd: string; script: string } {
 }
 
 describe('generateJobHostUserData', () => {
-  it('adds the key, starts the preparation in its own unit and masks apt and snapd', () => {
+  it('adds the key, starts the preparation in its own unit and masks apt', () => {
     const { bootcmd, script } = parse(
       generateJobHostUserData(keys, host(IMAGE)),
     );
@@ -77,10 +77,6 @@ describe('generateJobHostUserData', () => {
     );
     expect(bootcmd).toMatch(
       /systemctl mask --now apt-daily\.timer .*unattended-upgrades\.service/,
-    );
-    // snapd's first-boot seeding holds up systemd's other jobs on GCP.
-    expect(bootcmd).toMatch(
-      /systemctl mask --now .*snapd\.socket snapd\.service snapd\.seeded\.service/,
     );
     // The unit starts before apt is masked, so masking never delays it.
     expect(bootcmd.indexOf('systemd-run')).toBeLessThan(

@@ -168,21 +168,13 @@ const PRE_PULL_ATTEMPT_SECONDS = 300;
 /** Bounds the user data's unpigz install, short of waitForJobHostDocker's wait. */
 const JOB_HOST_UNPIGZ_SECONDS = 60;
 
-/**
- * Units that compete with a Job at first boot: apt's timers and
- * unattended-upgrades, and snapd, whose seeding of GCP's google-cloud-cli
- * snap held up systemd's other jobs, sshd's and containerd's among them, for
- * 10-20 s (experiments/vm-boot-marks). A Job host runs no snaps.
- */
+/** Apt's timers and unattended-upgrades, which compete with a Job at first boot. */
 const JOB_HOST_MASKED_UNITS = [
   'apt-daily.timer',
   'apt-daily-upgrade.timer',
   'apt-daily.service',
   'apt-daily-upgrade.service',
   'unattended-upgrades.service',
-  'snapd.socket',
-  'snapd.service',
-  'snapd.seeded.service',
 ];
 
 /**
@@ -443,8 +435,8 @@ echo $rc > "$dir/pull"`
  * cloud-init's network stage, before sshd and cloud-init's later stages. It
  * adds the API's key for root, starts the host's preparation in its own unit
  * (no default dependencies, so systemd starts it at once rather than after
- * boot), and masks apt's timers and snapd, so initializeVM's first-boot
- * settle is short. bootcmd runs on every boot; the preparation is idempotent.
+ * boot), and masks apt's timers, so initializeVM's first-boot settle is
+ * short. bootcmd runs on every boot; the preparation is idempotent.
  */
 export function generateJobHostUserData(
   sshKeys: SSHKeys,
