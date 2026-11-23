@@ -567,6 +567,7 @@ systemctl show -p ShowStatus -p LogTarget -p LogLevel
 systemd-analyze cat-config systemd/journald.conf | grep -v '^#' | grep .
 systemctl cat secureboot-db.service 2>&1 | grep -vE '^#|^$'
 grep -rh -A3 '^output' /etc/cloud/cloud.cfg /etc/cloud/cloud.cfg.d 2>/dev/null
+grep -rn 'console\\|ttyS' /etc/rsyslog.conf /etc/rsyslog.d /etc/default/instance_configs.cfg /etc/systemd/system.conf.d 2>/dev/null
 echo; systemd-analyze
 for unit in ssh.service containerd.service docker.service google-guest-agent.service snapd.seeded.service anycloud-prepare.service; do
   echo; echo "== $unit"
