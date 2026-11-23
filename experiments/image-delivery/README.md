@@ -42,32 +42,36 @@ layers). VMs are `backmesh-4`-shaped and on demand, 100 GB root disk:
 | GCP   | us-east4  | `n2-standard-4`, `n2d-standard-4`        | pd-standard (the API's default, which the product leaves on n2) |
 | Azure | eastus2   | `Standard_D4ads_v5`                      | Standard_LRS; the image stores go on the resource disk          |
 
-| Arm            | What changes                                                                                                                                                                                       |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ghcr`         | Nothing: the baseline, from GHCR.                                                                                                                                                                  |
-| `regional`     | The same digest, copied into ECR private / Artifact Registry / ACR (Standard) in the VM's region. The transfer pull reads a pull-scoped token from a hosts directory.                              |
-| `ghcr-c10`     | The transfer service's `max_concurrent_downloads` 10 instead of 3, from GHCR. The image is already zstd, so zstd is the baseline.                                                                  |
-| `regional-c10` | Both.                                                                                                                                                                                              |
-| `lazy`         | The image converted to eStargz (buildx, no prefetch landmarks) in the regional registry; stargz-snapshotter v0.19.1 installed beside Docker; `ctr-remote rpull`, then `ctr run`.                   |
-| `baked`        | A VM image made from a baseline VM after its pull: Docker installed and the image in containerd's store at boot. Azure's builder and baked VMs are `Standard_D4as_v5`, which has no resource disk. |
-| `fast-disk`    | AWS gp3 16,000 IOPS and 1,000 MiB/s; GCP pd-ssd (`--disk-tier high`); Azure Premium_LRS.                                                                                                           |
+| Arm                | What changes                                                                                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ghcr`             | Nothing: the baseline, from GHCR.                                                                                                                                                                  |
+| `regional`         | The same digest, copied into ECR private / Artifact Registry / ACR (Standard) in the VM's region. The transfer pull reads a pull-scoped token from a hosts directory.                              |
+| `ghcr-c10`         | The transfer service's `max_concurrent_downloads` 10 instead of 3, from GHCR. The image is already zstd, so zstd is the baseline.                                                                  |
+| `regional-c10`     | Both.                                                                                                                                                                                              |
+| `lazy`             | The image converted to eStargz (buildx, no prefetch landmarks) in the regional registry; stargz-snapshotter v0.19.1 installed beside Docker; `ctr-remote rpull`, then `ctr run`.                   |
+| `baked`            | A VM image made from a baseline VM after its pull: Docker installed and the image in containerd's store at boot. Azure's builder and baked VMs are `Standard_D4as_v5`, which has no resource disk. |
+| `fast-disk`        | AWS gp3 16,000 IOPS and 1,000 MiB/s; GCP pd-ssd (`--disk-tier high`); Azure Premium_LRS.                                                                                                           |
+| `balanced-disk`    | GCP only: pd-balanced. AWS's gp3 baseline is already its SSD tier.                                                                                                                                 |
+| `no-resource-disk` | Azure only: `ghcr` on `Standard_D4as_v5`, the baked arm's VM type, so its stores sit on the OS disk. The baked arm's control.                                                                      |
 
 ECR's pull-through cache is not measured: a GHCR rule needs a Secrets
-Manager credential, and its warm pulls are the `regional` arm. GCP's and
-Azure's `regional` and `lazy` arms wait on their registries: the CI
-project has the Artifact Registry API disabled, and the Azure CI
-subscription (Angstrom's) has no `Microsoft.ContainerRegistry` provider. The
-owner deferred Azure's to the move to our own subscription. The run skips an
-arm whose registry it can't make and records why.
+Manager credential, and its warm pulls are the `regional` arm. Azure's
+`regional` and `lazy` arms wait on its registry: the Azure CI subscription
+(Angstrom's) has no `Microsoft.ContainerRegistry` provider, and the owner
+deferred them to the move to our own subscription. The run skips an arm
+whose registry it can't make and records why.
 
-Arms are interleaved: each round starts one VM of every arm, and the
-baked arm's VMs start once its image is ready. `summary.json` records the VM
-type each trial landed on.
+Arms are interleaved. Each cloud bakes its image first; then each round
+starts one VM of every arm, at most five at once. `summary.json` records the
+VM type each trial landed on, and `trials.json` each baked trial's launch
+in seconds after its image was ready (`sinceBake`).
 
 Per cloud and arm, `summary.json` gives medians of: the pull (`pull-start` →
 `pull-end`, its bytes and MB/s), kernel → container start, the first step,
 launch → kernel (the create call to the kernel's start, from the VM's
 clock), launch → first step's end, and that last figure's win over `ghcr`.
+For kernel → container and launch → first step's end it also gives each
+arm's range and the two-sided exact Mann-Whitney U p-value against `ghcr`.
 `trials.json` has every VM's marks; `table.md` the table below.
 
 ## Result
