@@ -613,6 +613,15 @@ model-load ID) for the harness to read and check; see the
 [E2E guide](test/integration/e2e/README.md). Call a check that only compares
 runs with each other a consistency check.
 
+### A/B every speed claim
+
+A change that claims a speedup carries its own A/B before it merges: the same
+workload measured on `main` and on the branch, with both sets of numbers in the
+PR description. Run it as an `experiments/<name>/` dispatched through the
+[Spike workflow](.github/workflows/spike.yml), never in E2E or integration suites,
+which check correctness and record plain timings. Without a measured gain, drop
+the speed claim and reconsider the change.
+
 ### Mocking
 
 Use `vi.spyOn` on prototypes for class methods:
@@ -698,6 +707,9 @@ with their line counts. The E2E section lists the members the PR changes and
 the member runs it needs. Each paid member it lists as required needs a linked
 green dispatch, under the dispatch-only rule below. Classify files it reports as
 unmapped in `LAYER_MAP` or `HARNESS_MEMBERS` in `scripts/pr-sections.ts`.
+
+A PR that claims a speedup carries its [A/B](#ab-every-speed-claim) numbers in
+its description.
 
 A PR that changes the API contract carries an **API contract** section in its
 description; `yarn pr:sections` prints it too. The OpenAPI document is
