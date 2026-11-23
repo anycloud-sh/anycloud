@@ -168,6 +168,14 @@ const PRE_PULL_ATTEMPT_SECONDS = 300;
 /** Bounds the user data's unpigz install, short of waitForJobHostDocker's wait. */
 const JOB_HOST_UNPIGZ_SECONDS = 60;
 
+/**
+ * GCP's Ubuntu image has rsyslog copy daemon and kernel logs to the serial
+ * console. Its 115200 baud then backs up systemd's own console writes, and
+ * systemd starts about one unit every 0.7 s until the console drains. bootcmd
+ * removes the rule before rsyslog starts; the journal keeps every message.
+ */
+const GCP_CONSOLE_LOG_RULE = '/etc/rsyslog.d/90-google.conf';
+
 /** Apt's timers and unattended-upgrades, which compete with a Job at first boot. */
 const JOB_HOST_MASKED_UNITS = [
   'apt-daily.timer',
@@ -435,8 +443,9 @@ echo $rc > "$dir/pull"`
  * cloud-init's network stage, before sshd and cloud-init's later stages. It
  * adds the API's key for root, starts the host's preparation in its own unit
  * (no default dependencies, so systemd starts it at once rather than after
- * boot), and masks apt's timers, so initializeVM's first-boot settle is
- * short. bootcmd runs on every boot; the preparation is idempotent.
+ * boot), keeps rsyslog off GCP's serial console (GCP_CONSOLE_LOG_RULE), and
+ * masks apt's timers, so initializeVM's first-boot settle is short. bootcmd
+ * runs on every boot; the preparation is idempotent.
  */
 export function generateJobHostUserData(
   sshKeys: SSHKeys,
@@ -453,6 +462,7 @@ export function generateJobHostUserData(
     'chmod 600 /root/.ssh/authorized_keys',
     `echo ${script} | base64 -d | gunzip > /run/anycloud-prepare.sh`,
     'systemd-run --no-block --unit=anycloud-prepare -p DefaultDependencies=no /bin/bash /run/anycloud-prepare.sh',
+    `rm -f ${GCP_CONSOLE_LOG_RULE}`,
     `systemctl mask --now ${JOB_HOST_MASKED_UNITS.join(' ')}`,
   ].join('; ');
   return `#cloud-config\n${JSON.stringify({ bootcmd: [['sh', '-c', bootcmd]] })}\n`;

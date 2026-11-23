@@ -78,6 +78,7 @@ describe('generateJobHostUserData', () => {
     expect(bootcmd).toMatch(
       /systemctl mask --now apt-daily\.timer .*unattended-upgrades\.service/,
     );
+    expect(bootcmd).toContain('rm -f /etc/rsyslog.d/90-google.conf');
     // The unit starts before apt is masked, so masking never delays it.
     expect(bootcmd.indexOf('systemd-run')).toBeLessThan(
       bootcmd.indexOf('systemctl mask'),
