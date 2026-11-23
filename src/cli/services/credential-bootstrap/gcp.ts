@@ -1,5 +1,6 @@
 import { createPrivateKey, randomUUID } from 'crypto';
 import { z } from 'zod';
+import anycloudRole from '../../../shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
 import { errorMessage } from '../../../shared/log-diagnostics.js';
 import { withRetry } from '../../../shared/utils.js';
 import type { GCPOperator } from './gcp-cli-runner.js';
@@ -9,12 +10,8 @@ import {
   type GCPTransport,
 } from './gcp-transport.js';
 
-// RFC 0038 preserves the pre-removal generator's grants (6b3c2b6c).
-export const GCP_CONTROLLER_PROJECT_ROLES = [
-  'roles/compute.instanceAdmin.v1',
-  'roles/compute.securityAdmin',
-  'roles/storage.admin',
-] as const;
+// The published role, as role connections get it (gcp-anycloud-role.json).
+export const GCP_ANYCLOUD_ROLE_ID = 'anycloud';
 export const GCP_GENERATION_DESCRIPTION_PREFIX =
   'AnyCloud credential generation ';
 
@@ -45,6 +42,10 @@ const policySchema = z
       .default([]),
   })
   .passthrough();
+const roleSchema = z.object({
+  includedPermissions: z.array(z.string()).default([]),
+  deleted: z.boolean().optional(),
+});
 const keySchema = z.object({
   type: z.literal('service_account'),
   project_id: z.string(),
@@ -174,6 +175,47 @@ async function assertOwnedAccount(
       'GCP service-account ownership changed; refusing to mutate it.',
     );
   }
+}
+
+/**
+ * Create the project's published role, or bring an existing one up to the
+ * published permissions, as the role-connection setup does. It may be shared
+ * with other credentials and role connections, so cleanup never deletes it.
+ */
+async function ensureAnycloudRole(
+  transport: GCPTransport,
+  projectId: string,
+): Promise<string> {
+  const name = `projects/${projectId}/roles/${GCP_ANYCLOUD_ROLE_ID}`;
+  const path = `/v1/${name}`;
+  let role: z.infer<typeof roleSchema>;
+  try {
+    role = decode(await transport.request('iam', path), roleSchema);
+  } catch (error) {
+    if (!(error instanceof GCPBootstrapError) || error.code !== 'NOT_FOUND')
+      throw error;
+    await transport.request('iam', `/v1/projects/${projectId}/roles`, 'POST', {
+      roleId: GCP_ANYCLOUD_ROLE_ID,
+      role: anycloudRole,
+    });
+    return name;
+  }
+  if (role.deleted)
+    throw new Error(
+      `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted; undelete it or reconcile manually.`,
+    );
+  const published = [...anycloudRole.includedPermissions].sort();
+  if (
+    JSON.stringify([...role.includedPermissions].sort()) !==
+    JSON.stringify(published)
+  )
+    await transport.request(
+      'iam',
+      `${path}?updateMask=includedPermissions`,
+      'PATCH',
+      { includedPermissions: published },
+    );
+  return name;
 }
 
 async function changeGrants(
@@ -355,6 +397,8 @@ export async function generateGCPCredentials(
   const invocationId = randomUUID();
   let owned: GCPGenerationOwnership | undefined;
   try {
+    // Before the account, so an operator who can't manage roles leaves nothing.
+    const role = await ensureAnycloudRole(transport, operator.projectId);
     const account = decode(
       await transport.request(
         'iam',
@@ -386,8 +430,8 @@ export async function generateGCPCredentials(
       keyIds: [],
       projectRoles: [],
     };
-    await changeGrants(transport, owned, GCP_CONTROLLER_PROJECT_ROLES, true);
-    owned.projectRoles.push(...GCP_CONTROLLER_PROJECT_ROLES);
+    await changeGrants(transport, owned, [role], true);
+    owned.projectRoles.push(role);
     await assertOwnedAccount(transport, owned, true);
     const response = decode(
       await transport.request(

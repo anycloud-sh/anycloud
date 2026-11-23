@@ -4,6 +4,9 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash, randomUUID } from 'crypto';
+import { JWT } from 'google-auth-library';
+import anycloudRole from '../../../../src/shared/cloud-policies/gcp-anycloud-role.json' with { type: 'json' };
+import { withRetry } from '../../../../src/shared/utils.js';
 import {
   spawnCliInPty,
   startCredentialApi,
@@ -81,6 +84,31 @@ function childEnvironment(
   env.GITHUB_TOKEN = API_TOKEN;
   env.API_URL = api.url;
   return env;
+}
+
+/**
+ * The published role's permissions the key is missing. This checks every
+ * right, including making the VM Jobs network (RFC 0053), which a VM Job in
+ * this project, whose network already exists, would never exercise.
+ */
+async function missingPermissions(
+  projectId: string,
+  email: string,
+  key: string,
+): Promise<string[]> {
+  const client = new JWT({
+    email,
+    key,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const { data } = await client.request<{ permissions?: string[] }>({
+    url: `https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}:testIamPermissions`,
+    method: 'POST',
+    data: { permissions: anycloudRole.includedPermissions },
+  });
+  return anycloudRole.includedPermissions.filter(
+    (permission) => !data.permissions?.includes(permission),
+  );
 }
 
 async function bucketNamesOnceSettled(
@@ -187,6 +215,30 @@ describe('GCP live credentials onboarding terminal', () => {
         expect(typeof saved.privateKey).toBe('string');
         const privateKey = String(saved.privateKey);
         cli.registerSecret(privateKey);
+        // A new grant takes a few minutes to reach every IAM check.
+        const notYetGranted = new Error('Grant not yet visible');
+        let missing: string[] = [];
+        await withRetry(
+          async () => {
+            missing = await missingPermissions(
+              owned.projectId,
+              owned.email,
+              privateKey,
+            );
+            if (missing.length) throw notYetGranted;
+          },
+          'GCP generated key permissions',
+          {
+            maxAttempts: 30,
+            waitMs: 10_000,
+            exponentialBackoff: false,
+            jitter: false,
+            shouldRetry: (error) => error === notYetGranted,
+          },
+        ).catch((error: unknown) => {
+          if (error !== notYetGranted) throw error;
+        });
+        expect(missing).toEqual([]);
         expect(owned.keyIds).toHaveLength(1);
         expect(createHash('sha256').update(privateKey).digest('hex')).toBe(
           owned.privateKeyFingerprint,
@@ -225,7 +277,7 @@ describe('GCP live credentials onboarding terminal', () => {
           'GCP generation/save/first-use/cleanup failed.',
         );
     },
-    10 * 60_000,
+    15 * 60_000,
   );
 
   it(

@@ -52,7 +52,7 @@ import {
   getGCPOperatorDefaults,
 } from '../credential-bootstrap/gcp-cli-runner.js';
 import {
-  GCP_CONTROLLER_PROJECT_ROLES,
+  GCP_ANYCLOUD_ROLE_ID,
   describeGCPGeneration,
   generateGCPCredentials,
   getGCPGenerationPreview,
@@ -1298,9 +1298,11 @@ async function acquireGCPGeneratedCredentials(
     `Project ID: ${projectId} (project number ${preview.projectNumber})`,
   );
   printInfo(`Service account to create: ${preview.email}`);
-  printInfo(`Project roles: ${GCP_CONTROLLER_PROJECT_ROLES.join(', ')}`);
   printInfo(
-    'Required operator access: create and inspect service accounts and keys, update project IAM, and delete the generated resources for cleanup.',
+    `Project role: ${GCP_ANYCLOUD_ROLE_ID} (created or updated from Anycloud's published role)`,
+  );
+  printInfo(
+    'Required operator access: create and update project custom roles, create and inspect service accounts and keys, update project IAM, and delete the generated resources for cleanup.',
   );
   if (interactive) {
     const answer = await safePrompts<'confirmed'>({

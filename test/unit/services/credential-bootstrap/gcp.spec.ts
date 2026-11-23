@@ -13,7 +13,6 @@ import {
 import {
   generateGCPCredentials,
   getGCPGenerationPreview,
-  GCP_CONTROLLER_PROJECT_ROLES,
   GCP_GENERATION_DESCRIPTION_PREFIX,
   validateGCPGenerationName,
 } from '../../../../src/cli/services/credential-bootstrap/gcp.js';
@@ -100,6 +99,7 @@ beforeEach(() => {
         if (customRoles[name])
           throw new GCPBootstrapError('Exists', 409, 'ALREADY_EXISTS');
         customRoles[name] = { ...role, name };
+        return structuredClone(customRoles[name]);
       }
       const name = path.slice(4).split('?')[0]!;
       const role = customRoles[name];
@@ -178,10 +178,13 @@ const grantedPermissions = (email: string) =>
     )
     .flatMap(({ role }) => customRoles[role]?.includedPermissions ?? []);
 
+/** Writes this invocation owns; the shared role is checked on its own. */
 const mutations = () =>
   request.mock.calls.filter(
     ([, path, method]) =>
-      method !== undefined && !path.endsWith(':getIamPolicy'),
+      method !== undefined &&
+      !path.endsWith(':getIamPolicy') &&
+      !path.includes('/roles'),
   );
 
 describe('0038/S3 GCP generation ownership', () => {
@@ -313,7 +316,7 @@ describe('0038/S3 GCP generation ownership', () => {
     expect(generated.ownership).toMatchObject({
       uniqueId: accountId,
       keyIds: [keyId],
-      projectRoles: [...GCP_CONTROLLER_PROJECT_ROLES],
+      projectRoles: [`projects/${project.projectId}/roles/anycloud`],
     });
     expect(account?.description).toBe(
       `${GCP_GENERATION_DESCRIPTION_PREFIX}${generated.ownership.invocationId}`,
@@ -366,6 +369,16 @@ describe('0038/S3 GCP generation ownership', () => {
       expect(customRoles[name]?.deleted).toBeUndefined();
     },
   );
+
+  it('refuses a deleted role before creating the account', async () => {
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    customRoles[name] = { ...anycloudRole, name, deleted: true };
+    await expect(
+      generateGCPCredentials(await getGCPGenerationPreview(operator, 'test')),
+    ).rejects.toThrow('GCP role anycloud is deleted');
+    expect(account).toBeUndefined();
+    expect(mutations()).toEqual([]);
+  });
 
   it('0047/S8 never reads or grants on the default Compute service account', async () => {
     const generated = await generateGCPCredentials(

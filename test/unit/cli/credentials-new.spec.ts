@@ -232,7 +232,7 @@ function mockGCPGeneration() {
       uniqueId: '222222222222222222222',
       invocationId: '00000000-0000-4000-8000-000000000001',
       keyIds: ['abc123'],
-      projectRoles: ['roles/storage.admin'],
+      projectRoles: [`projects/${operator.projectId}/roles/anycloud`],
     },
     cleanup,
   };
@@ -2587,7 +2587,7 @@ describe('buildCredentialsInteractive', () => {
             `Service account to create: ${preview.email}`,
           );
           expect(printInfo).toHaveBeenCalledWith(
-            expect.stringContaining('roles/storage.admin'),
+            expect.stringContaining('Project role: anycloud'),
           );
           return { confirmed };
         });

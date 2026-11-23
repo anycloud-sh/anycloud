@@ -6,7 +6,7 @@ import { type GCPOperator } from '../../../../src/cli/services/credential-bootst
 import {
   cleanupGCPGeneration,
   describeGCPGeneration,
-  GCP_CONTROLLER_PROJECT_ROLES,
+  GCP_ANYCLOUD_ROLE_ID,
   type GCPGenerationOwnership,
 } from '../../../../src/cli/services/credential-bootstrap/gcp.js';
 import { writeLocalApiToken } from '../../helpers/local-api-token.js';
@@ -18,7 +18,11 @@ const evidenceSchema = z.object({
   uniqueId: z.string().regex(/^\d+$/),
   invocationId: z.string().uuid(),
   keyIds: z.array(z.string().regex(/^[a-f0-9]+$/)),
-  projectRoles: z.array(z.enum(GCP_CONTROLLER_PROJECT_ROLES)),
+  projectRoles: z.array(
+    z
+      .string()
+      .regex(new RegExp(`^projects/[a-z0-9-]+/roles/${GCP_ANYCLOUD_ROLE_ID}$`)),
+  ),
   privateKeyFingerprint: z
     .string()
     .regex(/^[a-f0-9]{64}$/)

@@ -33,7 +33,7 @@ const owned = {
   uniqueId: '222222222222222222222',
   invocationId: '00000000-0000-4000-8000-000000000001',
   keyIds: ['abc123'],
-  projectRoles: ['roles/storage.admin'],
+  projectRoles: [`projects/${operator.projectId}/roles/anycloud`],
 };
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'gcp-ownership-test-'));
