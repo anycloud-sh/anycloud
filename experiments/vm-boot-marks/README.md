@@ -12,7 +12,14 @@
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments` `[]`
   and `cleanup_arguments` `["cleanup"]`. `["run", "<target>", ...]` runs only
   the named targets (`aws`, `gcp`, `azure`); `--count=N` sets the Jobs per
-  target (default 5). `["diagnose", "gcp"]` holds three `ubuntu:24.04`
+  target (default 5). `--rounds=R` runs R rounds
+  of them. `--baseline` also builds this checkout with `baseline.patch`
+  applied, which is `job-host.ts` and `containerd-transfer.ts` as they were
+  before the cuts (`6cff6a5c2`). It runs that API beside the branch's and
+  alternates each round's submissions between the two, so both arms meet the
+  same cloud at the same time. Regenerate the patch whenever those files
+  change: `git diff HEAD 6cff6a5c2 -- src/api/services/job-host.ts
+src/api/services/containerd-transfer.ts`. `["diagnose", "gcp"]` holds three `ubuntu:24.04`
   Jobs running and saves each host's systemd ordering, critical chains and
   journal (`diagnose-<id>.txt`), then cleans up.
 
