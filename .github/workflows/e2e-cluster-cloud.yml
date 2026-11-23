@@ -173,6 +173,11 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      # CI's standing GCP account holds the published Anycloud role, CI's own
+      # role and no predefined runtime role; bind them before anything uses it.
+      - name: Bind CI's GCP account to its roles
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Log in to GHCR
         uses: ./.github/actions/ghcr-login
         with:

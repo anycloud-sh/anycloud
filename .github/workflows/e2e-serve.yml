@@ -70,6 +70,10 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Run Vitest Serve - ${{ matrix.test }}
         id: tests
         run: |
@@ -202,6 +206,10 @@ jobs:
 
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
+
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
 
       - name: Build
         run: yarn build

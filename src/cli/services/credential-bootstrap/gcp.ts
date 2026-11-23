@@ -180,16 +180,18 @@ async function assertOwnedAccount(
 }
 
 /**
- * Create the project's published role, or add the published permissions an
- * existing one lacks, as the role-connection setup does. Other credentials and
+ * Create the project's published role (or another document's), or add the
+ * permissions an existing one lacks, as the role-connection setup does. Other credentials and
  * role connections may share it, so this never removes a permission and
  * cleanup never deletes it.
  */
-async function ensureAnycloudRole(
+export async function ensureGCPRole(
   transport: GCPTransport,
   projectId: string,
+  roleId = GCP_ANYCLOUD_ROLE_ID,
+  document: { includedPermissions: string[] } = anycloudRole,
 ): Promise<string> {
-  const name = `projects/${projectId}/roles/${GCP_ANYCLOUD_ROLE_ID}`;
+  const name = `projects/${projectId}/roles/${roleId}`;
   const path = `/v1/${name}`;
   const isCode = (error: unknown, code: string) =>
     error instanceof GCPBootstrapError && error.code === code;
@@ -208,8 +210,8 @@ async function ensureAnycloudRole(
         `/v1/projects/${projectId}/roles`,
         'POST',
         {
-          roleId: GCP_ANYCLOUD_ROLE_ID,
-          role: anycloudRole,
+          roleId,
+          role: document,
         },
       );
       return name;
@@ -222,9 +224,9 @@ async function ensureAnycloudRole(
     const role = await read();
     if (!role || role.deleted || role.stage === 'DISABLED')
       throw new Error(
-        `GCP role ${GCP_ANYCLOUD_ROLE_ID} is deleted, disabled or unreadable; undelete or enable it, or reconcile manually.`,
+        `GCP role ${roleId} is deleted, disabled or unreadable; undelete or enable it, or reconcile manually.`,
       );
-    const missing = anycloudRole.includedPermissions.filter(
+    const missing = document.includedPermissions.filter(
       (permission) => !role.includedPermissions.includes(permission),
     );
     if (missing.length)
@@ -240,9 +242,9 @@ async function ensureAnycloudRole(
   };
   // A concurrent change to the role makes its etag stale: read it again.
   await withRetry(addMissing, 'GCP role update', {
-    maxAttempts: 4,
+    maxAttempts: 8,
     waitMs: 1_000,
-    jitter: false,
+    maxWaitMs: 8_000,
     shouldRetry: (error) => isCode(error, 'ABORTED'),
   });
   return name;
@@ -428,7 +430,7 @@ export async function generateGCPCredentials(
   let owned: GCPGenerationOwnership | undefined;
   try {
     // Before the account, so an operator who can't manage roles leaves nothing.
-    const role = await ensureAnycloudRole(transport, operator.projectId);
+    const role = await ensureGCPRole(transport, operator.projectId);
     const account = decode(
       await transport.request(
         'iam',

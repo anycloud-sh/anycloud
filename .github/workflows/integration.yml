@@ -325,6 +325,10 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Validate existing ${{ matrix.provider }} test configuration
         shell: bash
         run: |
@@ -555,6 +559,10 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Build
         run: yarn build
 
@@ -637,6 +645,10 @@ jobs:
 
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
+
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
 
       # Authenticate to GHCR so resolve-deps-image.sh can inspect the (private)
       # prebuilt deps base; without it the e2e image build silently falls back

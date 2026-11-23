@@ -156,6 +156,10 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Run GPU Service
         id: tests
         run: |
@@ -348,6 +352,10 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Run MACE Job
         id: tests
         run: |
@@ -420,6 +428,10 @@ jobs:
           backend: ${{ vars.CI_BACKEND }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           dns-token: ${{ secrets.E2E_SERVE_GITHUB_TOKEN }}
+
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
 
       - name: Run GCP disk-tier Job
         id: tests
@@ -533,6 +545,9 @@ jobs:
           node-version: '22'
           cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
       - run: bash scripts/ci-install-dependencies.sh
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
       - run: yarn build
       - name: Sweep remaining GCP resources
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
@@ -591,6 +606,9 @@ jobs:
           node-version: '22'
           cache: ${{ vars.CI_BACKEND == 'hosted' && 'yarn' || '' }}
       - run: bash scripts/ci-install-dependencies.sh
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
       - name: Install runner tools
         run: bash ci/install-runner-tools.sh
       - run: bash ci/check-cloud-tools.sh

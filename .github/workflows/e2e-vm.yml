@@ -110,6 +110,10 @@ jobs:
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
 
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
+
       - name: Log in to GHCR
         uses: ./.github/actions/ghcr-login
         with:
@@ -237,6 +241,10 @@ jobs:
 
       - name: Install dependencies
         run: bash scripts/ci-install-dependencies.sh
+
+      - name: Bind CI's GCP account to its roles
+        if: env.GCP_PRIVATE_KEY != ''
+        run: npx tsx ci/gcp-roles.ts
 
       - name: Build
         run: yarn build

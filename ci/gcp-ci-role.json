@@ -1,0 +1,18 @@
+{
+  "title": "Anycloud CI",
+  "description": "What CI's own harness, cluster seed and catalog do with CI's GCP account beyond the published Anycloud role (src/shared/cloud-policies/gcp-anycloud-role.json); ci/gcp-roles.ts applies both.",
+  "stage": "GA",
+  "includedPermissions": [
+    "compute.disks.get",
+    "compute.firewalls.get",
+    "compute.firewalls.update",
+    "compute.instances.getSerialPortOutput",
+    "compute.instances.setServiceAccount",
+    "compute.instances.stop",
+    "compute.machineTypes.list",
+    "compute.regions.get",
+    "serviceusage.services.list",
+    "storage.buckets.getIamPolicy",
+    "storage.buckets.setIamPolicy"
+  ]
+}
