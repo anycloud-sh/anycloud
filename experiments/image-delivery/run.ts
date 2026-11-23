@@ -648,7 +648,9 @@ function azureCloud(): Cloud {
   const az = (args: string[]) => json('az', [...args, '--output', 'json']);
   let group = '';
   let bakedImage = '';
-  const publicKeyFile = join(state, 'key.pub');
+  // Azure's admin key must differ from the run's: cloud-init gives root the
+  // admin key behind a "log in as" command, which would shadow the run's.
+  const publicKeyFile = join(state, 'admin-key.pub');
   return {
     async login() {
       await sh('az', [
@@ -1028,7 +1030,7 @@ for f in method pull docker; do echo "prepare-$f $(cat /run/anycloud/prepare/$f 
 echo "step-rc $(cat /run/spike/step-rc 2>/dev/null || echo -)"
 echo "error $(cat /run/spike/error 2>/dev/null || echo -)"
 echo ---
-tail -c 1500 /run/spike/step.log /run/spike/pull.log /run/spike/stargz.log /run/anycloud/prepare/pull.log 2>/dev/null`;
+tail -c 1500 /run/spike/step.log /run/spike/pull.log /run/spike/stargz.log /run/anycloud/prepare/pull.log 2>/dev/null || true`;
 
 function ssh(ip: string, command: string, timeoutMs: number) {
   return sh(
@@ -1234,15 +1236,16 @@ async function installTools() {
   const buildx = join(state, 'docker', 'cli-plugins', 'docker-buildx');
   await fetchChecked(BUILDX, buildx);
   await sh('chmod', ['+x', buildx]);
-  await sh('ssh-keygen', [
-    '-q',
-    '-t',
-    'ed25519',
-    '-N',
-    '',
-    '-f',
-    join(state, 'key'),
-  ]);
+  for (const key of ['key', 'admin-key'])
+    await sh('ssh-keygen', [
+      '-q',
+      '-t',
+      'ed25519',
+      '-N',
+      '',
+      '-f',
+      join(state, key),
+    ]);
 }
 
 /**
