@@ -1,6 +1,6 @@
 # m8a against m8i
 
-- Status: Ready, not yet dispatched.
+- Status: Complete. Results are below.
 - Decision record: it asks how much faster AWS m8a (AMD EPYC, Zen 5) builds
   than m8i (Intel Xeon 6), which backmesh's runners land on today, at the same
   vCPU count. backmesh's labels can't choose a VM family, so this runs in
@@ -76,7 +76,47 @@ security group are not the run's; they stay.
 
 ## Result
 
-Pending.
+[Run 45240701982](https://github.com/anycloud-sh/anycloud/actions/runs/45240701982)
+(`473102d35`, 2026-11-23, us-east-2, every VM in us-east-2a): ten
+rounds, 40 Jobs, none failed. The VMs cost $1.41 at list price, and cleanup
+found no instance or volume left.
+
+**At the same vCPU count, m8a takes 64–88% of m8i's time on every build
+command, and costs less per build despite its 15% higher hourly price.** Every m8a run
+beat every m8i run in each command but the sub-second `uv sync`. Seconds are
+medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
+
+| Build command      | m8a.xlarge       | m8i.xlarge       | Ratio | m8a.4xlarge      | m8i.4xlarge      | Ratio |
+| ------------------ | ---------------- | ---------------- | ----- | ---------------- | ---------------- | ----- |
+| docker build       | 46.7 (45.7–47.7) | 64.4 (63.4–66.6) | 0.72  | 35.0 (34.4–36.0) | 45.3 (43.9–46.4) | 0.77  |
+| go build           | 18.9 (18.4–19.8) | 29.5 (28.9–31.6) | 0.64  | 7.5 (7.5–7.5)    | 10.4 (10.2–10.9) | 0.72  |
+| go test            | 3.5 (3.4–3.8)    | 5.3 (5.2–5.7)    | 0.66  | 1.2 (1.2–1.3)    | 1.7 (1.6–1.8)    | 0.73  |
+| python install     | 0.5 (0.4–0.6)    | 0.6 (0.5–0.7)    | 0.80  | 0.5 (0.4–0.6)    | 0.6 (0.6–0.7)    | 0.88  |
+| python test        | 5.3 (4.8–5.7)    | 6.1 (6.0–6.4)    | 0.87  | 4.8 (4.8–4.9)    | 6.1 (6.0–6.3)    | 0.79  |
+| rust build         | 14.5 (13.8–15.8) | 22.8 (22.5–24.1) | 0.64  | 6.1 (6.1–6.2)    | 8.6 (8.4–8.8)    | 0.72  |
+| typescript build   | 11.3 (10.3–11.7) | 15.2 (14.8–16.4) | 0.74  | 10.2 (10.1–10.3) | 12.7 (12.1–13.4) | 0.80  |
+| typescript install | 1.7 (1.6–1.8)    | 2.6 (2.5–2.7)    | 0.66  | 1.7 (1.7–1.8)    | 2.3 (2.2–2.6)    | 0.74  |
+| **All eight**      | **102.4**        | **146.5**        | 0.70  | **67.0**         | **87.7**         | 0.76  |
+| Cost of all eight  | $0.0069          | $0.0086          | 0.80  | $0.0181          | $0.0206          | 0.88  |
+
+- **Significance.** Mann-Whitney p is 0.00018 for every command but
+  `uv sync` (0.0073 at xlarge and 0.0017 at 4xlarge). 0.00018 is the normal
+  approximation's floor at n = 10 with no overlap. The exact two-sided p for
+  no overlap is 1.1 × 10⁻⁵. `report.md` in the evidence has the p and cost
+  of each command.
+- **CPUs.** m8a is an AMD EPYC 9R45 with one thread per core. m8i is an Intel
+  Xeon 6975P-C with two threads per core, so a 4-vCPU m8i has two cores.
+- **sysbench cpu.** On one thread, m8a does 5,577 events/s and m8i 3,325
+  (1.68×). On every vCPU it is 3.2× at both sizes: 22,190 against 6,999,
+  and 88,429 against 28,006. sysbench's prime loop gains almost nothing from
+  a core's second thread, so the all-vCPU figure overstates the build gain.
+  The builds' 0.64–0.87 is the figure to quote.
+- **Size.** The gain is larger at 4 vCPUs (0.70 overall) than at 16 (0.76).
+  A likely cause is that the builds' serial parts, such as linking, weigh
+  more at 16 vCPUs; the run doesn't measure it.
+- **Per-Job VM time.** This covers boot, pulls, clones and the builds. The
+  medians were 229 s on `m8a.xlarge` and 288 s on `m8i.xlarge`, and 199 s
+  and 232 s at 4xlarge.
 
 ## Promotion criteria
 
