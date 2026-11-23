@@ -756,6 +756,11 @@ const API_PROVIDER_FACTORY_IMPORTS = new Map([
     },
   ],
   [
+    // Credential-free: the EC2 launch client's retries (provider-clients/aws).
+    '@smithy/util-retry',
+    { provider: 'aws', names: new Set(['StandardRetryStrategy']) },
+  ],
+  [
     '@azure/arm-compute',
     { provider: 'azure', names: new Set(['ComputeManagementClient']) },
   ],
