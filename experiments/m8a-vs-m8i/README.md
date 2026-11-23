@@ -172,8 +172,8 @@ sample: all three zones refused it, twice each time. This matches the 22 of
 | `m8i.4xlarge` | us-east-2 | 3 s, 2 s               | 0, 0                        |
 | `m8i.4xlarge` | us-west-2 | 4 s, 3 s               | 0, 0                        |
 
-The table counts 10 of 12 m8a launches as not throttled, but sample 1's
-throttled `m8a.4xlarge` in us-east-2 was also refused in all three zones.
+The 9 of 10 leaves out sample 1's two throttled m8a launches, both in
+us-east-2. The `m8a.4xlarge` one was also refused in all three zones.
 Launch is the time from the API resolving the target to the VM initializing,
 read from `api.log`. `spot-launches.json` records something different: the
 time from submitting the Job to the first poll that saw the VM's zone, polled
