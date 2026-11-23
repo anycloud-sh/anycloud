@@ -549,8 +549,19 @@ async function run(
     process.exitCode = 1;
 }
 
-/** What a host's systemd says held up sshd, containerd and Docker. */
+/**
+ * What a host's systemd says held up sshd, containerd and Docker, and the
+ * counters that tell a saturated disk or CPU from a slow PID 1: pressure
+ * stall totals, the root disk's busy time, PID 1's CPU, queue and I/O, and
+ * the bytes sent to the serial console. All count from boot.
+ */
 const DIAGNOSE_SCRIPT = `cat /run/anycloud/boot-marks
+echo; cat /proc/uptime /proc/cmdline
+for f in /proc/pressure/cpu /proc/pressure/io /proc/pressure/memory /proc/1/schedstat /proc/1/io /proc/tty/driver/serial; do
+  echo "== $f"; cat "$f"
+done
+echo "== /proc/diskstats"; grep -E ' (sda|nvme0n1|vda) ' /proc/diskstats
+grep ctxt /proc/1/status
 echo; systemd-analyze
 for unit in ssh.service containerd.service docker.service google-guest-agent.service snapd.seeded.service anycloud-prepare.service; do
   echo; echo "== $unit"
