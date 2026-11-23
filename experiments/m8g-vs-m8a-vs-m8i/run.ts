@@ -422,24 +422,30 @@ async function spot() {
         // One at a time per region, 2 s apart, under RunInstances' rate limit.
         for (const subnet of await subnets(ec2)) {
           for (const arm of ARMS) {
-            let result: string;
-            try {
-              const { Instances = [] } = await launch(ec2, {
-                arm,
-                image: images[arch(arm)],
-                subnet: subnet.id,
-                name: `m8g-spot-${runId}`,
-                spot: true,
-                diskGb: 8,
-              });
-              await ec2.send(
-                new TerminateInstancesCommand({
-                  InstanceIds: Instances.map((i) => i.InstanceId!),
-                }),
-              );
-              result = 'launched';
-            } catch (error) {
-              result = (error as Error).name;
+            let result = '';
+            // RunInstances' rate limit is the account's, shared with CI, so a
+            // throttled attempt is retried rather than counted as a refusal.
+            for (let attempt = 0; attempt < 4; attempt++) {
+              try {
+                const { Instances = [] } = await launch(ec2, {
+                  arm,
+                  image: images[arch(arm)],
+                  subnet: subnet.id,
+                  name: `m8g-spot-${runId}`,
+                  spot: true,
+                  diskGb: 8,
+                });
+                await ec2.send(
+                  new TerminateInstancesCommand({
+                    InstanceIds: Instances.map((i) => i.InstanceId!),
+                  }),
+                );
+                result = 'launched';
+              } catch (error) {
+                result = (error as Error).name;
+              }
+              if (result !== 'RequestLimitExceeded') break;
+              await sleep(10_000 * (attempt + 1));
             }
             out.push({ arm, zone: subnet.zone, result });
             await sleep(2_000);
@@ -481,8 +487,8 @@ function spotSummary(
       const zoneScores = scores[`${arm} zones`]!.filter((s) =>
         s.startsWith(prefix),
       )
-        .map((s) => s.split(' ')[1])
-        .join(' ');
+        .map((s) => s.replace(`${prefix}-`, ''))
+        .join(', ');
       lines.push(
         `| ${arm} | ${region} | ${tried.length - refused.length} of ${tried.length} | ${refused.map((a) => `${a.zone.slice(-1)} ${a.result}`).join(', ')} | ${regionScore ?? '?'} | ${zoneScores} |`,
       );

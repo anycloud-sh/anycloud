@@ -49,7 +49,9 @@ the median of the region's zones' spot prices.
 `GetSpotPlacementScores` for one instance of each of the six types, by
 region and by zone, in us-east-1, us-east-2 and us-west-2. Then it tries one
 spot launch of each type in every zone of anycloud's Job network in those
-regions, one at a time, 2 s apart. It terminates each launch as soon as EC2
+regions, one at a time, 2 s apart. An attempt EC2 rate-limits
+(`RequestLimitExceeded`, a limit the account shares with CI) is retried up
+to three times rather than counted as a refusal. It terminates each launch as soon as EC2
 accepts it. `spot.md` gives, per type and region, the zones that launched,
 the refusal codes and the scores.
 
