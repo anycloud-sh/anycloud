@@ -1,7 +1,8 @@
 # VM boot marks
 
-- Status: Run 45099715079 (`2f01caa2d`, 2026-11-23): all 15 Jobs gave
-  marks, and cleanup was confirmed. The results are below.
+- Status: Run 45099715079 (`2f01caa2d`, 2026-11-23) split the time. Run
+  45170484343 (`5b8adaed5`) measured the first cuts against it. Both runs gave
+  marks from all 15 Jobs, and both confirmed cleanup. The results are below.
 - Decision record: backmesh/backmesh#97, row C14. A backmesh runner's
   queued→first step is 44 s against GitHub's 4 s; 18–22 s of it is between
   the runner VM's kernel start and its container's start, and nothing split
@@ -92,6 +93,37 @@ The pulls fetched 777 MB on AWS and 753 MB on GCP.
 - `cloud-init status --wait` and the API's host setup are off the critical
   path on AWS and GCP, where the API waits for the pull anyway. On Azure they
   matter only until the pull moves into the user data.
+
+### A/B: the pull starts once containerd is up
+
+`5b8adaed5` starts containerd as soon as Docker's archive is in and pulls
+while iptables installs and dockerd starts. On Azure it first binds the image
+stores onto the resource disk, so the pull runs from the user data there too.
+Run 45170484343 against run 45099715079, medians in seconds:
+
+| Piece                         | AWS         | GCP         | Azure       |
+| ----------------------------- | ----------- | ----------- | ----------- |
+| Docker archive to containerd  | — → 0.4     | — → 9.9     | — → 6.8     |
+| image pull (user data)        | 8.9 → 8.3   | 19.7 → 20.2 | — → 13.3    |
+| of which the final `sync`     | — → 2.8     | — → 5.3     | — → 3.8     |
+| pull wait to docker run       | 5.0 → 5.3   | 15.6 → 6.4  | 16.5 → 7.9  |
+| docker run to start           | 0.1 → 0.1   | 0.1 → 0.1   | 2.2 → 0.05  |
+| **kernel to container start** | 20.1 → 18.3 | 47.7 → 48.2 | 38.6 → 30.7 |
+
+- **AWS −1.8 s** and **Azure −7.9 s**. The Azure pull no longer waits for the
+  API's SSH steps, so `cloud-init status --wait` and rclone's install are off
+  the critical path on every cloud. Azure's containerd waits 6.8 s for
+  cloud-init to mount the resource disk (17.2 s).
+- **GCP: sshd waits for Google's guest agent.** `ssh.socket` listens at about
+  10 s, but `ssh.service` becomes active 0.5–2 s after
+  `google-guest-agent.service`, which becomes active at 17–26 s. The delay
+  comes from that ordering, not from the API's 2 s polling or from firewall
+  propagation. On three of five Jobs, containerd's start in the user data
+  (`daemon-reload` and `systemctl start`) also stalled until about the same
+  time, and those three took 48–49 s. On the other two, containerd was up at
+  13–14 s, and they took 33.5 s and 36.6 s.
+- The GCP pull itself is slow: 15–19 s to fetch and unpack 758 MB and 5 s to
+  sync, against AWS's 5.5 s and 2.8 s.
 
 ## Cost
 
