@@ -7,7 +7,8 @@
  * changes delivery, then starts the image and runs a first step that reads
  * its tools. The runner's cloud CLIs make the VMs, registries and images.
  *
- * `run [cloud...] [--count=N] [--arms=a,b] [--parallel=N]` and `cleanup`.
+ * `run [cloud...] [--count=N] [--arms=a,b] [--parallel=N] [--disk=fast|balanced]`
+ * and `cleanup`.
  * Everything made is named `image-delivery-*` (ACR: `imagedelivery*`) and
  * tagged or labelled `anycloud-spike=image-delivery`; cleanup deletes by
  * that, so it needs no state from the run. Reports in SPIKE_OUTPUT_DIR hold
@@ -94,6 +95,8 @@ const ARMS = {
     clouds: ['azure'],
   },
 } satisfies Record<string, ArmSpec>;
+/** The disk of every arm that doesn't set its own (`--disk`). */
+let runDisk: Disk | undefined;
 type Arm = keyof typeof ARMS;
 
 interface Registry {
@@ -532,8 +535,8 @@ function gcpCloud(): Cloud {
               '--network=anycloud-jobs',
               '--tags=anycloud-jobs',
               '--boot-disk-size=100GB',
-              // The API's default type, which the product's medium tier on
-              // n2 leaves in place; `--disk-tier high` asks for pd-ssd.
+              // pd-ssd is the product's default (`--disk-tier high`) on n2;
+              // pd-standard, the API's default, is what its medium tier gets.
               `--boot-disk-type=${disk ? { fast: 'pd-ssd', balanced: 'pd-balanced' }[disk] : 'pd-standard'}`,
               ...(baked
                 ? [`--image=${bakedImage}`]
@@ -1468,7 +1471,7 @@ async function measureCloud(
         () => {
           trial.launchedAt = Date.now() / 1000;
           return cloud.launch(vmName, file, {
-            disk: spec.disk,
+            disk: spec.disk ?? runDisk,
             baked: spec.baked && rep >= 0,
             noResourceDisk: spec.noResourceDisk,
           });
@@ -1622,6 +1625,9 @@ if (command === 'run') {
     if (!(cloud in CLOUDS)) throw new Error(`Unknown cloud ${cloud}`);
   for (const arm of arms)
     if (!(arm in ARMS)) throw new Error(`Unknown arm ${arm}`);
+  runDisk = option('disk') as Disk | undefined;
+  if (runDisk && !['fast', 'balanced'].includes(runDisk))
+    throw new Error(`Unknown disk ${runDisk}`);
   await run(
     clouds,
     arms,
