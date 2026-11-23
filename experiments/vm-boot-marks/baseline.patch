@@ -1,5 +1,5 @@
 diff --git a/src/api/services/job-host.ts b/src/api/services/job-host.ts
-index 25b58ee7b..5769025a9 100644
+index 0fb5ddd59..5769025a9 100644
 --- a/src/api/services/job-host.ts
 +++ b/src/api/services/job-host.ts
 @@ -168,14 +168,6 @@ const PRE_PULL_ATTEMPT_SECONDS = 300;
@@ -17,18 +17,19 @@ index 25b58ee7b..5769025a9 100644
  /** Apt's timers and unattended-upgrades, which compete with a Job at first boot. */
  const JOB_HOST_MASKED_UNITS = [
    'apt-daily.timer',
-@@ -443,8 +435,8 @@ echo $rc > "$dir/pull"`
+@@ -443,9 +435,8 @@ echo $rc > "$dir/pull"`
   * cloud-init's network stage, before sshd and cloud-init's later stages. It
   * adds the API's key for root, starts the host's preparation in its own unit
   * (no default dependencies, so systemd starts it at once rather than after
 - * boot), keeps rsyslog off GCP's serial console (GCP_CONSOLE_LOG_RULE), and
-- * masks apt's timers, so initializeVM's first-boot settle is short. bootcmd runs on every boot; the preparation is idempotent.
+- * masks apt's timers, so initializeVM's first-boot settle is short. bootcmd
+- * runs on every boot; the preparation is idempotent.
 + * boot), and masks apt's timers, so initializeVM's first-boot settle is
 + * short. bootcmd runs on every boot; the preparation is idempotent.
   */
  export function generateJobHostUserData(
    sshKeys: SSHKeys,
-@@ -461,7 +453,6 @@ export function generateJobHostUserData(
+@@ -462,7 +453,6 @@ export function generateJobHostUserData(
      'chmod 600 /root/.ssh/authorized_keys',
      `echo ${script} | base64 -d | gunzip > /run/anycloud-prepare.sh`,
      'systemd-run --no-block --unit=anycloud-prepare -p DefaultDependencies=no /bin/bash /run/anycloud-prepare.sh',
