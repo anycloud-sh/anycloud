@@ -311,8 +311,11 @@ start_docker() {
  */
 const AZURE_RESOURCE_DISK_MOUNT = '/mnt';
 
-/** Bounds the preparation's wait for that mount. */
-const RESOURCE_DISK_MOUNT_WAIT_SECONDS = 30;
+/**
+ * Bounds the preparation's wait for that mount, which held Docker's start:
+ * it came 7 s after Docker's archive in the vm-boot-marks runs.
+ */
+const RESOURCE_DISK_MOUNT_WAIT_SECONDS = 20;
 
 /**
  * `stores_ready`: succeeds once the image stores are where the Job's pull
@@ -332,7 +335,7 @@ ${RESOURCE_DISK_PROBE}
     sleep 0.5
   done
   set -- $m
-  [ $# = 3 ] || return 1
+  [ $# = 3 ] || { echo "resource disk not mounted after ${RESOURCE_DISK_MOUNT_WAIT_SECONDS}s: the API moves the stores and pulls"; return 1; }
   [ "$1" != / ] && [ "$2" -ge "$3" ] 2>/dev/null || return 0
   # Heredocs inside, so unindented.
   [ "$1" = ${AZURE_RESOURCE_DISK_MOUNT} ] && (

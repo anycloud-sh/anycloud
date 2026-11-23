@@ -59,6 +59,24 @@ describe('parseBootMarks', () => {
       ),
     ).toEqual({ 'api-ssh': 30.5, 'pull-bytes': 123456 });
   });
+
+  it('keeps at most 64 marks, of names up to 32 characters', () => {
+    // m-aa, m-ab, ...: names are letters and dashes.
+    const name = (i: number) =>
+      `m-${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`;
+    const marks = parseBootMarks(
+      [
+        `${'x'.repeat(33)} 1`,
+        ...Array.from({ length: 100 }, (_, i) => `${name(i)} ${i}`),
+        'm-aa 7',
+      ].join('\n'),
+    );
+    expect(Object.keys(marks)).toHaveLength(64);
+    expect(marks['x'.repeat(33)]).toBeUndefined();
+    expect(marks[name(64)]).toBeUndefined();
+    // A mark already kept still takes its latest value.
+    expect(marks['m-aa']).toBe(7);
+  });
 });
 
 describe('readBootMarks', () => {

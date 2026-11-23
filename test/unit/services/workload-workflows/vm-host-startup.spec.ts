@@ -757,6 +757,32 @@ describe('workload image pull flow', () => {
     });
   });
 
+  it('reads no boot marks on a host that is not a CPU VM Job host', async () => {
+    const id = 'deploy-gpu-no-boot-marks-' + Date.now();
+    const props = await createDeployProps(id, {
+      dockerOptions: { gpus: 'all' },
+    });
+    deployFlowMocks.sshExec.mockImplementation(async (command: string) => ({
+      stdout: command.startsWith('cat /run/anycloud/boot-marks')
+        ? 'container-started 19.87\n'
+        : '',
+      stderr: '',
+      code: 0,
+    }));
+
+    await deployWithVirtualClock(cloudConfig, props, 'test-credential-id');
+
+    expect(
+      deployFlowMocks.sshExec.mock.calls.some(([command]) =>
+        String(command).startsWith('cat /run/anycloud/boot-marks'),
+      ),
+    ).toBe(false);
+    const running = (await eventLog().getWorkloadEvents(id)).find(
+      (event) => event.state === WorkloadState.Running,
+    );
+    expect(running?.metadata ?? null).toBeNull();
+  });
+
   it('reaches Running without boot marks when the host has none', async () => {
     const id = 'deploy-no-boot-marks-' + Date.now();
     const props = await createDeployProps(id);

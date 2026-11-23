@@ -57,8 +57,11 @@ On a VM, the `running` event's `metadata.bootMarks` says when each step of
 the host's start happened, in seconds after its kernel started, such as
 `network-online`, `docker-ready`, `pull-end`, `api-ssh` and
 `container-started`; `pull-bytes` is the bytes the host's own pull fetched.
-A CPU VM Job's host marks the most steps, as its user data installs Docker and
-pulls a public image. Marks a host didn't record are absent.
+Only a CPU VM Job's host records marks, as its user data installs Docker and
+pulls a public image. Marks a host didn't record are absent. Azure can hand
+over a VM it booted ahead of time, so the marks from `cloud-init-network` on
+can include minutes the VM waited before it was yours. On Azure, measure from
+`cloud-init-network` rather than from the kernel's start.
 
 While a Job, Service, or VM is `retrying`, JSON includes
 `retry`: the `attempt` number and the `earliestAt` and `latestAt` times between

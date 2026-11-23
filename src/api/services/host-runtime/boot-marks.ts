@@ -65,12 +65,25 @@ done
 exit 0`;
 }
 
-/** `<name> <number>` lines as a map; a later mark of a name replaces it. */
+/** Bounds the marks kept: a `--host-docker` Job is root on its host. */
+const MAX_MARKS = 64;
+
+/**
+ * `<name> <number>` lines as a map, of up to MAX_MARKS names of up to 32
+ * characters; a later mark of a name replaces it.
+ */
 export function parseBootMarks(text: string): Record<string, number> {
   const marks: Record<string, number> = {};
+  let count = 0;
   for (const line of text.split('\n')) {
-    const match = /^([a-z][a-z-]*) (\d+(?:\.\d+)?)$/.exec(line.trim());
-    if (match) marks[match[1]!] = Number(match[2]);
+    const match = /^([a-z][a-z-]{0,31}) (\d+(?:\.\d+)?)$/.exec(line.trim());
+    if (!match) continue;
+    const name = match[1]!;
+    if (!(name in marks)) {
+      if (count === MAX_MARKS) continue;
+      count++;
+    }
+    marks[name] = Number(match[2]);
   }
   return marks;
 }

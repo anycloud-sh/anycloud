@@ -604,6 +604,9 @@ describe('the Job host preparation', () => {
     });
     expect(unit('anycloud-image-store.service')).toBe(false);
     expect(read('docker')).toBe('0');
+    expect(read('docker-install.log')).toContain(
+      'resource disk not mounted after 20s',
+    );
     expect(read('pull')).toBeNull();
     expect(calls).not.toMatch(/^ctr /m);
   });

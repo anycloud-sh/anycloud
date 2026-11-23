@@ -378,10 +378,14 @@ export async function deploy(
       classifyDNSPublicationFailure(e) ?? classifyComputeFailure(ctx, e),
   });
 
+  // Only a CPU VM Job host's user data marks its start; reading other hosts
+  // would only delay their Running event.
   await deps.lifecycle.updateState(
     props.id,
     WorkloadState.Running,
-    await bootMarksMetadata(await deps.store.getVMs(props.id), props),
+    isJobHost(ctx)
+      ? await bootMarksMetadata(await deps.store.getVMs(props.id), props)
+      : undefined,
   );
 }
 
