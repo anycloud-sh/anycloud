@@ -363,7 +363,12 @@ function parseLog(log: string) {
     const cpu = /^LSCPU ([^:]+):\s*(.*)$/.exec(line.trim());
     if (cpu) lscpu[cpu[1]!] = cpu[2]!;
   }
-  return { timings, sysbench, lscpu, done: log.includes('BENCH_DONE') };
+  return {
+    timings,
+    sysbench,
+    lscpu,
+    done: log.includes('BENCH_DONE') && !log.includes('BENCH_FAIL'),
+  };
 }
 
 async function runJob(
