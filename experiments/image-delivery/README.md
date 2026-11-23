@@ -4,9 +4,11 @@
   [45239008856](https://github.com/anycloud-sh/anycloud/actions/runs/45239008856)
   (AWS and Azure, source `7c5312a1a`),
   [45246753247](https://github.com/anycloud-sh/anycloud/actions/runs/45246753247)
-  (GCP disks, `6eb525b24`) and
+  (GCP disks, `6eb525b24`),
   [45251963955](https://github.com/anycloud-sh/anycloud/actions/runs/45251963955)
-  (GCP registry, lazy and baked arms, `6eb525b24`), 2026-11-23: ten VMs per
+  (GCP registries, lazy and baked on pd-standard, `6eb525b24`) and
+  [45257355410](https://github.com/anycloud-sh/anycloud/actions/runs/45257355410)
+  (GCP and Azure on the shipped disks, `296b6f7b7`), 2026-11-23: ten VMs per
   arm, interleaved; cleanup left nothing. The results are below. They
   replace run 45189626411's, whose baked arm started in bursts after the
   others. Azure's `regional` and `lazy` arms are still to run.
@@ -22,8 +24,9 @@
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments` `[]`
   and `cleanup_arguments` `["cleanup"]`. `["run", "<cloud>", ...]` runs only
   the named clouds (`aws`, `gcp`, `azure`); `--count=N` sets the VMs per arm
-  (default 5), `--arms=a,b` the arms, and `--parallel=N` the VMs per cloud at
-  once (default 5).
+  (default 5), `--arms=a,b` the arms, `--parallel=N` the VMs per cloud at
+  once (default 5), and `--disk=fast` or `--disk=balanced` the disk of every
+  arm that doesn't set its own.
 
 ## What it measures
 
@@ -41,11 +44,11 @@ over SSH, then deletes it.
 The image is backmesh v0.5.6's runner, pinned by digest (724 MB of zstd
 layers). VMs are `backmesh-4`-shaped and on demand, 100 GB root disk:
 
-| Cloud | Region    | VM types, in order                       | Root disk (baseline)                                            |
-| ----- | --------- | ---------------------------------------- | --------------------------------------------------------------- |
-| AWS   | us-east-2 | `m8i.xlarge`, `m7i.xlarge`, `m7a.xlarge` | gp3, 4,000 IOPS, 500 MiB/s                                      |
-| GCP   | us-east4  | `n2-standard-4`, `n2d-standard-4`        | pd-standard (the API's default, which the product leaves on n2) |
-| Azure | eastus2   | `Standard_D4ads_v5`                      | Standard_LRS; the image stores go on the resource disk          |
+| Cloud | Region    | VM types, in order                       | Root disk (baseline)                                                                                                           |
+| ----- | --------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| AWS   | us-east-2 | `m8i.xlarge`, `m7i.xlarge`, `m7a.xlarge` | gp3, 4,000 IOPS, 500 MiB/s: backmesh's setting (anycloud's default tier is 8,000 / 1,000)                                      |
+| GCP   | us-east4  | `n2-standard-4`, `n2d-standard-4`        | pd-standard: anycloud's medium tier on n2. The shipped disk, anycloud's default tier and backmesh's, is pd-ssd (`--disk=fast`) |
+| Azure | eastus2   | `Standard_D4ads_v5`                      | Standard_LRS; the image stores go on the resource disk. backmesh ships Premium_LRS (`--disk=fast`)                             |
 
 | Arm                | What changes                                                                                                                                                                                       |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,7 +89,33 @@ launch → first step's end against `ghcr`'s in the same run; positive is
 faster. p is the exact two-sided Mann-Whitney U test of that figure
 against `ghcr`'s. Every VM landed on its arm's first VM type.
 
-AWS, run 45239008856 (`m8i.xlarge`, gp3 4,000 IOPS / 500 MiB/s):
+Against what ships (backmesh's `backmesh-4` classes: gp3 4,000 / 500 on
+AWS, pd-ssd on GCP, Premium_LRS on Azure):
+
+| Cloud | Baseline | Arm                          | Win   | p      |
+| ----- | -------- | ---------------------------- | ----- | ------ |
+| AWS   | 25.2     | `baked`                      | +9.1  | <0.001 |
+| AWS   |          | best other: `ghcr-c10`       | +1.7  | 0.052  |
+| GCP   | 48.9     | `baked`                      | +15.3 | 0.001  |
+| GCP   |          | `lazy`                       | −1.3  | 0.58   |
+| Azure | 42.3     | `baked` (`Standard_D4as_v5`) | −1.4  | 0.53   |
+
+So baking is the only lever that beats the shipped configuration, on AWS
+and GCP. On Azure the product's resource disk already matches it. Neither a same-region registry nor more download lanes wins where
+measured; Azure's registry isn't yet, and GCP's only on pd-standard.
+
+On the shipped disks, run 45257355410 (`--disk=fast`; Azure's `lazy` skipped):
+
+| Cloud | Arm                                     | ok    | pull | MB/s | launch → container | first step | launch → step end | win   | p      |
+| ----- | --------------------------------------- | ----- | ---- | ---- | ------------------ | ---------- | ----------------- | ----- | ------ |
+| GCP   | `ghcr`                                  | 10/10 | 19.1 | 40.2 | 48.7 (45.8–62.8)   | 0.2        | 48.9 (46.0–63.1)  | 0     | —      |
+| GCP   | `lazy`                                  | 10/10 | 3.5  | 34.7 | 37.5 (35.3–38.8)   | 13.6       | 50.2 (46.6–53.8)  | −1.3  | 0.58   |
+| GCP   | `baked`                                 | 10/10 | 1.8  | —    | 32.4 (28.0–58.9)   | 1.1        | 33.6 (28.8–60.1)  | +15.3 | 0.001  |
+| Azure | `ghcr`                                  | 10/10 | 13.3 | 58.9 | 42.1 (36.5–69.9)   | 0.2        | 42.3 (36.6–70.0)  | 0     | —      |
+| Azure | `baked` (`Standard_D4as_v5`)            | 10/10 | 3.4  | —    | 38.0 (34.6–46.0)   | 5.3        | 43.7 (40.0–52.8)  | −1.4  | 0.53   |
+| Azure | `no-resource-disk` (`Standard_D4as_v5`) | 10/10 | 35.7 | 21.6 | 73.5 (65.8–81.4)   | 0.2        | 73.7 (66.0–81.6)  | −31.4 | <0.001 |
+
+AWS, run 45239008856 (`m8i.xlarge`, gp3 4,000 IOPS / 500 MiB/s, as shipped):
 
 | Arm            | ok    | pull | MB/s  | launch → container | first step | launch → step end | win  | p      |
 | -------------- | ----- | ---- | ----- | ------------------ | ---------- | ----------------- | ---- | ------ |
@@ -98,8 +127,8 @@ AWS, run 45239008856 (`m8i.xlarge`, gp3 4,000 IOPS / 500 MiB/s):
 | `fast-disk`    | 10/10 | 6.9  | 110.4 | 24.6 (20.6–29.0)   | 0.1        | 24.7 (20.7–29.2)  | +0.5 | 0.35   |
 | `baked`        | 10/10 | 1.2  | —     | 15.1 (13.8–23.1)   | 0.9        | 16.1 (14.6–25.1)  | +9.1 | <0.001 |
 
-GCP, `n2-standard-4`, pd-standard unless the arm changes it. Disks, run
-45246753247:
+GCP, `n2-standard-4`, on pd-standard (anycloud's medium tier) unless the
+arm changes it. Disks, run 45246753247:
 
 | Arm             | ok    | pull | MB/s | launch → container | first step | launch → step end | win   | p      |
 | --------------- | ----- | ---- | ---- | ------------------ | ---------- | ----------------- | ----- | ------ |
@@ -118,7 +147,7 @@ Registries, lazy and baked, run 45251963955:
 | `lazy`         | 10/10 | 4.0  | 32.5 | 48.2 (45.0–51.0)   | 14.0       | 62.5 (54.5–74.0)  | +13.0 | <0.001 |
 | `baked`        | 10/10 | 5.1  | —    | 54.4 (47.6–69.6)   | 5.7        | 60.1 (53.0–74.3)  | +15.4 | <0.001 |
 
-Azure, run 45239008856 (Standard_LRS; `Standard_D4ads_v5` unless noted):
+Azure on Standard_LRS, run 45239008856 (`Standard_D4ads_v5` unless noted):
 
 | Arm                                     | ok    | pull | MB/s | launch → container | first step | launch → step end | win   | p      |
 | --------------------------------------- | ----- | ---- | ---- | ------------------ | ---------- | ----------------- | ----- | ------ |
@@ -132,46 +161,47 @@ Each pull fetched 730–800 MB; a baked VM's pull fetches only the manifest,
 about 50 KB. `summary.json` also has kernel → container and launch →
 kernel, with ranges and p-values.
 
-- **GCP's pull is disk-bound.** On pd-standard, the product's default disk
-  on n2, the pull writes at 20 MB/s, and nothing that speeds the download
-  helps: Artifact Registry in the region and ten download lanes each win
-  0–1 s (p ≥ 0.48). pd-balanced wins 16.1 s and pd-ssd 22.9 s (both
-  p < 0.001); pd-ssd beats pd-balanced by 6.8 s (p = 0.04).
-- **Baking wins on AWS and GCP.** AWS: +9.1 s, to 16.1 s. GCP: +15.4 s, to
-  60.1 s, about what pd-ssd wins without baking (53.7 s in the disk run;
-  p = 0.17 across the runs). The first read of a baked disk is slow: the
-  first step takes 0.9 s on AWS, 5.7 s on GCP and 7.5 s on Azure, against
-  0.1–0.2 s.
+- **GCP's pull is disk-bound.** On pd-standard the pull writes at 20 MB/s,
+  and nothing that speeds the download helps: Artifact Registry in the
+  region and ten download lanes each win 0–1 s (p ≥ 0.48). pd-balanced
+  wins 16.1 s and pd-ssd 22.9 s (both p < 0.001); pd-ssd beats pd-balanced
+  by 6.8 s (p = 0.04). The pd-standard runs' `lazy` (+13.0 s) and `baked`
+  (+15.4 s) wins there mostly make up for its slow writes.
+- **On the shipped pd-ssd, baking still wins 15.3 s on GCP**, to 33.6 s,
+  and its first step takes 1.1 s (5.7 s on pd-standard). `lazy` is even
+  with `ghcr` (p = 0.58): its container starts 11 s sooner, then its first
+  step takes 13.6 s.
 - **A fresh GCP image is slow only when many VMs start from it at once.**
-  The earlier run started six baked VMs together on a minute-old image:
-  about 70 s from the create call to the kernel. Started one a round here,
-  eight took 20–22 s, like Ubuntu's image, and two 36 s.
-- **On Azure, the resource disk is the lever, and baked loses.** The
-  baked image needs `Standard_D4as_v5` (no resource disk). On that type it
-  wins 34.5 s over pulling to the Standard_LRS OS disk (83.1 → 48.6 s,
-  p < 0.001), where the pull writes at 18 MB/s. But the product's
-  `Standard_D4ads_v5` pulls to its resource disk at 60 MB/s and ends at
-  44.8 s, 3.8 s sooner than baked (p = 0.25). Premium_LRS wins 5.6 s
-  (p = 0.004).
+  Run 45189626411 started six baked VMs together on a minute-old image:
+  about 70 s from the create call to the kernel. Started one a round,
+  17 of 20 took 19–28 s, like Ubuntu's image; the first after each bake took
+  36–46 s, and one other 37 s.
+- **Baking wins 9.1 s on AWS**, to 16.1 s, with a 0.9 s first step. No
+  other arm's win there is significant: ten lanes +1.7 s (p = 0.052), the
+  faster gp3 +0.5 s (p = 0.35; run 45189626411 had +2.1 s, p = 0.16), ECR
+  in the region +0.3 s at 78 against 90 MB/s.
+- **On Azure, the resource disk is the lever, and baked doesn't beat it.**
+  The baked image needs `Standard_D4as_v5` (no resource disk). On that
+  type it wins 30.0 s on Premium_LRS and 34.5 s on Standard_LRS over
+  pulling to the OS disk (both p < 0.001). But the product's
+  `Standard_D4ads_v5` pulls to its resource disk at 59 MB/s on either OS
+  disk, and ends 1.4 s sooner than baked on Premium (p = 0.53) and 3.8 s
+  sooner on Standard (p = 0.25). Premium_LRS over Standard_LRS wins 5.6 s
+  on that type (p = 0.004).
 - **Azure hands out pre-booted VMs.** Every `Standard_D4ads_v5` VM from
-  Ubuntu's image, and three of ten `Standard_D4as_v5` ones, had a kernel
+  Ubuntu's image, and three of the twenty `Standard_D4as_v5` ones from it, had a kernel
   that started before the create call (`pre-booted` in `summary.json`):
   Azure keeps marketplace-image VMs booted and assigns them. A custom image
   never was. Kernel-relative figures are meaningless on those VMs, so the
-  Azure figures above count from the create call. Run 45189626411's Azure
+  Azure figures here count from the create call. Run 45189626411's Azure
   VMs weren't pre-booted, and its `ghcr` ended at 63.5 s.
-- **AWS has little to win without baking.** Its baseline is 25.2 s from the
-  create call to the first step's end. No other arm's win is significant:
-  ten lanes +1.7 s (p = 0.052), the faster gp3 +0.5 s (p = 0.35; run
-  45189626411 had +2.1 s, p = 0.16), ECR in the region +0.3 s at 78
-  against 90 MB/s.
-- **Lazy pulling moves the time; on a slow disk it removes some.** The
-  first step here reads about 90 MB of the image. On AWS, `lazy` pulls from
-  ECR, so it compares with `regional`: the container starts 2.6 s sooner,
-  but the first step takes 6.3 s, so it ends 4.0 s later (p = 0.06). On
-  GCP's pd-standard it writes 90 MB instead of 730 and ends 13.0 s sooner
-  than `regional` (p < 0.001), though its first step takes 14.0 s. A job
-  that reads more of the image pays more.
+- **Lazy pulling moves the time; only a slow disk makes it pay.** The lazy
+  pull fetches about 127 MB, and the first step then reads about 80–90 MB
+  more. On AWS, `lazy` pulls from ECR, so it compares with `regional`: the
+  container starts 2.6 s sooner, but the first step takes 6.3 s, so it ends
+  4.0 s later (p = 0.06). Only on GCP's pd-standard does it end sooner
+  (13.0 s before `regional`, p < 0.001). A job that reads more of the
+  image pays more.
 - Run 45189626411's AWS baked VMs that skipped their user data (five of
   ten, all in its first burst) didn't recur: all ten ran it here.
 
@@ -196,7 +226,7 @@ keeps; the baked arm also needs a build per version, region and cloud.
 
 ## Cost
 
-About $8 across ten dispatches: about 470 four-vCPU VMs for 3–6 minutes
+About $9 across eleven dispatches: about 530 four-vCPU VMs for 3–6 minutes
 each at $0.17–0.20 an hour, a VM image per cloud and run for under an hour,
 and a few GB in ECR and Artifact Registry. No ACR was made.
 
