@@ -5,6 +5,12 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.82
+
+### GCP generated credentials can launch VM Jobs
+
+`anycloud credentials new --provider gcp --generate` now grants the published `anycloud` role, creating it or adding missing permissions, so VM Jobs can create their network. Grant existing 0.1.81 generated keys the [role](/reference/cli/credentials#gcp-permissions) once.
+
 ## 0.1.81
 
 ### VM Jobs run in an anycloud-owned network on AWS and GCP
