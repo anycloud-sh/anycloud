@@ -28,6 +28,7 @@ import {
   PIGZ_DEBS,
 } from '../../../src/api/runtime-artifacts.js';
 import { log } from '../../../src/api/services/logger.js';
+import { parseBootMarks } from '../../../src/api/services/host-runtime/boot-marks.js';
 import { CloudType, GpuRuntime } from '../../../src/shared/cloud.js';
 
 const keys = { publicKey: 'ssh-ed25519 AAAAC3Nza anycloud', privateKey: '' };
@@ -472,7 +473,14 @@ function prepare(
 exec ${realTimeout} "$@"`,
     dockerd: '',
     iptables: '',
-    systemctl: '',
+    // systemd's monotonic times: none for the newer cloud-init unit.
+    systemctl: `case "$*" in
+  *UserspaceTimestampMonotonic*) echo 1500000 ;;
+  *cloud-init-network.service*) echo 0 ;;
+  *cloud-init.service*) echo 4000000 ;;
+  *ssh.socket*) echo 2000000 ;;
+  show*) echo 3000000 ;;
+esac`,
     journalctl: '',
     sync: '',
     sleep: '',
@@ -486,12 +494,18 @@ esac`,
   });
   const dir = join(vm.root, 'prepare');
   const { script } = parse(generateJobHostUserData(keys, host(image)));
-  vm.run(script.replaceAll('/run/anycloud/prepare', dir));
+  vm.run(script.replaceAll('/run/anycloud', vm.root));
   const read = (name: string) =>
     existsSync(join(dir, name))
       ? readFileSync(join(dir, name), 'utf8').trim()
       : null;
-  return { read, calls: vm.calls() };
+  /** The boot marks' names in order, and each one's value. */
+  const lines = (read('../boot-marks') ?? '').split('\n');
+  const marks = {
+    names: lines.map((line) => line.split(' ')[0]),
+    at: parseBootMarks(lines.join('\n')),
+  };
+  return { read, calls: vm.calls(), marks };
 }
 
 describe('the Job host preparation', () => {
@@ -534,6 +548,53 @@ describe('the Job host preparation', () => {
     expect(calls).toContain('systemctl disable --now docker');
     expect(read('pull')).toBeNull();
     expect(calls).not.toMatch(/^(ctr |docker pull)/m);
+  });
+
+  it('marks each step in seconds since boot, then the boot before it from systemd', () => {
+    const { marks } = prepare(IMAGE);
+    const { names, at } = marks;
+    expect(names.slice(0, 1)).toEqual(['prepare-start']);
+    // Installed in parallel, each marked when it finishes.
+    expect(names.slice(1, 3).sort()).toEqual([
+      'docker-installed',
+      'iptables-installed',
+    ]);
+    expect(names.slice(3, 7)).toEqual([
+      'docker-ready',
+      'pull-start',
+      'pull-bytes',
+      'pull-end',
+    ]);
+    const order = ['prepare-start', 'docker-ready', 'pull-start', 'pull-end'];
+    const times = order.map((name) => at[name]!);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(times[0]).toBeGreaterThan(0);
+    expect(Number.isInteger(at['pull-bytes'])).toBe(true);
+    // Only the units that ran, and the older cloud-init's network stage.
+    expect(names.slice(7)).toEqual([
+      'userspace',
+      'cloud-init-local',
+      'network-online',
+      'cloud-init-network',
+      'sshd',
+    ]);
+    expect(at).toMatchObject({
+      userspace: 1.5,
+      'cloud-init-local': 3,
+      'network-online': 3,
+      'cloud-init-network': 4,
+      sshd: 2,
+    });
+  });
+
+  it('marks no pull without an image, nor a Docker that failed', () => {
+    expect(prepare(null).marks.names).not.toContain('pull-start');
+    const failed = prepare(IMAGE, {
+      driverStatus: '[["Backing Filesystem","extfs"]]',
+    }).marks.names;
+    expect(failed).not.toContain('docker-ready');
+    expect(failed).not.toContain('pull-start');
+    expect(failed).toContain('sshd');
   });
 
   it('keeps an older Docker an earlier release installed', () => {
@@ -629,7 +690,7 @@ function onHost(files: Record<string, string>, present = true) {
     exec: vi.fn(async (command: string) => ({
       stdout: execFileSync(
         'bash',
-        ['-c', command.replaceAll('/run/anycloud/prepare', dir)],
+        ['-c', command.replaceAll('/run/anycloud', root)],
         {
           encoding: 'utf8',
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
@@ -637,6 +698,10 @@ function onHost(files: Record<string, string>, present = true) {
       ),
     })),
     bin,
+    marks: () =>
+      existsSync(join(root, 'boot-marks'))
+        ? readFileSync(join(root, 'boot-marks'), 'utf8')
+        : '',
   };
 }
 
@@ -678,6 +743,12 @@ describe('jobHostPrePull', () => {
       }),
     };
     await expect(jobHostPrePull(broken, 'job-a', IMAGE)).resolves.toBeNull();
+  });
+
+  it('marks the API reaching the pull once', async () => {
+    const host = onHost({ image: `${IMAGE}\n`, pull: '0\n' });
+    await jobHostPrePull(host, 'job-a', IMAGE);
+    expect(host.marks()).toMatch(/^api-pull \d+\.\d+\n$/);
   });
 
   it('waits out a pull in progress', async () => {

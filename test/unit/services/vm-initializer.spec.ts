@@ -702,6 +702,17 @@ describe('initializeVM', () => {
     expect(commands.some((c) => c.includes('cloud-init status --wait'))).toBe(
       true,
     );
+    // The boot marks: the API's first command, and cloud-init's end.
+    const settle = commands.find((c) =>
+      c.includes('cloud-init status --wait'),
+    )!;
+    const lines = settle.split('\n');
+    expect(lines[0]).toContain('echo "api-ssh ');
+    expect(
+      lines.findIndex((line) => line.includes('echo "cloud-init-done ')),
+    ).toBeGreaterThan(
+      lines.findIndex((line) => line.includes('cloud-init status --wait')),
+    );
   });
 
   it('skips the NVIDIA fabric probe when the runtime is not CUDA', async () => {

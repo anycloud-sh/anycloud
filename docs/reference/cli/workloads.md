@@ -53,6 +53,13 @@ each `vms[].vmType` is the type that VM launched as (absent on VMs recorded
 before 0.1.23), which the text output shows after its address.
 `anycloud vm-types <cloud> <region> --details` lists a type's accelerators.
 
+On a VM, the `running` event's `metadata.bootMarks` says when each step of
+the host's start happened, in seconds after its kernel started, such as
+`network-online`, `docker-ready`, `pull-end`, `api-ssh` and
+`container-started`; `pull-bytes` is the bytes the host's own pull fetched.
+A CPU VM Job's host marks the most steps, as its user data installs Docker and
+pulls a public image. Marks a host didn't record are absent.
+
 While a Job, Service, or VM is `retrying`, JSON includes
 `retry`: the `attempt` number and the `earliestAt` and `latestAt` times between
 which the next attempt is due.

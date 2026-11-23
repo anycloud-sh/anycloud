@@ -50,6 +50,7 @@ import { log } from '../logger.js';
 import { publishServeEndpoint } from '../serve.js';
 import type { ResolvedWorkloadStorage } from '../workload-storage.js';
 import { teardownVMs } from '../host-runtime/termination.js';
+import { bootMarksMetadata } from '../host-runtime/boot-marks.js';
 import { classifyUnusableGpu } from './missing-gpu.js';
 import {
   UnusableGpuError,
@@ -377,7 +378,11 @@ export async function deploy(
       classifyDNSPublicationFailure(e) ?? classifyComputeFailure(ctx, e),
   });
 
-  await deps.lifecycle.updateState(props.id, WorkloadState.Running);
+  await deps.lifecycle.updateState(
+    props.id,
+    WorkloadState.Running,
+    await bootMarksMetadata(await deps.store.getVMs(props.id), props),
+  );
 }
 
 /**

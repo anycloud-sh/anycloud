@@ -25,6 +25,12 @@ import {
 } from './containerd-transfer.js';
 import { PULL_TOTAL_TIMEOUT_MS } from '../config.js';
 import {
+  BOOT_MARKS_PATH,
+  bootMark,
+  SYSTEMD_BOOT_MARKS,
+} from './host-runtime/boot-marks.js';
+import { RX_BYTES_FUNCTION } from './host-runtime/pull-timing.js';
+import {
   pullNeedsRegistryAuth,
   resolveWorkloadImage,
 } from './container-image.js';
@@ -306,22 +312,27 @@ function jobHostPrepareScript({
 set -u
 dir=${dir}
 mkdir -p "$dir"
+${bootMark('prepare-start')}
+# systemd's marks for the boot before this, once its units have all started.
+${SYSTEMD_BOOT_MARKS}
+trap systemd_marks EXIT
 ${JOB_HOST_DOCKER}
 ${installIptables(mirror)}
 ${installUnpigz(mirror)}
 export -f fetch_deb install_unpigz
-install_docker >"$dir/docker-install.log" 2>&1 & docker=$!
-install_iptables >"$dir/iptables.log" 2>&1 & iptables=$!
+{ install_docker && ${bootMark('docker-installed')}; } >"$dir/docker-install.log" 2>&1 & docker=$!
+{ install_iptables && ${bootMark('iptables-installed')}; } >"$dir/iptables.log" 2>&1 & iptables=$!
 # Best effort: Docker unpacks gzip layers with unpigz when it's on PATH, else
 # with Go's one-thread gzip. It lands before the pull, and initializeVM's own
 # install then finds it.
-timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz >"$dir/unpigz.log" 2>&1 & unpigz=$!
+{ timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz && ${bootMark('unpigz-installed')}; } >"$dir/unpigz.log" 2>&1 & unpigz=$!
 # All finish before the unit can exit, so dpkg is never cut off mid-install.
 wait "$docker"; d=$?
 wait "$iptables"; i=$?
 wait "$unpigz"
 [ "$d" = 0 ] && [ "$i" = 0 ] && start_docker 2>>"$dir/docker-install.log"
 s=$?
+[ "$s" = 0 ] && ${bootMark('docker-ready')}
 # A failure's evidence, for waitForJobHostDocker to log before the VM goes.
 [ "$s" = 0 ] || { echo "install_docker=$d install_iptables=$i"; systemctl status docker --no-pager; journalctl -u docker --no-pager -n 40; } > "$dir/failure.log" 2>&1
 echo $s > "$dir/docker"
@@ -338,6 +349,9 @@ TRANSFER_EOF
 # Early in boot GHCR's token fetch can stall or fail; each attempt is
 # bounded, and a bounded failure leaves the image to the SSH pull, which
 # reuses the layers fetched here.
+${RX_BYTES_FUNCTION}
+rx=$(ac_rx)
+${bootMark('pull-start')}
 echo containerd-transfer > "$dir/method"
 AC_PULL_IMAGE=${shellEscape(containerdImageReference(prePullImage))} AC_CONTAINERD_ADDRESS=${JOB_HOST_CONTAINERD_SOCKET} AC_CONTAINERD_NAMESPACE=moby AC_SNAPSHOTTER="$(docker info --format '{{.Driver}}')" \\
   timeout ${PRE_PULL_ATTEMPT_SECONDS} bash "$dir/transfer-pull.sh" >> "$dir/pull.log" 2>&1 && sync
@@ -352,6 +366,8 @@ if [ "$rc" != 0 ] && [ "$rc" != 124 ]; then
     [ "$attempt" = 3 ] || sleep $((attempt * 3))
   done
 fi
+echo "pull-bytes $(($(ac_rx) - rx))" >> ${BOOT_MARKS_PATH}
+${bootMark('pull-end')}
 echo $rc > "$dir/pull"`
     : ''
 }
@@ -471,9 +487,9 @@ export async function jobHostPrePull(
   ].join('\n');
   const deadline = Date.now() + PULL_TOTAL_TIMEOUT_MS;
   try {
-    for (;;) {
+    for (let first = true; ; first = false) {
       const { stdout } = await host.exec(
-        probe,
+        first ? `${bootMark('api-pull')}\n${probe}` : probe,
         (PRE_PULL_WAIT_SECONDS + 30) * 1000,
       );
       const [state, method] = stdout.trim().split(/\s+/);
