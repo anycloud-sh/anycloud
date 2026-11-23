@@ -21,6 +21,7 @@ import {
 import { configureContainerdTransferStore } from './containerd-transfer.js';
 import { JOB_HOST_DOCKER, waitForJobHostDocker } from './job-host.js';
 import { moveImageStoresToResourceDisk } from './resource-disk-store.js';
+import { bootMark } from './host-runtime/boot-marks.js';
 import { GpuRuntime } from '../../shared/cloud.js';
 import { sleep } from '../../shared/utils.js';
 import { errorMessage } from '../../shared/log-diagnostics.js';
@@ -142,9 +143,11 @@ async function settleFirstBootUpgrade(
   try {
     const { stdout } = await ssh.exec(
       [
+        bootMark('api-ssh'),
         'if ! command -v cloud-init >/dev/null 2>&1; then echo SETTLE_SKIP_NO_CLOUDINIT; exit 0; fi',
         'timeout 480 cloud-init status --wait >/dev/null 2>&1',
         'echo SETTLE_DONE rc=$?',
+        bootMark('cloud-init-done'),
         'cloud-init status 2>/dev/null | head -1 || true',
         'exit 0',
       ].join('\n'),

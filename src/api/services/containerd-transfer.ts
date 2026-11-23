@@ -654,10 +654,11 @@ export function transferAuthFileCommand(
   ].join(' && ');
 }
 
-/** Detached worker body. All values supplied via env are non-secret; GHCR's
- * long-lived credential is read from a cluster-only tmpfs file and replaced with
- * a scoped bearer in a temporary hosts.toml, both removed on exit. */
-export const CONTAINERD_TRANSFER_PULL_COMMAND = `set -eu
+/** The pull through containerd's transfer service. All values supplied via
+ * env are non-secret; GHCR's long-lived credential is read from a cluster-only
+ * tmpfs file and replaced with a scoped bearer in a temporary hosts.toml, both
+ * removed on exit. A Job host's user data runs it before dockerd is up. */
+export const CONTAINERD_TRANSFER_FETCH_COMMAND = `set -eu
 auth_root=
 auth_file=\${AC_REGISTRY_AUTH_FILE:-}
 attempt_log=
@@ -729,6 +730,9 @@ while :; do
     '${CONTAINERD_TRANSFER_RETRY_DELAY_SECONDS}' "$pull_attempt" '${CONTAINERD_TRANSFER_MAX_ATTEMPTS}' >&2
   sleep ${CONTAINERD_TRANSFER_RETRY_DELAY_SECONDS}
 done
+`;
 
+/** Detached worker body: the transfer, then a check that Docker sees the image. */
+export const CONTAINERD_TRANSFER_PULL_COMMAND = `${CONTAINERD_TRANSFER_FETCH_COMMAND}
 docker image inspect "$AC_PULL_IMAGE" >/dev/null
 `;

@@ -28,6 +28,7 @@ import {
   PIGZ_DEBS,
 } from '../../../src/api/runtime-artifacts.js';
 import { log } from '../../../src/api/services/logger.js';
+import { parseBootMarks } from '../../../src/api/services/host-runtime/boot-marks.js';
 import { CloudType, GpuRuntime } from '../../../src/shared/cloud.js';
 
 const keys = { publicKey: 'ssh-ed25519 AAAAC3Nza anycloud', privateKey: '' };
@@ -452,7 +453,8 @@ describe('JOB_HOST_DOCKER', () => {
 /**
  * The preparation script on a host whose Docker is already installed, with
  * stub systemd, Docker and ctr: Docker `version` on store `driverStatus`, and
- * the transfer's and `docker pull`'s exit codes.
+ * the transfer's and `docker pull`'s exit codes. `resourceDisk` gives the host
+ * an Azure resource disk, mounted at /mnt (twice the root's size) or never.
  */
 function prepare(
   image: string | null,
@@ -462,6 +464,7 @@ function prepare(
     ctr = 0,
     pull = 0,
     transferTimesOut = false,
+    resourceDisk = null as 'mounted' | 'unmounted' | null,
   } = {},
 ) {
   const realTimeout = execFileSync('bash', ['-c', 'command -v timeout'], {
@@ -472,8 +475,19 @@ function prepare(
 exec ${realTimeout} "$@"`,
     dockerd: '',
     iptables: '',
-    systemctl: '',
+    // systemd's monotonic times: none for the newer cloud-init unit.
+    systemctl: `case "$*" in
+  *UserspaceTimestampMonotonic*) echo 1500000 ;;
+  *cloud-init-network.service*) echo 0 ;;
+  *cloud-init.service*) echo 4000000 ;;
+  *ssh.socket*) echo 2000000 ;;
+  show*) echo 3000000 ;;
+  is-active*) exit 3 ;;
+esac`,
     journalctl: '',
+    findmnt: resourceDisk === 'mounted' ? 'echo /mnt' : '',
+    readlink: 'echo "$2"',
+    df: `echo Filesystem; case "$*" in *' /') echo "root 100" ;; *) echo "disk 200" ;; esac`,
     sync: '',
     sleep: '',
     ctr: `exit ${ctr}`,
@@ -486,12 +500,30 @@ esac`,
   });
   const dir = join(vm.root, 'prepare');
   const { script } = parse(generateJobHostUserData(keys, host(image)));
-  vm.run(script.replaceAll('/run/anycloud/prepare', dir));
+  if (resourceDisk) {
+    mkdirSync(join(vm.root, 'dev/disk/azure'), { recursive: true });
+    mkdirSync(join(vm.root, 'etc/systemd/system'), { recursive: true });
+    writeFileSync(join(vm.root, 'dev/disk/azure/resource-part1'), '');
+  }
+  vm.run(
+    script
+      .replaceAll('/run/anycloud', vm.root)
+      .replaceAll('/dev/disk/', `${vm.root}/dev/disk/`)
+      .replaceAll('/etc/systemd/', `${vm.root}/etc/systemd/`),
+  );
   const read = (name: string) =>
     existsSync(join(dir, name))
       ? readFileSync(join(dir, name), 'utf8').trim()
       : null;
-  return { read, calls: vm.calls() };
+  /** The boot marks' names in order, and each one's value. */
+  const lines = (read('../boot-marks') ?? '').split('\n');
+  const marks = {
+    names: lines.map((line) => line.split(' ')[0]),
+    at: parseBootMarks(lines.join('\n')),
+  };
+  const unit = (path: string) =>
+    existsSync(join(vm.root, 'etc/systemd/system', path));
+  return { read, calls: vm.calls(), marks, unit };
 }
 
 describe('the Job host preparation', () => {
@@ -526,14 +558,106 @@ describe('the Job host preparation', () => {
     expect(read('pull')).toBe('1');
   });
 
-  it('stops a Docker 29 on overlay2 and pulls nothing', () => {
+  it('stops a Docker 29 on overlay2 and records no pull', () => {
     const { read, calls } = prepare(IMAGE, {
       driverStatus: '[["Backing Filesystem","extfs"]]',
     });
     expect(read('docker')).not.toBe('0');
     expect(calls).toContain('systemctl disable --now docker');
+    expect(read('image')).toBeNull();
     expect(read('pull')).toBeNull();
-    expect(calls).not.toMatch(/^(ctr |docker pull)/m);
+    expect(calls).not.toContain('docker pull');
+  });
+
+  it('starts the pull once containerd is up, while dockerd starts', () => {
+    const { calls, marks } = prepare(IMAGE);
+    const at = (name: string) => marks.names.indexOf(name);
+    expect(at('docker-installed')).toBeLessThan(at('containerd-ready'));
+    expect(at('containerd-ready')).toBeLessThan(at('pull-start'));
+    expect(at('pull-start')).toBeLessThan(at('docker-ready'));
+    expect(at('pull-unpacked')).toBeLessThan(at('pull-end'));
+    expect(at('docker-ready')).toBeLessThan(at('pull-end'));
+    expect(calls.indexOf('systemctl start containerd')).toBeLessThan(
+      calls.indexOf('systemctl enable --now docker'),
+    );
+    // Docker isn't up yet, so the transfer leaves its check to the API.
+    expect(calls).not.toContain('docker image inspect');
+  });
+
+  it("binds the stores onto Azure's resource disk before containerd starts, and pulls there", () => {
+    const { read, calls, unit } = prepare(IMAGE, { resourceDisk: 'mounted' });
+    expect(unit('anycloud-image-store.service')).toBe(true);
+    expect(unit('containerd.service.d/anycloud-image-store.conf')).toBe(true);
+    expect(calls.indexOf('systemctl start anycloud-image-store')).toBeLessThan(
+      calls.indexOf('systemctl start containerd'),
+    );
+    expect(read('pull')).toBe('0');
+  });
+
+  it('leaves the pull to the API when the resource disk never mounts', () => {
+    const { read, calls, unit } = prepare(IMAGE, {
+      resourceDisk: 'unmounted',
+    });
+    expect(unit('anycloud-image-store.service')).toBe(false);
+    expect(read('docker')).toBe('0');
+    expect(read('docker-install.log')).toContain(
+      'resource disk not mounted after 20s',
+    );
+    expect(read('pull')).toBeNull();
+    expect(calls).not.toMatch(/^ctr /m);
+  });
+
+  it('marks each step in seconds since boot, then the boot before it from systemd', () => {
+    const { marks } = prepare(IMAGE);
+    const { names, at } = marks;
+    expect(names[0]).toBe('prepare-start');
+    // Steps that run in parallel, each marked when it finishes.
+    expect(names.slice(0, 9).sort()).toEqual([
+      'containerd-ready',
+      'docker-installed',
+      'docker-ready',
+      'iptables-installed',
+      'prepare-start',
+      'pull-bytes',
+      'pull-end',
+      'pull-start',
+      'pull-unpacked',
+    ]);
+    const order = ['prepare-start', 'pull-start', 'pull-end'];
+    const times = order.map((name) => at[name]!);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(times[0]).toBeGreaterThan(0);
+    expect(Number.isInteger(at['pull-bytes'])).toBe(true);
+    // Only the units that ran, and the older cloud-init's network stage.
+    expect(names.slice(9)).toEqual([
+      'userspace',
+      'cloud-init-local',
+      'network-online',
+      'cloud-init-network',
+      'sshd',
+      'ssh-service',
+      'user-sessions',
+      'guest-agent',
+      'snapd-seeded',
+    ]);
+    expect(at).toMatchObject({
+      userspace: 1.5,
+      'cloud-init-local': 3,
+      'network-online': 3,
+      'cloud-init-network': 4,
+      sshd: 2,
+      'ssh-service': 3,
+    });
+  });
+
+  it('marks no pull without an image, nor a pull for a Docker that failed', () => {
+    expect(prepare(null).marks.names).not.toContain('pull-start');
+    const failed = prepare(IMAGE, {
+      driverStatus: '[["Backing Filesystem","extfs"]]',
+    }).marks.names;
+    expect(failed).not.toContain('docker-ready');
+    expect(failed).not.toContain('pull-end');
+    expect(failed).toContain('sshd');
   });
 
   it('keeps an older Docker an earlier release installed', () => {
@@ -629,7 +753,7 @@ function onHost(files: Record<string, string>, present = true) {
     exec: vi.fn(async (command: string) => ({
       stdout: execFileSync(
         'bash',
-        ['-c', command.replaceAll('/run/anycloud/prepare', dir)],
+        ['-c', command.replaceAll('/run/anycloud', root)],
         {
           encoding: 'utf8',
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
@@ -637,6 +761,10 @@ function onHost(files: Record<string, string>, present = true) {
       ),
     })),
     bin,
+    marks: () =>
+      existsSync(join(root, 'boot-marks'))
+        ? readFileSync(join(root, 'boot-marks'), 'utf8')
+        : '',
   };
 }
 
@@ -678,6 +806,12 @@ describe('jobHostPrePull', () => {
       }),
     };
     await expect(jobHostPrePull(broken, 'job-a', IMAGE)).resolves.toBeNull();
+  });
+
+  it('marks the API reaching the pull once', async () => {
+    const host = onHost({ image: `${IMAGE}\n`, pull: '0\n' });
+    await jobHostPrePull(host, 'job-a', IMAGE);
+    expect(host.marks()).toMatch(/^api-pull \d+\.\d+\n$/);
   });
 
   it('waits out a pull in progress', async () => {

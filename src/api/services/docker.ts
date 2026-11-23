@@ -36,6 +36,7 @@ import { isSecretKey } from '../../shared/secret-keys.js';
 import { redactSecrets } from './redact.js';
 import { resolveServiceContainerPort } from './network.js';
 import { resolveWorkloadImage } from './container-image.js';
+import { bootMark } from './host-runtime/boot-marks.js';
 import { parseDockerGpuRequest } from '../../shared/docker-options.js';
 import {
   RUNTIME_SECRETS_DIR,
@@ -725,7 +726,10 @@ export class DockerManager {
 
     // Build and execute docker run command
     const cmd = DockerManager.getCommand(props, buckets, false, hostGroups);
-    await this.exec(cmd);
+    // A Local workload's host is the API's own machine: it keeps no marks.
+    await this.exec(
+      this.isLocal ? cmd : `${bootMark('container-run')}\n${cmd}`,
+    );
 
     log.info('Container started', {
       containerName: this.containerName,

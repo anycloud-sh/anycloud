@@ -734,6 +734,70 @@ describe('workload image pull flow', () => {
     });
   });
 
+  it("keeps the host's boot marks, with its container's start, on the Running event", async () => {
+    const id = 'deploy-boot-marks-' + Date.now();
+    const props = await createDeployProps(id);
+    deployFlowMocks.sshExec.mockImplementation(async (command: string) => ({
+      stdout: command.startsWith('cat /run/anycloud/boot-marks')
+        ? 'prepare-start 6.10\npull-end 14.52\ncontainer-started 19.87\n'
+        : '',
+      stderr: '',
+      code: 0,
+    }));
+
+    await deployWithVirtualClock(cloudConfig, props, 'test-credential-id');
+
+    const running = (await eventLog().getWorkloadEvents(id)).find(
+      (event) => event.state === WorkloadState.Running,
+    );
+    expect(JSON.parse(running!.metadata!).bootMarks).toEqual({
+      'prepare-start': 6.1,
+      'pull-end': 14.52,
+      'container-started': 19.87,
+    });
+  });
+
+  it('reads no boot marks on a host that is not a CPU VM Job host', async () => {
+    const id = 'deploy-gpu-no-boot-marks-' + Date.now();
+    const props = await createDeployProps(id, {
+      dockerOptions: { gpus: 'all' },
+    });
+    deployFlowMocks.sshExec.mockImplementation(async (command: string) => ({
+      stdout: command.startsWith('cat /run/anycloud/boot-marks')
+        ? 'container-started 19.87\n'
+        : '',
+      stderr: '',
+      code: 0,
+    }));
+
+    await deployWithVirtualClock(cloudConfig, props, 'test-credential-id');
+
+    expect(
+      deployFlowMocks.sshExec.mock.calls.some(([command]) =>
+        String(command).startsWith('cat /run/anycloud/boot-marks'),
+      ),
+    ).toBe(false);
+    const running = (await eventLog().getWorkloadEvents(id)).find(
+      (event) => event.state === WorkloadState.Running,
+    );
+    expect(running?.metadata ?? null).toBeNull();
+  });
+
+  it('reaches Running without boot marks when the host has none', async () => {
+    const id = 'deploy-no-boot-marks-' + Date.now();
+    const props = await createDeployProps(id);
+
+    await deployWithVirtualClock(cloudConfig, props, 'test-credential-id');
+
+    expect((await queries().getWorkload(id))?.state).toBe(
+      WorkloadState.Running,
+    );
+    const running = (await eventLog().getWorkloadEvents(id)).find(
+      (event) => event.state === WorkloadState.Running,
+    );
+    expect(running?.metadata ?? null).toBeNull();
+  });
+
   it('injects every named secret into the container environment', async () => {
     const id = 'deploy-secrets-' + Date.now();
     await getCredentialSecretStore().saveSecret('DB', {

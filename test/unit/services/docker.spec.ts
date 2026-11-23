@@ -114,6 +114,21 @@ describe('DockerManager', () => {
       expect(cmd).toContain("--gpus 'all'");
     });
 
+    it('marks the boot just before a remote host runs the container, never on the local host', async () => {
+      const remote = new DockerManager('10.0.0.5', 'fake-private-key');
+      remote.exec = execSpy;
+      await remote.startContainer(mockStoredWorkload());
+      const run = execSpy.mock.calls.find((c) => c[0].includes('docker run'));
+      expect(run?.[0]).toMatch(
+        /^\{ mkdir -p \/run\/anycloud && echo "container-run .*\/run\/anycloud\/boot-marks; \} 2>\/dev\/null \|\| :\ndocker run /,
+      );
+
+      execSpy.mockClear();
+      await dockerManager.startContainer(mockStoredWorkload());
+      const local = execSpy.mock.calls.find((c) => c[0].includes('docker run'));
+      expect(local?.[0]).toMatch(/^docker run /);
+    });
+
     it('should include --runtime flag when specified', async () => {
       const props = mockStoredWorkload({
         dockerOptions: { runtime: 'nvidia' },

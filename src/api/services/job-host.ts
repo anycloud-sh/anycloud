@@ -19,11 +19,21 @@ import {
   UNPIGZ_PATH,
 } from '../runtime-artifacts.js';
 import {
-  CONTAINERD_TRANSFER_PULL_COMMAND,
+  CONTAINERD_TRANSFER_FETCH_COMMAND,
   containerdImageReference,
   withContainerdTransferConfig,
 } from './containerd-transfer.js';
 import { PULL_TOTAL_TIMEOUT_MS } from '../config.js';
+import {
+  BOOT_MARKS_PATH,
+  bootMark,
+  SYSTEMD_BOOT_MARKS,
+} from './host-runtime/boot-marks.js';
+import { RX_BYTES_FUNCTION } from './host-runtime/pull-timing.js';
+import {
+  RESOURCE_DISK_PROBE,
+  resourceDiskStoreInstallCommand,
+} from './resource-disk-store.js';
 import {
   pullNeedsRegistryAuth,
   resolveWorkloadImage,
@@ -288,14 +298,53 @@ start_docker() {
 }`;
 
 /**
+ * Where Azure's Ubuntu cloud-init mounts the resource disk: in its network
+ * stage, after bootcmd starts the preparation.
+ */
+const AZURE_RESOURCE_DISK_MOUNT = '/mnt';
+
+/**
+ * Bounds the preparation's wait for that mount, which held Docker's start:
+ * it came 7 s after Docker's archive in the vm-boot-marks runs.
+ */
+const RESOURCE_DISK_MOUNT_WAIT_SECONDS = 20;
+
+/**
+ * `stores_ready`: succeeds once the image stores are where the Job's pull
+ * should land. With no Azure resource disk, or one too small to take them
+ * (resourceDiskStoreMount), they stay on the OS disk. A resource disk at
+ * AZURE_RESOURCE_DISK_MOUNT gets them bound onto it, as initializeVM would,
+ * before containerd first opens them. Any other disk, or none mounted in
+ * time, fails: initializeVM decides, and the pull goes over SSH.
+ */
+const STORES_READY = `stores_ready() {
+  [ -e /dev/disk/cloud/azure_resource-part1 ] || [ -e /dev/disk/azure/resource-part1 ] || return 0
+  m=
+  for _ in $(seq ${RESOURCE_DISK_MOUNT_WAIT_SECONDS * 2}); do
+    m=$(
+${RESOURCE_DISK_PROBE}
+) && [ -n "$m" ] && break
+    sleep 0.5
+  done
+  set -- $m
+  [ $# = 3 ] || { echo "resource disk not mounted after ${RESOURCE_DISK_MOUNT_WAIT_SECONDS}s: the API moves the stores and pulls"; return 1; }
+  [ "$1" != / ] && [ "$2" -ge "$3" ] 2>/dev/null || return 0
+  # Heredocs inside, so unindented.
+  [ "$1" = ${AZURE_RESOURCE_DISK_MOUNT} ] && (
+${resourceDiskStoreInstallCommand(AZURE_RESOURCE_DISK_MOUNT)}
+)
+}`;
+
+/**
  * The preparation a CPU VM Job host runs from its user data while the API
- * waits for SSH: Docker (JOB_HOST_DOCKER), then a pull of a public image
+ * waits for SSH: Docker (JOB_HOST_DOCKER), and a pull of a public image
  * through containerd's transfer service, which unpacks layers in parallel,
- * or, if that fails, an ordinary `docker pull`. `docker` and `pull` in
- * JOB_HOST_PREPARE_DIR hold each step's exit status, and `method` the pull's.
- * A host with an Azure resource disk skips the pull: initializeVM moves the
- * image stores there, which would hide it. The pull is synced to disk here,
- * off the Job's path; a container's first create would otherwise wait for it.
+ * or, if that fails, an ordinary `docker pull`. The transfer starts as soon
+ * as containerd can, alongside iptables' install and dockerd's start.
+ * `docker` and `pull` in JOB_HOST_PREPARE_DIR hold each step's exit status,
+ * and `method` the pull's; a pull counts only once Docker is ready. The pull
+ * is synced to disk here, off the Job's path; a container's first create
+ * would otherwise wait for it.
  */
 function jobHostPrepareScript({
   prePullImage,
@@ -306,42 +355,62 @@ function jobHostPrepareScript({
 set -u
 dir=${dir}
 mkdir -p "$dir"
+${bootMark('prepare-start')}
+# systemd's marks for the boot before this, once its units have all started.
+${SYSTEMD_BOOT_MARKS}
+trap systemd_marks EXIT
 ${JOB_HOST_DOCKER}
 ${installIptables(mirror)}
 ${installUnpigz(mirror)}
 export -f fetch_deb install_unpigz
-install_docker >"$dir/docker-install.log" 2>&1 & docker=$!
-install_iptables >"$dir/iptables.log" 2>&1 & iptables=$!
+{ install_docker && ${bootMark('docker-installed')}; } >"$dir/docker-install.log" 2>&1 & docker=$!
+{ install_iptables && ${bootMark('iptables-installed')}; } >"$dir/iptables.log" 2>&1 & iptables=$!
 # Best effort: Docker unpacks gzip layers with unpigz when it's on PATH, else
 # with Go's one-thread gzip. It lands before the pull, and initializeVM's own
 # install then finds it.
-timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz >"$dir/unpigz.log" 2>&1 & unpigz=$!
+{ timeout ${JOB_HOST_UNPIGZ_SECONDS} bash -c install_unpigz && ${bootMark('unpigz-installed')}; } >"$dir/unpigz.log" 2>&1 & unpigz=$!
 # All finish before the unit can exit, so dpkg is never cut off mid-install.
 wait "$docker"; d=$?
-wait "$iptables"; i=$?
 wait "$unpigz"
+${
+  prePullImage
+    ? `${STORES_READY}
+cat > "$dir/transfer-pull.sh" << 'TRANSFER_EOF'
+${CONTAINERD_TRANSFER_FETCH_COMMAND.trimEnd()}
+TRANSFER_EOF
+# Early in boot GHCR's token fetch can stall or fail; each attempt is
+# bounded, and a bounded failure leaves the image to the SSH pull, which
+# reuses the layers fetched here. overlayfs is Docker's snapshotter on the
+# containerd store, which start_docker requires.
+transfer_pull() {
+  AC_PULL_IMAGE=${shellEscape(containerdImageReference(prePullImage))} AC_CONTAINERD_ADDRESS=${JOB_HOST_CONTAINERD_SOCKET} AC_CONTAINERD_NAMESPACE=moby AC_SNAPSHOTTER=overlayfs \\
+    timeout ${PRE_PULL_ATTEMPT_SECONDS} bash "$dir/transfer-pull.sh" >> "$dir/pull.log" 2>&1 &&
+    { ${bootMark('pull-unpacked')}; sync; }
+}
+${RX_BYTES_FUNCTION}
+pull=
+if [ "$d" = 0 ] && stores_ready >>"$dir/docker-install.log" 2>&1 &&
+  systemctl daemon-reload && systemctl start containerd; then
+  ${bootMark('containerd-ready')}
+  rx=$(ac_rx)
+  ${bootMark('pull-start')}
+  transfer_pull & pull=$!
+fi
+`
+    : ''
+}wait "$iptables"; i=$?
 [ "$d" = 0 ] && [ "$i" = 0 ] && start_docker 2>>"$dir/docker-install.log"
 s=$?
+[ "$s" = 0 ] && ${bootMark('docker-ready')}
 # A failure's evidence, for waitForJobHostDocker to log before the VM goes.
 [ "$s" = 0 ] || { echo "install_docker=$d install_iptables=$i"; systemctl status docker --no-pager; journalctl -u docker --no-pager -n 40; } > "$dir/failure.log" 2>&1
 echo $s > "$dir/docker"
 ${
   prePullImage
-    ? `[ "$(cat "$dir/docker")" = 0 ] || exit 0
-for link in /dev/disk/cloud/azure_resource-part1 /dev/disk/azure/resource-part1; do
-  [ -e "$link" ] && exit 0
-done
+    ? `[ "$s" = 0 ] && [ -n "$pull" ] || exit 0
 echo ${shellEscape(prePullImage)} > "$dir/image"
-cat > "$dir/transfer-pull.sh" << 'TRANSFER_EOF'
-${CONTAINERD_TRANSFER_PULL_COMMAND.trimEnd()}
-TRANSFER_EOF
-# Early in boot GHCR's token fetch can stall or fail; each attempt is
-# bounded, and a bounded failure leaves the image to the SSH pull, which
-# reuses the layers fetched here.
 echo containerd-transfer > "$dir/method"
-AC_PULL_IMAGE=${shellEscape(containerdImageReference(prePullImage))} AC_CONTAINERD_ADDRESS=${JOB_HOST_CONTAINERD_SOCKET} AC_CONTAINERD_NAMESPACE=moby AC_SNAPSHOTTER="$(docker info --format '{{.Driver}}')" \\
-  timeout ${PRE_PULL_ATTEMPT_SECONDS} bash "$dir/transfer-pull.sh" >> "$dir/pull.log" 2>&1 && sync
-rc=$?
+wait "$pull"; rc=$?
 # A timed-out attempt hands over at once: its layers are what's slow.
 if [ "$rc" != 0 ] && [ "$rc" != 124 ]; then
   echo docker-fallback > "$dir/method"
@@ -352,6 +421,8 @@ if [ "$rc" != 0 ] && [ "$rc" != 124 ]; then
     [ "$attempt" = 3 ] || sleep $((attempt * 3))
   done
 fi
+echo "pull-bytes $(($(ac_rx) - rx))" >> ${BOOT_MARKS_PATH}
+${bootMark('pull-end')}
 echo $rc > "$dir/pull"`
     : ''
 }
@@ -471,9 +542,9 @@ export async function jobHostPrePull(
   ].join('\n');
   const deadline = Date.now() + PULL_TOTAL_TIMEOUT_MS;
   try {
-    for (;;) {
+    for (let first = true; ; first = false) {
       const { stdout } = await host.exec(
-        probe,
+        first ? `${bootMark('api-pull')}\n${probe}` : probe,
         (PRE_PULL_WAIT_SECONDS + 30) * 1000,
       );
       const [state, method] = stdout.trim().split(/\s+/);

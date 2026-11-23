@@ -19,21 +19,24 @@ END {
   printf "AC_PULL_STATS bytes=%.0f last_byte_ms=%.0f elapsed_ms=%.0f\\n", total, (t[i] - t[1]) * 1000, (t[n] - t[1]) * 1000
 }`;
 
-/**
- * Wraps a detached pull so it attributes its own time, as
- * experiments/vm-image-pull-attribution did: a sampler records the bytes the
- * VM's NICs receive once a second (not loopback, bridges, or a VF its parent
- * already counts), and an `AC_PULL_STATS` trailer after the pull's output
- * gives the bytes, the time to the last byte (99.5% of them) and the run time.
- * The command's exit code is kept.
- */
-export function measuredPullCommand(command: string): string {
-  return `ac_rx() {
+/** `ac_rx`: the bytes the VM's NICs have received (not loopback, bridges, or
+ * a VF its parent already counts). */
+export const RX_BYTES_FUNCTION = `ac_rx() {
   for ac_nic in /sys/class/net/*; do
     case \${ac_nic##*/} in lo|docker*|veth*|br-*|virbr*) continue ;; esac
     [ -e "$ac_nic/master" ] || cat "$ac_nic/statistics/rx_bytes"
   done 2>/dev/null | awk '{s += $1} END {printf "%.0f\\n", s}'
-}
+}`;
+
+/**
+ * Wraps a detached pull so it attributes its own time, as
+ * experiments/vm-image-pull-attribution did: a sampler records the bytes the
+ * VM's NICs receive once a second (RX_BYTES_FUNCTION), and an `AC_PULL_STATS` trailer after the pull's output
+ * gives the bytes, the time to the last byte (99.5% of them) and the run time.
+ * The command's exit code is kept.
+ */
+export function measuredPullCommand(command: string): string {
+  return `${RX_BYTES_FUNCTION}
 ac_sample() { printf '%s %s\\n' "$(cut -d' ' -f1 /proc/uptime)" "$(ac_rx)"; }
 ac_samples=$(mktemp /tmp/ac-pull-samples.XXXXXX)
 ac_sample > "$ac_samples"
