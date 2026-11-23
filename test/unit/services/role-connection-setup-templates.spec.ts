@@ -230,6 +230,7 @@ describe('GCP Cloud Shell script', () => {
       providers?: string;
       deletedProvider?: string;
       listFails?: string;
+      roleExists?: string;
       /** The existing provider's fields, as `describe --format=value(...)` prints them. */
       provider?: Record<string, string>;
     } = {},
@@ -254,6 +255,7 @@ ${Object.entries(pool.provider ?? {})
   .join('\n')}
   "iam workload-identity-pools providers describe"*) [ -n "${pool.deletedProvider ?? ''}" ] || exit 1 ;;
   "iam service-accounts describe"*) exit 1 ;;
+  "iam roles create"*) [ -z "${pool.roleExists ?? ''}" ] || exit 1 ;;
 esac
 `,
     );
@@ -307,6 +309,17 @@ esac
 
   it('creates the published role', () => {
     expect(JSON.parse(run().role)).toEqual(gcpRole);
+  });
+
+  it('only adds the published permissions to an existing role', () => {
+    const { status, calls } = run({}, { roleExists: 'yes' });
+    expect(status).toBe(0);
+    // A newer release's permissions, or an administrator's, stay.
+    expect(calls.filter((call) => call.startsWith('iam roles update'))).toEqual(
+      [
+        `iam roles update anycloud --project=proj --add-permissions=${gcpRole.includedPermissions.join(',')} --quiet`,
+      ],
+    );
   });
 
   it('uses the resource IDs given in the environment', () => {

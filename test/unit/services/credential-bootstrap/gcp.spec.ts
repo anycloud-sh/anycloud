@@ -60,7 +60,11 @@ type Policy = {
   }>;
 };
 let policies: Record<string, Policy>;
-type CustomRole = typeof anycloudRole & { name: string; deleted?: boolean };
+type CustomRole = typeof anycloudRole & {
+  name: string;
+  deleted?: boolean;
+  etag?: string;
+};
 let customRoles: Record<string, CustomRole>;
 const request = vi.fn<GCPTransport['request']>();
 afterEach(() => vi.useRealTimers());
@@ -369,6 +373,55 @@ describe('0038/S3 GCP generation ownership', () => {
       expect(customRoles[name]?.deleted).toBeUndefined();
     },
   );
+
+  it('only adds permissions to an existing role, under its etag', async () => {
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    // A newer release's or an administrator's permission.
+    const extra = 'compute.instances.stop';
+    customRoles[name] = {
+      ...anycloudRole,
+      name,
+      includedPermissions: ['compute.instances.get', extra],
+      etag: 'role-etag',
+    };
+    await generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    expect(new Set(customRoles[name].includedPermissions)).toEqual(
+      new Set([...anycloudRole.includedPermissions, extra]),
+    );
+    expect(
+      request.mock.calls.filter(([, , method]) => method === 'PATCH'),
+    ).toEqual([
+      [
+        'iam',
+        `/v1/${name}?updateMask=includedPermissions`,
+        'PATCH',
+        expect.objectContaining({ etag: 'role-etag' }),
+      ],
+    ]);
+  });
+
+  it('reads and updates a role another generation created first', async () => {
+    const name = `projects/${project.projectId}/roles/anycloud`;
+    const implementation = request.getMockImplementation()!;
+    request.mockImplementation(async (...args) => {
+      // The other invocation's create lands between this one's read and create.
+      if (args[2] === 'POST' && args[1].endsWith('/roles'))
+        customRoles[name] = {
+          ...anycloudRole,
+          name,
+          includedPermissions: ['compute.instances.get'],
+        };
+      return implementation(...args);
+    });
+    const generated = await generateGCPCredentials(
+      await getGCPGenerationPreview(operator, 'test'),
+    );
+    expect(new Set(grantedPermissions(generated.clientEmail))).toEqual(
+      new Set(anycloudRole.includedPermissions),
+    );
+  });
 
   it('refuses a deleted role before creating the account', async () => {
     const name = `projects/${project.projectId}/roles/anycloud`;
