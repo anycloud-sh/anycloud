@@ -120,14 +120,16 @@ function evidence(name: string, value: unknown) {
   );
 }
 
-function cli(args: string[], env: object = {}, timeoutMs = 300_000) {
-  const result = spawnSync(
+/** The branch's CLI against the run's API. */
+function spawnCli(args: string[], env: object, timeoutMs: number, input = '') {
+  return spawnSync(
     process.execPath,
     [join(root, 'dist/cli/index.js'), ...args],
     {
       cwd: root,
       encoding: 'utf8',
       timeout: timeoutMs,
+      input,
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
@@ -141,6 +143,10 @@ function cli(args: string[], env: object = {}, timeoutMs = 300_000) {
       },
     },
   );
+}
+
+function cli(args: string[], env: object = {}, timeoutMs = 300_000) {
+  const result = spawnCli(args, env, timeoutMs);
   if (result.status !== 0) {
     throw new Error(
       `anycloud ${args[0]} failed (${result.status}): ${(result.stderr || result.stdout).slice(-600)}`,
@@ -435,22 +441,11 @@ async function diagnose(targets: Target[], count: number) {
     );
     for (const row of rows) {
       if (row.state === 'running') {
-        const ssh = spawnSync(
-          process.execPath,
-          [join(root, 'dist/cli/index.js'), 'ssh', row.id, '--host'],
-          {
-            cwd: root,
-            encoding: 'utf8',
-            input: DIAGNOSE_SCRIPT,
-            timeout: 120_000,
-            env: {
-              PATH: process.env.PATH,
-              HOME: process.env.HOME,
-              ANYCLOUD_DIR: join(state, 'cli'),
-              API_URL,
-              NO_COLOR: '1',
-            },
-          },
+        const ssh = spawnCli(
+          ['ssh', row.id, '--host'],
+          {},
+          120_000,
+          DIAGNOSE_SCRIPT,
         );
         evidence(`diagnose-${row.id}.txt`, `${ssh.stdout}\n${ssh.stderr}`);
         pending.delete(row.id);
