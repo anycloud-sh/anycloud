@@ -562,6 +562,11 @@ for f in /proc/pressure/cpu /proc/pressure/io /proc/pressure/memory /proc/1/sche
 done
 echo "== /proc/diskstats"; grep -E ' (sda|nvme0n1|vda) ' /proc/diskstats
 grep ctxt /proc/1/status
+echo "== console writers"; cat /proc/sys/kernel/printk
+systemctl show -p ShowStatus -p LogTarget -p LogLevel
+systemd-analyze cat-config systemd/journald.conf | grep -v '^#' | grep .
+systemctl cat secureboot-db.service 2>&1 | grep -vE '^#|^$'
+grep -rh -A3 '^output' /etc/cloud/cloud.cfg /etc/cloud/cloud.cfg.d 2>/dev/null
 echo; systemd-analyze
 for unit in ssh.service containerd.service docker.service google-guest-agent.service snapd.seeded.service anycloud-prepare.service; do
   echo; echo "== $unit"
