@@ -12,7 +12,9 @@
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments` `[]`
   and `cleanup_arguments` `["cleanup"]`. `["run", "<target>", ...]` runs only
   the named targets (`aws`, `gcp`, `azure`); `--count=N` sets the Jobs per
-  target (default 5).
+  target (default 5). `["diagnose", "gcp"]` holds three `ubuntu:24.04`
+  Jobs running and saves each host's systemd ordering, critical chains and
+  journal (`diagnose-<id>.txt`), then cleans up.
 
 ## What it measures
 

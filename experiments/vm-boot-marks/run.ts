@@ -6,7 +6,10 @@
  * reads the boot marks the branch keeps on each Job's Running event.
  *
  * `run [target...] [--count=N]` (default: aws gcp azure, 5) and `cleanup`
- * share a state directory under RUNNER_TEMP that holds the API database, so
+ * share a state directory; `diagnose [target...] [--count=N]` (default: gcp,
+ * 3) instead holds Jobs running and saves each host's systemd ordering and
+ * journal, to find what holds up sshd and containerd. All three
+ * use a state directory under RUNNER_TEMP that holds the API database, so
  * cleanup can terminate the run's Jobs after a failure. Reports in
  * SPIKE_OUTPUT_DIR hold no credential.
  */
@@ -330,7 +333,16 @@ function summarize(jobs: ReturnType<typeof samples>) {
   };
 }
 
-async function run(targets: Target[], count: number) {
+/**
+ * Start the API and COUNT Jobs per target of `image` with `args`, shaped like
+ * `backmesh-4`; returns their IDs, which the inventory holds for cleanup.
+ */
+async function submit(
+  targets: Target[],
+  count: number,
+  image: string,
+  args: string[],
+): Promise<string[]> {
   mkdirSync(state, { recursive: true });
   const runId = randomBytes(3).toString('hex');
   const inventory: Inventory = { runId, jobs: {} };
@@ -348,11 +360,9 @@ async function run(targets: Target[], count: number) {
       inventory.jobs[id] = target;
       writeFileSync(inventoryPath, JSON.stringify(inventory));
       console.log(`Submitting ${id}`);
-      // runner-job's `timings` exits 0 at once without a job's state, so the
-      // Job boots exactly as a runner does and then completes.
       cli([
         'job',
-        IMAGE,
+        image,
         '--id',
         id,
         '--credentials',
@@ -370,18 +380,25 @@ async function run(targets: Target[], count: number) {
         '0',
         '--no-checkpoint',
         '--',
-        'timings',
+        ...args,
       ]);
     }
   }
+  return Object.keys(inventory.jobs);
+}
 
-  const ids = Object.keys(inventory.jobs);
+async function run(targets: Target[], count: number) {
+  // runner-job's `timings` exits 0 at once without a job's state, so the
+  // Job boots exactly as a runner does and then completes.
+  const ids = await submit(targets, count, IMAGE, ['timings']);
   await awaitEnded(ids);
   const jobs = samples(ids);
   const byTarget = Object.fromEntries(
     targets.map((target) => [
       target,
-      summarize(jobs.filter((job) => inventory.jobs[job.id] === target)),
+      summarize(
+        jobs.filter((job) => job.id.startsWith(`boot-marks-${target}-`)),
+      ),
     ]),
   );
   const cleanup = await terminateAndAwaitCleanup(ids);
@@ -391,6 +408,62 @@ async function run(targets: Target[], count: number) {
   // Each target needs marks from at least `count` Jobs to have measured it.
   if (Object.values(byTarget).some((t) => t.withMarks < count))
     process.exitCode = 1;
+}
+
+/** What a host's systemd says held up sshd, containerd and Docker. */
+const DIAGNOSE_SCRIPT = `cat /run/anycloud/boot-marks
+echo; systemd-analyze
+for unit in ssh.service containerd.service docker.service google-guest-agent.service snapd.seeded.service anycloud-prepare.service; do
+  echo; echo "== $unit"
+  systemctl show -p After -p Requires -p Wants -p ExecMainStartTimestampMonotonic -p ActiveEnterTimestampMonotonic "$unit"
+  systemctl cat "$unit" 2>/dev/null | grep -E '^(#|After|Before|Requires|Wants|Type|ExecStart)'
+done
+echo; systemd-analyze critical-chain ssh.service containerd.service google-guest-agent.service 2>&1
+echo; systemd-analyze blame 2>&1 | head -40
+echo; cat /run/anycloud/prepare/docker-install.log
+echo; journalctl -b -o short-monotonic --no-pager | head -n 6000
+`;
+
+/** Hold Jobs running, save each host's systemd evidence, then clean up. */
+async function diagnose(targets: Target[], count: number) {
+  const ids = await submit(targets, count, 'ubuntu:24.04', ['sleep', '1800']);
+  const deadline = Date.now() + 30 * 60_000;
+  const pending = new Set(ids);
+  while (pending.size > 0 && Date.now() < deadline) {
+    const rows = query<{ id: string; state: string }>(
+      `SELECT id, state FROM workloads WHERE id IN (${sqlList([...pending])})`,
+    );
+    for (const row of rows) {
+      if (row.state === 'running') {
+        const ssh = spawnSync(
+          process.execPath,
+          [join(root, 'dist/cli/index.js'), 'ssh', row.id, '--host'],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            input: DIAGNOSE_SCRIPT,
+            timeout: 120_000,
+            env: {
+              PATH: process.env.PATH,
+              HOME: process.env.HOME,
+              ANYCLOUD_DIR: join(state, 'cli'),
+              API_URL,
+              NO_COLOR: '1',
+            },
+          },
+        );
+        evidence(`diagnose-${row.id}.txt`, `${ssh.stdout}\n${ssh.stderr}`);
+        pending.delete(row.id);
+      } else if (row.state !== 'queued' && !/ing$/.test(row.state)) {
+        console.warn(`${row.id} ended ${row.state} before it ran`);
+        pending.delete(row.id);
+      }
+    }
+    await sleep(10_000);
+  }
+  evidence('jobs.json', samples(ids));
+  evidence('cleanup.json', await terminateAndAwaitCleanup(ids));
+  if (pending.size > 0) process.exitCode = 1;
 }
 
 async function cleanup() {
@@ -417,6 +490,15 @@ if (command === 'run') {
   for (const target of targets)
     if (!(target in TARGETS)) throw new Error(`Unknown target ${target}`);
   await run(targets, count);
+} else if (command === 'diagnose') {
+  const count = Number(
+    rest.find((arg) => arg.startsWith('--count='))?.slice(8) ?? 3,
+  );
+  const named = rest.filter((arg) => !arg.startsWith('--'));
+  const targets = (named.length ? named : ['gcp']) as Target[];
+  for (const target of targets)
+    if (!(target in TARGETS)) throw new Error(`Unknown target ${target}`);
+  await diagnose(targets, count);
 } else if (command === 'cleanup') {
   await cleanup();
 } else {
