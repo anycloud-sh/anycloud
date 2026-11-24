@@ -344,6 +344,19 @@ describe('assertDiskPerformance on GCP Hyperdisk Balanced', () => {
     );
   });
 
+  it("refuses them without --vm-type on GCP's default type, which boots from Persistent Disk", () => {
+    const own = { diskIops: 3000, diskThroughputMibps: 750 };
+    expect(() =>
+      assertDiskPerformance(gcp({ ...own, vmType: undefined })),
+    ).toThrow(
+      '--disk-iops/--disk-throughput set GCP Hyperdisk Balanced, which none of f1-micro boots from',
+    );
+    // A GPU type picks the VM type later.
+    expect(() =>
+      assertDiskPerformance(gcp({ ...own, vmType: undefined }), 'h100'),
+    ).not.toThrow();
+  });
+
   it('refuses IOPS the 100 GiB default Hyperdisk is too small for, without growing it', () => {
     expect(() => assertDiskPerformance(gcp({ diskIops: 50000 }))).not.toThrow();
     expect(() => assertDiskPerformance(gcp({ diskIops: 50001 }))).toThrow(

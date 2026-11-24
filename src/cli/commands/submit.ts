@@ -104,12 +104,12 @@ export function createSubmitCommand(): Command {
       )
       .option(
         '--disk-iops <n>',
-        "AWS or GCP: the VM's gp3 or Hyperdisk Balanced root IOPS (from 3000; at most 500 per GiB of the root), overriding --disk-tier",
+        "AWS or GCP: the VM's gp3 or Hyperdisk Balanced root IOPS (from 3000; at most 500 per GiB of the root), overriding --disk-tier; GCP Persistent Disk types in --vm-type ignore it",
         wholeNumber('--disk-iops'),
       )
       .option(
         '--disk-throughput <MiBps>',
-        "AWS or GCP: the VM's gp3 or Hyperdisk Balanced root throughput in MiB/s (at most 0.25 per IOPS), overriding --disk-tier",
+        "AWS or GCP: the VM's gp3 (125-2000) or Hyperdisk Balanced (140-2400) root throughput in MiB/s, at most 0.25 per IOPS, overriding --disk-tier; GCP Persistent Disk types in --vm-type ignore it",
         wholeNumber('--disk-throughput'),
       )
       .option('--input-bucket <name>', 'Input bucket name')

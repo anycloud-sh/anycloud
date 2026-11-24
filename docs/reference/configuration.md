@@ -272,7 +272,8 @@ On AWS they set the gp3 root volume; on GCP, a Hyperdisk Balanced boot disk on
 the VM types that take one (C4, C4D, N4, H3 and the other Hyperdisk families
 above). A GCP type that boots from Persistent Disk keeps its tier's disk, so a
 Job may list one as a fallback; a Job none of whose types takes Hyperdisk is
-refused. For example, `--vm-type c4d-standard-4 --vm-type n2-standard-4
+refused, as is one with neither `--vm-type` nor `--gpu-type`, whose default
+`f1-micro` boots from Persistent Disk. For example, `--vm-type c4d-standard-4 --vm-type n2-standard-4
 --disk-iops 3000 --disk-throughput 750` gives `c4d` a cheaper disk than the
 `high` tier's 8,000 IOPS and 1,000 MiB/s, and `n2` the `high` tier's `pd-ssd`.
 

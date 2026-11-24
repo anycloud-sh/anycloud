@@ -454,7 +454,7 @@ export async function resolveWorkloadAdmission(args: {
   if (input.requireNestedVirtualization) {
     resolvedCloudConfig.vmType = nestedVmJobTypes(resolvedCloudConfig);
   }
-  assertDiskPerformance(resolvedCloudConfig);
+  assertDiskPerformance(resolvedCloudConfig, input.gpuType);
   // No other checkpoint option goes with --no-checkpoint.
   if (
     input.noCheckpoint &&
@@ -553,7 +553,10 @@ export function knownRegions(
  * takes them, within its limits, and on a root big enough for the IOPS. The
  * root is never grown to fit, since that changes the Job's cost.
  */
-export function assertDiskPerformance(config: CloudConfig): void {
+export function assertDiskPerformance(
+  config: CloudConfig,
+  gpuType?: string | string[],
+): void {
   if (
     config.diskIops === undefined &&
     config.diskThroughputMibps === undefined
@@ -577,9 +580,14 @@ export function assertDiskPerformance(config: CloudConfig): void {
   if (invalid) throw new InvalidAnycloudConfigError(invalid);
   const vmTypes = toArray(config.vmType);
   const { bootsVmType } = limits;
-  if (bootsVmType && vmTypes.length > 0 && !vmTypes.some(bootsVmType)) {
+  // Without --vm-type or --gpu-type, the Job launches the default type.
+  const launchable =
+    vmTypes.length > 0 || toArray(gpuType).length > 0
+      ? vmTypes
+      : [computeProviderData(config.cloudProvider).defaultVmType];
+  if (bootsVmType && launchable.length > 0 && !launchable.some(bootsVmType)) {
     throw new InvalidAnycloudConfigError(
-      `--disk-iops/--disk-throughput set ${limits.volume}, which none of ${vmTypes.join(', ')} boots from`,
+      `--disk-iops/--disk-throughput set ${limits.volume}, which none of ${launchable.join(', ')} boots from`,
     );
   }
   if (config.diskIops === undefined) return;
