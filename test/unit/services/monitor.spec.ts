@@ -12,6 +12,7 @@ import {
   resetPersistence,
   getCredentialSecretStore,
   getWorkloadLifecycle as lifecycle,
+  getWorkloadQueryStore,
 } from '../../../src/api/services/persistence.js';
 import {
   provisionTestVm,
@@ -74,6 +75,7 @@ vi.mock('../../../src/api/services/cloud-config', async (importOriginal) =>
 
 import {
   createMonitor,
+  kickProvisioningScheduler,
   requestWorkloadPoll,
   resetJobCompletionMonitorStateForTests,
   runWorkloadReconcileOnce,
@@ -208,6 +210,49 @@ describe('createMonitor', () => {
 
     expect(task).toHaveBeenCalledOnce();
   });
+
+  it('runs a kicked tick at once, and one more for kicks during it', async () => {
+    vi.useFakeTimers();
+    const releases: (() => void)[] = [];
+    const task = vi.fn(
+      () => new Promise<void>((resolve) => releases.push(resolve)),
+    );
+    const monitor = createMonitor('kicked', 30_000, task);
+
+    try {
+      monitor.start();
+      monitor.kick();
+      expect(task).toHaveBeenCalledOnce();
+
+      // Three submits while it runs share one follow-up tick.
+      monitor.kick();
+      monitor.kick();
+      monitor.kick();
+      releases[0]!();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(task).toHaveBeenCalledTimes(2);
+
+      releases[1]!();
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(task).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(task).toHaveBeenCalledTimes(3);
+    } finally {
+      monitor.stop();
+    }
+  });
+
+  it('ignores a kick while stopped', async () => {
+    vi.useFakeTimers();
+    const task = vi.fn(async () => {});
+    const monitor = createMonitor('stopped-kick', 30_000, task);
+    monitor.kick();
+    monitor.start();
+    monitor.stop();
+    monitor.kick();
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(task).not.toHaveBeenCalled();
+  });
 });
 
 describe('background service lifecycle', () => {
@@ -240,6 +285,13 @@ describe('background service lifecycle', () => {
     expect(startSpy).toHaveBeenCalledOnce();
     expect(stopSpy).toHaveBeenCalledOnce();
     expect(updateNotificationMock).toHaveBeenCalledOnce();
+  });
+
+  it('runs the provisioning scheduler when kicked', async () => {
+    await startBackgroundServices();
+    const countDeploying = vi.spyOn(getWorkloadQueryStore(), 'countDeploying');
+    kickProvisioningScheduler();
+    await vi.waitFor(() => expect(countDeploying).toHaveBeenCalledOnce());
   });
 });
 

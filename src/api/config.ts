@@ -182,7 +182,7 @@ export const PULL_TOTAL_TIMEOUT_MS = 60 * 60 * 1000; // 60 min budget for one de
 /** Give the accelerated transfer one bounded attempt, preserving at least two
  * hours of the enclosing IMAGE_PULL_TIMEOUT_MS for the ordinary Docker fallback. */
 export const CONTAINERD_TRANSFER_PULL_TIMEOUT_MS = 30 * 60 * 1000;
-export const PULL_POLL_INTERVAL_MS = 15 * 1000; // poll the result sentinel every 15s
+export const PULL_POLL_INTERVAL_MS = 15 * 1000; // each poll waits up to 15s on the VM for the result
 export const PULL_CONTROL_TIMEOUT_MS = 60 * 1000; // per short control exec (login/launch/poll/tail)
 
 /** Container start + health check must complete within this time */
