@@ -98,8 +98,8 @@ At most $10. The catalog's us-east-2 on-demand prices are `m8a.xlarge`
 $0.243/h, `m8i.xlarge` $0.212/h, `m8a.4xlarge` $0.974/h and `m8i.4xlarge`
 $0.847/h. At about 12 minutes per Job, ten rounds cost about $4. The run stops
 starting rounds once its VMs' and disks' cost reaches $8. GCP's and Azure's
-4-vCPU arms cost $0.17–0.23/h before the disk; their runs below cost $5.40
-together at list price.
+4-vCPU arms cost $0.17–0.23/h before the disk; their runs below cost about
+$6.90 together at list price, $1.45 of it the held spot samples.
 
 ## Cleanup and ownership
 
@@ -363,6 +363,30 @@ within 12–32 s of submission, including `n4d-standard-4` in us-central1-a,
 which on-demand refused there the same afternoon. Both samples' cleanups found
 nothing left.
 
+**`c4d` spot in us-east4, held.** `spot --regions=us-east4 --hold=1800`
+starts spot Jobs that sleep 30 minutes and records whether each ran to the
+end. Four samples, about 35 minutes apart, between 18:32 and 20:50 PST:
+[45313105469](https://github.com/anycloud-sh/anycloud/actions/runs/45313105469),
+[45317319456](https://github.com/anycloud-sh/anycloud/actions/runs/45317319456)
+and
+[45325418364](https://github.com/anycloud-sh/anycloud/actions/runs/45325418364)
+with four `c4d-standard-4` each, and
+[45321460371](https://github.com/anycloud-sh/anycloud/actions/runs/45321460371)
+with two `c4d-standard-16`. **All 12 `c4d-standard-4` and the one
+`c4d-standard-16` that started launched in us-east4-a within 23 s with no
+refusal, and none was preempted in its 30 minutes.** The second
+`c4d-standard-16` hit CI's 32-vCPU quota and didn't start (that sample
+counted it as launched; `spot` now doesn't). Every cleanup found nothing left.
+
+At the catalog's us-east4 spot prices, `c4d-standard-4` is $0.0967/h,
+`c3d-standard-4` $0.0899/h and `n2-standard-4` $0.0569/h, which is a quarter
+of its on-demand price. With the VM times measured above (us-central1,
+on-demand), a spot Job would cost about $0.0105 on `n2` and $0.0119 on `c3d`,
+both with pd-ssd, and $0.0152 on `c4d` with its Hyperdisk, 1.45 of `n2`. With
+Hyperdisk at its free baseline
+([anycloud#41](https://github.com/anycloud-sh/anycloud/issues/41)), `c4d`
+would cost about $0.0087, 0.82 of `n2`, for 0.61 of its VM time.
+
 Azure's Spot Placement Score API answered for CI's identity
 ([run 45258012801](https://github.com/anycloud-sh/anycloud/actions/runs/45258012801),
 12:18 PST), and launches can't be sampled with 3 spot vCPUs a region. By
@@ -398,10 +422,15 @@ first for backmesh's on-demand classes would be a separate backmesh change,
 filed with these figures.
 
 For GCP and Azure, none here either: the figures go to backmesh, which owns
-its VM families. They suggest, for its on-demand classes, `c4d` (or `c3d`,
-which keeps pd-ssd) ahead of `n2` on GCP once the project's quota allows, and
-`Dasv7` ahead of `Dadsv5` on Azure only for CPU-bound jobs until anycloud
-puts the image stores on v6 and v7's NVMe local disk.
+its VM families. For its on-demand classes they suggest `c4d` (or `c3d`,
+which keeps pd-ssd) ahead of `n2` on GCP. For spot classes, `c4d` launched
+and held every time in us-east4, but `n2`'s cheap spot price keeps it cheaper
+per Job until
+[anycloud#41](https://github.com/anycloud-sh/anycloud/issues/41) cuts
+Hyperdisk's cost. On Azure, `Dasv7` isn't ahead of `Dadsv5` over a whole Job
+until anycloud fixes
+[anycloud#39](https://github.com/anycloud-sh/anycloud/issues/39) and
+[anycloud#40](https://github.com/anycloud-sh/anycloud/issues/40).
 
 ## Deletion criteria
 

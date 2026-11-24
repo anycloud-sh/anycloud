@@ -660,7 +660,9 @@ async function spot(
             },
           ).catch(() => undefined);
           const seconds = Math.round((Date.now() - submitted) / 1000);
-          const launched = outcome?.zone && outcome.state !== 'failed';
+          // A quota refusal also leaves provisioning, to retrying.
+          const launched =
+            outcome?.zone && !['failed', 'retrying'].includes(outcome.state);
           // `--hold`: the Job sleeps that long, and a spot reclaim ends it
           // early in another state than succeeded (`--max-retries 0`).
           const held =
