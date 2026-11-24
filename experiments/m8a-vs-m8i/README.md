@@ -245,6 +245,15 @@ below):
 [run 45278176294](https://github.com/anycloud-sh/anycloud/actions/runs/45278176294)
 (eight rounds), merged with `report`.
 
+These runs aren't in backmesh's anchor regions: its runners start in
+us-east4 on GCP and eastus on Azure (`SUGGESTED_REGION` in backmesh's
+`src/runners/regions.ts`). The hardware per family is the same, but capacity
+and host mix may not be. 3 of the 14 `n2` Jobs (both sizes) landed on a host
+whose sysbench single-thread score was 2.5 times the others' (2,885 against
+1,155 events/s). The two of them at 4 vCPUs built the eight commands in 212
+and 224 s, against 263–300 s on the rest. `c4d`'s 136 s is still 0.62 of
+their median.
+
 | Build command      | n2-4 (n=12) | c3d-4 (n=12)   | c4d-4 (n=12)   | n4d-4 (n=9)    | n2d-4 (n=12)   |
 | ------------------ | ----------- | -------------- | -------------- | -------------- | -------------- |
 | docker build       | 116.2       | 88.1 (0.76)    | 60.5 (0.52)    | 70.0 (0.60)    | 100.8 (0.87)   |
@@ -281,16 +290,28 @@ Azure, eastus2:
   Hyperdisk Balanced at the `high` tier's 8,000 IOPS and 1,000 MB/s, which
   costs $0.092/h against pd-ssd's $0.023/h. That is a third of a
   `c4d-standard-4` Job's cost. With both disks left out, `c4d` would cost 0.58
-  of `n2` per Job. `c3d` keeps pd-ssd, which is why it is the cheapest per Job (0.76)
+  of `n2` per Job, and with Hyperdisk at its free baseline, about 0.55
+  ([anycloud#41](https://github.com/anycloud-sh/anycloud/issues/41)). `c3d` keeps pd-ssd, which is why it is the cheapest per Job (0.76)
   although `c4d` is the fastest.
-- **Azure's VM start.** Azure took longer to create v6 and v7 VMs than v5:
-  from the API's "Creating VM" to the VM initializing, the median was 12 s
-  for `D4ads_v5` against 46–131 s for v6 and v7, mostly with no capacity
-  retry (8 retries over 40 Jobs, none on v5). It eats most of v7's build
-  gain, so a Job's VM time is 1.05–1.17 of v5's.
+- **Azure's VM start and retries.** 7 of the 40 v6 and v7 Jobs, and none on
+  v5, had a VM that anycloud failed seconds after creation with
+  `powerState=stopped`. It labelled each one capacity-exhausted, deleted it
+  and retried, 8 times in all, costing those Jobs about 2.5 minutes each
+  ([anycloud#39](https://github.com/anycloud-sh/anycloud/issues/39)). This
+  run's `run.ts` counted only a Job's last VM in its VM time, so the table
+  leaves out the failed VMs' minutes; `run.ts` now sums every VM. Without
+  retries, the last VM still took 34–76 s at 4 vCPUs from "Creating VM" to
+  initializing, against 12 s for `D4ads_v5`, but not at 16 vCPUs (22 s
+  against 30 s).
+- **Azure's persistent cost: the OS disk.** A Job's untimed part (image
+  pulls, clones, `cargo fetch`, `go mod download`, sysbench) took a median
+  41–59 s longer on v6 and v7 than on v5 at 4 vCPUs and 60 s longer at 16.
+  On those sizes it all runs on the P10 OS disk (below), so a Job's VM time
+  is 1.05–1.17 of v5's and v7's build gain doesn't reach its whole cost.
 - **Azure's resource disk.** The API logged "Image stores on the resource
   disk" for all 10 `D4ads_v5` Jobs and for no v6 or v7 Job, so on v6 and v7
-  the stores stay on the OS disk. v6 and v7's local disk is NVMe, which
+  the stores stay on the OS disk
+  ([anycloud#40](https://github.com/anycloud-sh/anycloud/issues/40)). v6 and v7's local disk is NVMe, which
   Azure doesn't format or mount the way it mounts v5's at `/mnt`; the run
   doesn't check that directly. Either way, the `ads` sizes there gain nothing
   over `as` and cost more. At 16 vCPUs this shows in `docker build` (below).
