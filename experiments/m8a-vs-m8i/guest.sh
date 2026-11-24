@@ -4,9 +4,12 @@
 # bench.yml in backmesh/backmesh), each in its toolchain's official image.
 # The toolchain images' pulls are timed as one. Clones and dependency fetches
 # that the benchmark's commands don't include are untimed. Each timed step
-# prints `BENCH <build> <command> <ms>`. Any failure prints `BENCH_FAIL` and
-# exits 1.
+# prints `BENCH <build> <command> <ms>`. A failed build prints
+# `BENCH_FAIL <build>` and the next build still runs.
 set -eu
+# `MARK <name> <seconds since the host booted>`, for where the time goes.
+mark() { echo "MARK $1 $(cut -d' ' -f1 /proc/uptime)"; }
+mark guest-start
 apk add --no-cache -q bash coreutils git >/dev/null
 
 # The toolchains' pulls, timed together: the host's Docker writes them to the
@@ -17,6 +20,7 @@ for image in ubuntu:24.04 rust:1.83-bookworm golang:1.22.6-bookworm \
   docker pull -q "$image" >/dev/null
 done
 echo "BENCH pull toolchain-images $((($(date +%s%N) - start) / 1000000))"
+mark images-pulled
 # The images' digests, so a later run can tell whether they changed.
 for image in docker:27-cli ubuntu:24.04 rust:1.83-bookworm \
   golang:1.22.6-bookworm node:22-bookworm python:3.12-bookworm; do
@@ -38,7 +42,7 @@ build() {
       echo "BENCH $BUILD $label $(( ($(date +%s%N) - start) / 1000000 ))"
     }
     clone() { git clone -q --depth 1 -b "$2" "https://github.com/$1" /p 2>/dev/null; cd /p; }
-    '"$3" || { echo "BENCH_FAIL $1"; exit 1; }
+    '"$3" || echo "BENCH_FAIL $1"
 }
 
 docker run --rm ubuntu:24.04 bash -c '
@@ -49,15 +53,17 @@ docker run --rm ubuntu:24.04 bash -c '
     echo "SYSBENCH $threads $eps"
   done'
 
+mark sysbench-done
+
 # docker: the job container is the client, as on a runner.
 git clone -q --depth 1 -b v0.54.0 https://github.com/grafana/k6 /k6 2>/dev/null
 start=$(date +%s%N)
-if ! (cd /k6 && docker build -q -t m8-bench-k6 . >/tmp/out 2>&1); then
+if (cd /k6 && docker build -q -t m8-bench-k6 . >/tmp/out 2>&1); then
+  echo "BENCH docker build $((($(date +%s%N) - start) / 1000000))"
+else
   tail -40 /tmp/out
-  echo "BENCH_FAIL docker build"
-  exit 1
+  echo "BENCH_FAIL docker"
 fi
-echo "BENCH docker build $((($(date +%s%N) - start) / 1000000))"
 
 build rust rust:1.83-bookworm '
   clone BurntSushi/ripgrep 14.1.1
@@ -82,4 +88,5 @@ build python python:3.12-bookworm '
   timed install uv sync --frozen
   timed test uv run --frozen pytest -q -p no:cacheprovider tests/test_main.py tests/test_types.py tests/test_json_schema.py'
 
+mark builds-done
 echo BENCH_DONE
