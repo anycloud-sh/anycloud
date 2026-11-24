@@ -72,6 +72,8 @@ cleanup, which `cleanup` repeats. It terminates every tagged instance in the
 three regions and waits up to 10 minutes for their volumes to go. It deletes
 every `m8g-builds-` bucket, then fails unless the listings come back empty.
 Nothing is kept on the runner, so `cleanup` works after a lost runner too.
+Cleanup isn't scoped to one run, which is safe because the Spike workflow
+runs one command of an experiment at a time.
 anycloud's shared Job network is not the run's, and stays.
 
 ## Result
@@ -84,10 +86,16 @@ reported; one `m8i.xlarge` never uploaded its log, for reasons the run
 didn't capture. Cleanup found nothing left. Every arm built all five
 projects: no build failed on arm64.
 
-**m8g is about as fast as m8i at the same vCPU count and about 30% slower
-than m8a. It costs the least per build on demand because its price is the
-lowest.** The table gives each arm's median for the eight timed commands
-together, in seconds, then that time's on-demand cost.
+**m8g is about 6% faster than m8i at xlarge, about 4% slower at 4xlarge,
+and about 30% slower than m8a at both. It costs the least per build on
+demand because its price is the lowest.** The table gives, for each arm, the
+sum of the eight timed commands' medians, in seconds, then that time's
+on-demand cost. Each VM's own total for the eight agrees: at xlarge, m8g's
+totals (140–152 s) and m8i's (153–157 s) don't overlap, p = 0.00028. At
+4xlarge they overlap (94–104 s and 94–101 s), p = 0.045. Against m8a every
+total differs with p = 0.00018. The eight are every command but the
+toolchain images' pull, which [`guest.sh`](../m8a-vs-m8i/guest.sh) started
+timing after these runs; a new run reports nine.
 
 | Size    | m8g             | m8i             | m8a             | m8g/m8i | m8g/m8a |
 | ------- | --------------- | --------------- | --------------- | ------- | ------- |
@@ -135,7 +143,9 @@ us-east-2 list prices.
 | `m8i.4xlarge` | 271 s  | $0.0638     | 135 s       | $0.0317   | $0.0100 (0.2662) |
 
 On demand, m8g's build phase costs 0.82 of m8i's at xlarge and 0.86 at
-4xlarge. Against m8a it is 0.90 and 0.93. At spot list prices the three
+4xlarge. That comes mostly from list price, 0.85 of m8i's at both sizes: the
+build phases' time ratios are 0.97 and 1.01, from three VMs per arm. Against
+m8a, m8g's build phase costs 0.90 and 0.93. At spot list prices the three
 are within about 30% of each other, and m8a is cheapest at xlarge. Running
 m8g in anycloud would first need arm64 VM Jobs.
 
@@ -173,7 +183,7 @@ six types (`Unsupported`) and is left out. Every other refusal was
 - **m8a's spot is thin at all three times.** It got 44% of zones at
   xlarge and 53% at 4xlarge, steady across the samples. This agrees with
   [m8a-vs-m8i](../m8a-vs-m8i/README.md)'s two samples, so time of day
-  doesn't explain it.
+  doesn't seem to explain it, though five samples can't rule that out.
 - **m8g's spot depends on size.** At 4xlarge it is close to m8i (75%),
   except in us-east-2. At xlarge it varies most by time: us-east-1 took 0, 4
   and 0 of 5 zones.

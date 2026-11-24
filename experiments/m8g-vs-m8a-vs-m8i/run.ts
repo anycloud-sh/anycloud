@@ -435,12 +435,16 @@ async function spot() {
                   spot: true,
                   diskGb: 8,
                 });
-                await ec2.send(
-                  new TerminateInstancesCommand({
-                    InstanceIds: Instances.map((i) => i.InstanceId!),
-                  }),
-                );
                 result = 'launched';
+                // A failed terminate isn't a refusal; the final cleanup
+                // terminates what it leaves.
+                await ec2
+                  .send(
+                    new TerminateInstancesCommand({
+                      InstanceIds: Instances.map((i) => i.InstanceId!),
+                    }),
+                  )
+                  .catch(() => {});
               } catch (error) {
                 result = (error as Error).name;
               }
@@ -497,7 +501,11 @@ function spotSummary(
   return `${lines.join('\n')}\n`;
 }
 
-/** Terminates every tagged instance, deletes the buckets, and verifies. */
+/**
+ * Terminates every tagged instance, deletes the buckets, and verifies. It
+ * isn't scoped to one run: the Spike workflow's concurrency group runs one
+ * command of an experiment at a time.
+ */
 async function cleanup() {
   const left: Record<string, string[]> = {};
   for (const region of SPOT_REGIONS) {
