@@ -195,13 +195,17 @@ export interface JobRestrictedCredentialCase {
   readonly region?: string;
 }
 
-/** All six legacy GCP cases belong to one closed member. */
+/** All seven GCP cases belong to one closed member. */
 export interface JobDiskTierCase {
-  readonly key: 'u' | 'hm' | 'hh' | 'hx' | 'pm' | 'px';
+  readonly key: 'u' | 'hm' | 'hh' | 'hx' | 'ho' | 'pm' | 'px';
   readonly vmType: string;
   readonly tier?: `${DiskTier}`;
+  /** The Job's own Hyperdisk IOPS and MiB/s, overriding the tier's. */
+  readonly diskIops?: number;
+  readonly diskThroughputMibps?: number;
   readonly expectedType: 'pd-ssd' | 'pd-standard' | 'hyperdisk-balanced';
   readonly expectedIops?: number;
+  readonly expectedThroughputMibps?: number;
 }
 
 export interface JobDiskTierObservation {

@@ -186,7 +186,7 @@ describe('dedicated Job member policies', () => {
     ).toBe(600_000);
   });
 
-  test('disk-tier retains six ordered cases, omitted default tier, explicit placement and independent legacy budgets', () => {
+  test('disk-tier retains seven ordered cases, omitted default tier, explicit placement and independent legacy budgets', () => {
     const member = { kind: 'disk-tier', target: 'gcp' } as const;
     const profile = jobMemberProfile(member, environment());
     expect(profile).toMatchObject({
@@ -220,6 +220,15 @@ describe('dedicated Job member policies', () => {
         tier: 'ultra',
         expectedType: 'hyperdisk-balanced',
         expectedIops: 16000,
+      },
+      {
+        key: 'ho',
+        vmType: 'c4-standard-2',
+        diskIops: 3000,
+        diskThroughputMibps: 750,
+        expectedType: 'hyperdisk-balanced',
+        expectedIops: 3000,
+        expectedThroughputMibps: 750,
       },
       {
         key: 'pm',

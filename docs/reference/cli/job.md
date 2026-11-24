@@ -57,8 +57,8 @@ The command prints directly without a view picker. Its type is fixed;
 | `--spot`                                | Use spot/preemptible capacity                                             |
 | `--disk-size GB`                        | Root disk capacity                                                        |
 | `--disk-tier TIER`                      | `medium`, `high`, or `ultra`                                              |
-| `--disk-iops N`                         | AWS only: gp3 root IOPS, overriding the tier; see [gp3 performance][gp3]  |
-| `--disk-throughput MiBps`               | AWS only: gp3 root throughput in MiB/s, overriding the tier               |
+| `--disk-iops N`                         | AWS or GCP: root IOPS, overriding the tier; see [disk performance][dp]    |
+| `--disk-throughput MiBps`               | AWS or GCP: root throughput in MiB/s, overriding the tier                 |
 | `--zone ZONE`                           | Availability zone                                                         |
 | `--input-bucket NAME`                   | Read-only input at `/mnt/input`                                           |
 | `--output-bucket NAME`                  | Writable output at `/mnt/output`                                          |
@@ -127,4 +127,4 @@ For field precedence and constraints, see
 [Configuration](/reference/configuration).
 
 [hd]: /platform/jobs#docker-in-a-vm-job
-[gp3]: /reference/configuration#aws-gp3-performance
+[dp]: /reference/configuration#a-jobs-own-disk-performance

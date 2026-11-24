@@ -116,10 +116,11 @@ import {
   GpuRuntime,
 } from '../../../shared/cloud.js';
 import {
-  gp3MinimumSizeGb,
-  gp3VolumePerformance,
-  type Gp3Performance,
-} from '../../../shared/gp3-performance.js';
+  diskMinimumSizeGb,
+  diskVolumePerformance,
+  GP3_LIMITS,
+  type DiskPerformance,
+} from '../../../shared/disk-performance.js';
 import {
   PermissionDeniedError,
   type PermissionDenial,
@@ -292,12 +293,12 @@ function bootDiskFor(
   requestedSizeGb: number | undefined,
   ami: ResolvedAwsAmi,
   minimumDefaultSizeGb = 0,
-  own: Gp3Performance = {},
+  own: DiskPerformance = {},
 ): AwsBootDisk {
   // A VM Job's own IOPS and MiB/s override its tier's.
-  const performance = gp3VolumePerformance(diskTier, own);
+  const performance = diskVolumePerformance(GP3_LIMITS, diskTier, own);
   const performanceMinimumSizeGb =
-    performance.Iops === undefined ? 0 : gp3MinimumSizeGb(performance.Iops);
+    performance.Iops === undefined ? 0 : diskMinimumSizeGb(performance.Iops);
   const minimumSizeGb = Math.max(
     ami.rootVolumeSizeGb,
     performanceMinimumSizeGb,
@@ -785,7 +786,7 @@ export class AWS {
   diskSizeGb?: number;
   minimumDiskSizeGb?: number;
   diskTier?: DiskTier;
-  private readonly gp3: Gp3Performance;
+  private readonly gp3: DiskPerformance;
   // Memoized shared security groups, keyed by GroupName and VPC. Each shared SG is
   // created/looked-up once per gateway instance and reused by every VM.
   private sharedSecurityGroupReady = new Map<string, Promise<string>>();

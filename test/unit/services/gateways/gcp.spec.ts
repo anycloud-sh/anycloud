@@ -43,6 +43,7 @@ import {
   type CandidateRegion,
 } from '../../../../src/api/services/gateways/cloud';
 import {
+  type CloudConfig,
   CloudFailureDiagnosis,
   CloudType,
   DiskTier,
@@ -2001,6 +2002,96 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       expect(insert).not.toHaveBeenCalled();
     },
   );
+
+  function ownDiskGcp(vmType: string, own: Partial<CloudConfig>) {
+    const gcp = new GCP(
+      completeCloudConfig({ ...mockConfig, vmType, spot: true, ...own }),
+    );
+    const imagesClient: any = {
+      getFromFamily: vi
+        .fn()
+        .mockResolvedValue([{ selfLink: 'projects/ubuntu/images/noble' }]),
+    };
+    gcp.imagesClient = fakeSdkClient(imagesClient);
+    const insert = vi.fn().mockResolvedValue([{ name: 'op' }]);
+    const instancesClient: any = {
+      insert,
+      get: vi.fn().mockResolvedValue([
+        {
+          status: 'RUNNING',
+          networkInterfaces: [
+            { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
+          ],
+        },
+      ]),
+    };
+    gcp.instancesClient = fakeSdkClient(instancesClient);
+    gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
+    return { gcp, insert };
+  }
+
+  it.each([
+    [{ diskIops: 3000, diskThroughputMibps: 750 }, '3000', '750'],
+    // --disk-iops alone keeps the tier's throughput, down to a quarter of it.
+    [{ diskIops: 3000 }, '3000', '750'],
+    [{ diskThroughputMibps: 500 }, '8000', '500'],
+  ])(
+    "sends a Job's own Hyperdisk Balanced performance %j",
+    async (own, provisionedIops, provisionedThroughput) => {
+      const { gcp, insert } = ownDiskGcp('c4d-standard-4', own);
+
+      await gcp.compute().newVM(newVMProps(null));
+
+      expect(
+        insert.mock.calls[0]?.[0].instanceResource.disks[0].initializeParams,
+      ).toMatchObject({
+        diskSizeGb: 100,
+        diskType: 'zones/us-central1-a/diskTypes/hyperdisk-balanced',
+        provisionedIops,
+        provisionedThroughput,
+      });
+    },
+  );
+
+  it("keeps a Persistent Disk type's tier disk under the Job's own Hyperdisk performance, so its fallback types launch", async () => {
+    const { gcp, insert } = ownDiskGcp('n2-standard-4', {
+      diskIops: 3000,
+      diskThroughputMibps: 750,
+    });
+
+    await gcp.compute().newVM(newVMProps(null));
+
+    const params =
+      insert.mock.calls[0]?.[0].instanceResource.disks[0].initializeParams;
+    expect(params.diskType).toBe('zones/us-central1-a/diskTypes/pd-ssd');
+    expect(params.provisionedIops).toBeUndefined();
+    expect(params.provisionedThroughput).toBeUndefined();
+  });
+
+  it("refuses a Job's own IOPS its explicit Hyperdisk size can't carry as invalid", async () => {
+    const { gcp, insert } = ownDiskGcp('c4d-standard-4', {
+      diskIops: 20000,
+      diskSizeGb: 39,
+    });
+
+    const error = await gcp
+      .compute()
+      .newVM(newVMProps(null))
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+    expect(error).toBeInstanceOf(InvalidAnycloudConfigError);
+    expect(error).toMatchObject({
+      message:
+        'GCP --disk-iops 20000 on Hyperdisk Balanced requires --disk-size of at least 40 GB for VM type "c4d-standard-4" (got 39 GB).',
+    });
+    expect(gcp.compute().classifyError(error)).toBe(
+      CloudFailureDiagnosis.InvalidRequest,
+    );
+    expect(insert).not.toHaveBeenCalled();
+  });
 
   it('uses pd-ssd for an unknown-family high tier', async () => {
     const gcp = new GCP(

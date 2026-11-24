@@ -50,9 +50,9 @@ const workloadCloudConfigSchema = z
     checkpointBucket: z.string().optional(),
     diskSizeGb: z.number().positive().optional(),
     diskTier: z.enum(DiskTier).optional(),
-    /** A VM Job on AWS: its gp3 root volume's IOPS, overriding the tier's. */
+    /** A VM Job on AWS or GCP: its gp3 or Hyperdisk Balanced root IOPS, overriding the tier's. */
     diskIops: z.number().int().optional(),
-    /** A VM Job on AWS: its gp3 root volume's throughput in MiB/s. */
+    /** A VM Job on AWS or GCP: its root throughput in MiB/s. */
     diskThroughputMibps: z.number().int().optional(),
     /** A VM Job: the regions it may launch in, instead of one `region`. */
     regions: z.array(z.string().trim().min(1)).min(1).optional(),

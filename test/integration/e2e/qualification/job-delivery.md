@@ -99,13 +99,14 @@ the exact forced-cleanup classification `Not applicable`; no forced mode runs
 these members. They share the existing Integration no-provision matrix and
 retain compact records for 30 days.
 
-The GCP disk-tier member retains all six serial cases: omitted tier on E2,
-medium/high/ultra on C4, and medium/ultra on E2. It reads each original native
+The GCP disk-tier member runs seven serial cases: omitted tier on E2,
+medium/high/ultra and its own 3,000 IOPS / 750 MiB/s on C4, and medium/ultra on
+E2. It reads each original native
 VM and boot disk through the existing provider reader, checks the native disk
 type, and requires 100 GiB with 8,000/16,000 IOPS and 1,000 MiB/s for high/ultra
-Hyperdisk. The next case cannot submit until actual cleanup of the prior case;
-all references remain armed until the single family finalizer claims all six
-case records. Its forced failure follows the sixth native assertion while that
+Hyperdisk, and 3,000 IOPS and 750 MiB/s for the Job's own. The next case cannot submit until actual cleanup of the prior case;
+all references remain armed until the single family finalizer claims all seven
+case records. Its forced failure follows the seventh native assertion while that
 last child is still live. Existing 1,200-second Running and 2,700-second cleanup
 budgets remain independent per case. Its cell is required and shares the GCP
 provider lock with the other GPU jobs.
@@ -137,7 +138,7 @@ follows detached launch while the original host is live. SSH material and unit
 diagnostics use an independent cleanup scope; only the family releases the Job.
 
 The GPU workflow retains its Service companions, provider locks and cleanup
-backstops. Four MACE cells and one six-case disk cell use separate results. `mace_only` excludes Service/disk cells and account sweeps on both sides,
+backstops. Four MACE cells and one seven-case disk cell use separate results. `mace_only` excludes Service/disk cells and account sweeps on both sides,
 and still requires tracked cleanup. The GHCR probe-only dispatch runs one
 required Vitest cell with the original baseline inputs and the existing Azure GPU
 provider lock; its targeted cleanup adds no account-wide Azure sweep. Both workflows

@@ -40,9 +40,9 @@
       "candidateEvidence": "test/integration/e2e/internal/: GPU/GHCR Job workflow cells, unchanged companion/backstop authority and protected job-comparison-evidence prefix; workflow/retention regressions. No live result or formal qualification is claimed by this map."
     },
     {
-      "id": "all-six-cases",
-      "requirement": "Complete all six serial original cases: unset E2 -> pd-ssd; C4 medium/high/ultra -> hyperdisk-balanced; E2 medium -> pd-standard and ultra -> pd-ssd. Each case owns a distinct reference and record; none may be omitted or substituted.",
-      "candidateEvidence": "test/integration/e2e/internal/: Registered diskTier capability and frozen six-case profile; #diskTierMember serial child loop; missing/duplicate/reference tests."
+      "id": "all-seven-cases",
+      "requirement": "Complete all seven serial cases: unset E2 -> pd-ssd; C4 medium/high/ultra and C4 with its own 3000 IOPS/750 MiB/s -> hyperdisk-balanced; E2 medium -> pd-standard and ultra -> pd-ssd. Each case owns a distinct reference and record; none may be omitted or substituted.",
+      "candidateEvidence": "test/integration/e2e/internal/: Registered diskTier capability and frozen seven-case profile; #diskTierMember serial child loop; missing/duplicate/reference tests."
     },
     {
       "id": "original-disk-profile",
@@ -56,13 +56,13 @@
     },
     {
       "id": "native-type-and-performance",
-      "requirement": "Assert the native disk type in every case. High and ultra Hyperdisk require 100 GiB, respectively 8000 and 16000 provisioned IOPS, and 1000 MiB/s. This checks the requested disk target, not realized throughput of the deliberately limited C4 machine.",
+      "requirement": "Assert the native disk type in every case. High and ultra Hyperdisk require 100 GiB, respectively 8000 and 16000 provisioned IOPS, and 1000 MiB/s; the own-performance case requires 100 GiB, 3000 IOPS and 750 MiB/s. This checks the requested disk target, not realized throughput of the deliberately limited C4 machine.",
       "candidateEvidence": "test/integration/e2e/internal/: Family disk-tier assertion and actual provider reader; wrong type/size/IOPS/throughput controls."
     },
     {
       "id": "serial-cleanup-and-final-release",
-      "requirement": "Actual persisted and independent native cleanup of one case precedes the next create. Keep all references armed until the family finalizer claims every case. Forced failure occurs after all six disk assertions while the last child is live.",
-      "candidateEvidence": "test/integration/e2e/internal/: #diskTierMember waitForCleanupRecorded/nativeAbsence before next submit; #finalize claims all six before release; ordering, later-child failure and forced cleanup controls."
+      "requirement": "Actual persisted and independent native cleanup of one case precedes the next create. Keep all references armed until the family finalizer claims every case. Forced failure occurs after all seven disk assertions while the last child is live.",
+      "candidateEvidence": "test/integration/e2e/internal/: #diskTierMember waitForCleanupRecorded/nativeAbsence before next submit; #finalize claims all seven before release; ordering, later-child failure and forced cleanup controls."
     }
   ]
 }

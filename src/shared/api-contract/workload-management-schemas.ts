@@ -166,7 +166,7 @@ const storedWorkloadSchema = z
     checkpointBucket: z.string().nullable(),
     diskSizeGb: z.number().nullable(),
     diskTier: z.enum(DiskTier).nullable(),
-    /** A VM Job's own AWS gp3 root volume IOPS and MiB/s, as requested. */
+    /** A VM Job's own root volume IOPS and MiB/s, as requested. */
     diskIops: z.number().int().nullable(),
     diskThroughputMibps: z.number().int().nullable(),
     /** A VM Job's region allow-list, as requested. */

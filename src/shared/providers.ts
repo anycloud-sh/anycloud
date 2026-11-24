@@ -1,4 +1,9 @@
 import { CloudType, GpuRuntime } from './cloud.js';
+import {
+  type DiskPerformanceLimits,
+  GP3_LIMITS,
+  HYPERDISK_BALANCED_LIMITS,
+} from './disk-performance.js';
 import { InvalidAnycloudConfigError } from './errors.js';
 
 export enum ComputeCredentialMode {
@@ -113,6 +118,9 @@ export interface ComputeProviderData {
   // Whether the provider honors --disk-tier for performance disk selection
   // (e.g. AWS gp3 IOPS/throughput, Azure Premium_LRS OS disk).
   readonly supportsDiskTier: boolean;
+  // The root volume whose IOPS and MiB/s a VM Job may set (--disk-iops,
+  // --disk-throughput); absent where the cloud has none to set.
+  readonly diskPerformance?: DiskPerformanceLimits;
   // Whether a CPU VM Job's host is Ubuntu minimal, prepared by cloud-config
   // user data that installs Docker and pre-pulls a public image while the API
   // waits for SSH (generateJobHostUserData).
@@ -208,6 +216,7 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       // Best-effort, usually two minutes ahead; the systemd guard covers a gap.
       spotNoReclaimNoticeCommand: `t=$(curl -sf -m 2 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token) && [ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' -H "X-aws-ec2-metadata-token: $t" http://169.254.169.254/latest/meta-data/spot/instance-action)" = 404 ] && echo no-notice`,
       supportsDiskTier: true,
+      diskPerformance: GP3_LIMITS,
       preparesJobHosts: true,
       ubuntuMirror: (region) => `${region}.ec2`,
       acceleratorRuntimeCapability: AWS_ACCELERATOR_RUNTIME_CAPABILITY,
@@ -234,6 +243,7 @@ export const PROVIDER_DATA: Record<CloudType, ProviderData> = {
       // `preempted` turns TRUE as preemption starts, before its ACPI shutdown.
       spotNoReclaimNoticeCommand: `[ "$(curl -sf -m 2 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/preempted)" = FALSE ] && echo no-notice`,
       supportsDiskTier: true,
+      diskPerformance: HYPERDISK_BALANCED_LIMITS,
       preparesJobHosts: true,
       ubuntuMirror: (region) => `${region}.gce`,
       acceleratorRuntimeCapability: CUDA_ONLY_ACCELERATOR_RUNTIME_CAPABILITY,

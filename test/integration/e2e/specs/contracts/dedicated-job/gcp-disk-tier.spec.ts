@@ -1,6 +1,6 @@
 import { test, expect } from '../../../fixture.js';
 
-test('gcp creates the original six boot-disk tiers and cleans every Job', async ({
+test('gcp creates the seven boot disks and cleans every Job', async ({
   e2e,
 }) => {
   const result = await e2e.contracts.dedicatedJob({

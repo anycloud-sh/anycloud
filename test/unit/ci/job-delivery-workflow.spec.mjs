@@ -394,7 +394,7 @@ describe('Job delivery workflow', () => {
 const gpu = loadYaml(readFileSync('.github/workflows/e2e-gpu.yml', 'utf8'));
 
 describe('provider and image Job wiring', () => {
-  it('keeps MACE and all six disk cases on their original provider locks without altering Service fault inputs', () => {
+  it('keeps MACE and all seven disk cases on their original provider locks without altering Service fault inputs', () => {
     const mace = gpu.jobs['e2e-mace-vitest'];
     const disk = gpu.jobs['e2e-disk-tier-vitest'];
     expect(gpu.on.workflow_dispatch.inputs.force_job_cleanup).toMatchObject({

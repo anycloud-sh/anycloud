@@ -284,9 +284,9 @@ export interface CloudConfig {
   /** Without diskSizeGb, the smallest OS disk; the cloud may give more. */
   minimumDiskSizeGb?: number;
   diskTier?: DiskTier;
-  /** AWS gp3 root volume IOPS, overriding the disk tier's (a VM Job). */
+  /** AWS gp3 or GCP Hyperdisk Balanced root IOPS, overriding the disk tier's (a VM Job). */
   diskIops?: number;
-  /** AWS gp3 root volume throughput in MiB/s, overriding the disk tier's. */
+  /** Its throughput in MiB/s, overriding the disk tier's. */
   diskThroughputMibps?: number;
   /** A VM Job: the regions it may launch in, instead of one `region`. */
   regions?: string[];

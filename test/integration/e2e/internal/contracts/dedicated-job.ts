@@ -614,10 +614,7 @@ export class DedicatedJobContract {
     const { names, kernel, artifacts } = this.#dependencies;
     const target = this.#cloud();
     const cases = profile.diskTierCases;
-    jobInvariant(
-      cases?.length === 6,
-      'disk-tier requires all six original cases',
-    );
+    jobInvariant(cases?.length === 7, 'disk-tier requires all seven cases');
     const ids = cases.map((diskCase) =>
       names.workload(`j-disk-${diskCase.key}`),
     );
@@ -668,7 +665,8 @@ export class DedicatedJobContract {
         jobInvariant(
           disk.sizeGb === 100 &&
             disk.provisionedIops === diskCase.expectedIops &&
-            disk.provisionedThroughput === 1_000,
+            disk.provisionedThroughput ===
+              (diskCase.expectedThroughputMibps ?? 1_000),
           'disk-tier lost its provisioned Hyperdisk size or performance',
         );
       const extension = this.#records.extension(run, progress, 'disk-tier');
@@ -683,7 +681,7 @@ export class DedicatedJobContract {
       });
       if (forced && fixture.concurrentIndex === fixtures.length - 1)
         throw new Error(
-          'E2E_JOB_FORCED_CLEANUP: disk-tier after all six native disk assertions, before final child termination',
+          'E2E_JOB_FORCED_CLEANUP: disk-tier after all seven native disk assertions, before final child termination',
         );
       await kernel.requestTermination(fixture.ref, budget.cleanupMs);
       const terminalStatus = await kernel.waitForState(

@@ -48,8 +48,8 @@ describe('VM-host Service admission without a GitHub sign-in', () => {
   });
 });
 
-describe('gp3 performance in VM Job admission', () => {
-  it('refuses it during resolution, on a cloud other than AWS, before anything is prepared', async () => {
+describe('disk performance in VM Job admission', () => {
+  it("refuses it during resolution, outside the cloud's limits, before anything is prepared", async () => {
     await expect(
       resolveWorkloadAdmission({
         actor: {
@@ -63,12 +63,13 @@ describe('gp3 performance in VM Job admission', () => {
             cloudProvider: CloudType.GCP,
             credentials: TEST_GCP_CRED,
             region: 'us-central1',
-            vmType: 'e2-standard-4',
+            vmType: 'c4d-standard-4',
             diskIops: 3000,
+            diskThroughputMibps: 1000,
           },
         },
       }),
-    ).rejects.toThrow('AWS gp3 only; pin the Job to AWS');
+    ).rejects.toThrow('--disk-throughput 1000 MiB/s needs at least 4000 IOPS');
     await expect(
       resolveWorkloadAdmission({
         actor: {
