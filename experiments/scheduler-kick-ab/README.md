@@ -1,6 +1,9 @@
 # Scheduler kick A/B
 
-- Status: written; not yet run.
+- Status: complete. Run 45333929623 (`5133162`, 2026-11-23 PST) ran 20
+  rounds per shape; its cleanup check failed on 6 volumes EBS was still
+  deleting, and run 45337485927 (`check --run=ebb559`, at `2e39f07`) found
+  nothing left.
 - Decision record: the A/B for the pull request that kicks the provisioning
   scheduler when a Workload is submitted, and makes a detached run's poll
   wait on the VM. Both come from the closed anycloud-sh/anycloud#12, whose
@@ -39,11 +42,36 @@ soon as it runs.
 Cleanup terminates every Job of the run through its API, waits for both APIs
 to finish cleaning up, and fails if any instance or volume tagged with one of
 the run's Jobs is left. The inventory (run ID and Job IDs per arm) is in the
-runner's temp directory; re-run `["cleanup"]` from the same job to resume.
+runner's temp directory; re-run `["cleanup"]` from the same job to resume,
+or `["check", "--run=<runId>"]` from any job to check AWS by the Jobs' tag.
+The check waits up to ten minutes for EBS to finish deleting, and deletes a
+volume of the run left `available`.
 
 ## Results
 
-None yet.
+[Run 45333929623](https://github.com/anycloud-sh/anycloud/actions/runs/45333929623):
+80 trials, n = 20 per arm and shape, all of which ran. Seconds from
+submission; median, with p90 in parentheses. Paired is the median of each
+round's main − fix, and in how many of the 20 rounds fix was faster.
+
+| Shape | Mark                   | main         | fix          | Paired, fix faster |
+| ----- | ---------------------- | ------------ | ------------ | ------------------ |
+| cpu   | launch request         | 3.5 (5.8)    | 1.7 (2.1)    | 1.7 s, 16/20       |
+| cpu   | running                | 25.3 (35.1)  | 22.4 (28.9)  | 2.6 s, 17/20       |
+| cpu   | pull (user data)       | 0.1 (6.1)    | 0.1 (0.6)    | 0.0 s, 9/20        |
+| gpu   | launch request         | 3.6 (4.4)    | 0.4 (2.8)    | 1.7 s, 18/20       |
+| gpu   | running                | 65.7 (427.5) | 61.5 (417.2) | 5.2 s, 15/20       |
+| gpu   | pull (SSH, containerd) | 3.6 (3.8)    | 3.1 (4.0)    | 0.5 s, 17/20       |
+
+- **Launch request**: the kick removes the wait for the scheduler's next
+  5 s tick. What remains on the fix's side, 0.4–1.7 s, was not split.
+- **Pull**: the cpu shape's image is pulled by the user data, so the poll
+  doesn't touch it. The gpu shape's 3.1 s pull was seen at 3.6 s on main,
+  the ramp's third poll (0.5 + 1 + 2 s); a pull finishing later in the ramp
+  waits up to 15 s on main and half a second with the fix.
+- **gpu running** has a slow tail of 260–445 s: 6 of main's 20 trials and
+  2 of fix's. Nothing in the change acts on that tail, so the paired median
+  is the figure to read, not the p90.
 
 ## Promotion criteria
 
