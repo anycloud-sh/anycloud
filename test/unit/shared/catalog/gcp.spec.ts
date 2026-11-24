@@ -252,18 +252,36 @@ g4-standard-48,48,180,,,,us-central1,${ZONE},,
     );
   });
 
-  it('intentionally ignores N1-attached GPUs and TPUs', () => {
+  it('publishes one T4 on N1 as its own type and ignores other N1 GPUs and TPUs', () => {
     const csv = `${HEADER}
-n1-standard-4,4,15,,,,us-central1,${ZONE},0.19,0.05
-,,,T4,1,,us-central1,${ZONE},0.35,0.1
+n1-standard-4,4,15,,,,us-central1,${ZONE},0.19,0.04
+n1-highmem-4,4,26,,,,us-central1,us-central1-b,0.24,0.05
+n1-standard-8,8,30,,,,us-central1,${ZONE},0.38,0.08
+,,,T4,1,t4-info,us-central1,${ZONE},0.35,0.14
+,,,T4,2,,us-central1,${ZONE},0.7,0.28
 ,,,V100,8,,us-central1,${ZONE},20,8
 ,,,tpu-v5p-8,1,,us-central1,${ZONE},12,`;
-    expect(normalizeEntries(csv, [])).toEqual([
-      expect.objectContaining({
-        instanceType: 'n1-standard-4',
-        acceleratorName: null,
-      }),
+    const entries = normalizeEntries(csv, []);
+
+    expect(entries.map((entry) => entry.instanceType)).toEqual([
+      'n1-standard-4',
+      'n1-standard-4-t4',
+      'n1-highmem-4',
+      'n1-standard-8',
     ]);
+    expect(entries[0]).toMatchObject({ acceleratorName: null, price: 0.19 });
+    expect(entries[1]).toMatchObject({
+      region: 'us-central1',
+      availabilityZone: ZONE,
+      price: 0.54,
+      spotPrice: 0.18,
+      vCPUs: 4,
+      memoryGiB: 15,
+      acceleratorName: 'T4',
+      acceleratorCount: 1,
+      gpuInfo: 't4-info',
+      nestedVirtualizationSupported: undefined,
+    });
   });
 });
 

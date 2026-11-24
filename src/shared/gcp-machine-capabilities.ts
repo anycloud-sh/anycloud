@@ -100,6 +100,45 @@ const GCP_GPU_MACHINE_CAPABILITIES: Readonly<
   },
 };
 
+/** A GPU that Compute Engine attaches to a general-purpose machine at launch. */
+export interface GcpAttachedGpu {
+  readonly machineType: string;
+  /** Compute Engine accelerator type, for `guestAccelerators`. */
+  readonly acceleratorType: string;
+  /** SkyPilot's accelerator name, which prices the attached GPU. */
+  readonly acceleratorName: string;
+  readonly acceleratorCount: number;
+}
+
+function t4(machineType: string): GcpAttachedGpu {
+  return {
+    machineType,
+    acceleratorType: 'nvidia-tesla-t4',
+    acceleratorName: 'T4',
+    acceleratorCount: 1,
+  };
+}
+
+/**
+ * N1 machines with an attached GPU. Each is published under its own catalog
+ * name so the GPU shape never shares the bare N1 machine's CPU classification
+ * or prices. N1's V100, P100, P4 and K80 remain unqualified.
+ */
+export const GCP_ATTACHED_GPU_SHAPES: Readonly<Record<string, GcpAttachedGpu>> =
+  {
+    'n1-standard-4-t4': t4('n1-standard-4'),
+    'n1-highmem-4-t4': t4('n1-highmem-4'),
+  };
+
+export function gcpAttachedGpu(vmType: string): GcpAttachedGpu | undefined {
+  return GCP_ATTACHED_GPU_SHAPES[vmType.trim().toLowerCase()];
+}
+
+/** The Compute Engine machine type that a catalog VM type launches. */
+export function gcpMachineType(vmType: string): string {
+  return gcpAttachedGpu(vmType)?.machineType ?? vmType;
+}
+
 function gcpGpuMachineSeries(vmType: string): string {
   return vmType.trim().toLowerCase().split('-').slice(0, 2).join('-');
 }
@@ -107,7 +146,10 @@ function gcpGpuMachineSeries(vmType: string): string {
 export function gcpGpuMachineCapability(
   vmType: string,
 ): GcpGpuMachineCapability | undefined {
-  return GCP_GPU_MACHINE_CAPABILITIES[gcpGpuMachineSeries(vmType)];
+  const series = gcpGpuMachineSeries(vmType);
+  return gcpAttachedGpu(vmType)
+    ? qualified(series)
+    : GCP_GPU_MACHINE_CAPABILITIES[series];
 }
 
 export function gcpGpuMachineSelectionPriority(vmType: string): number {

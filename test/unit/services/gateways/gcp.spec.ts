@@ -1497,6 +1497,58 @@ describe('GCP GPU image selection by gpuRuntime', () => {
     });
   });
 
+  it('launches an N1 T4 type as its N1 machine with one attached T4', async () => {
+    const gcp = new GCP(
+      completeCloudConfig({
+        ...mockConfig,
+        vmType: 'n1-standard-4-t4',
+        spot: true,
+      }),
+    );
+    const getFromFamily = vi.fn().mockResolvedValue([{ selfLink: 'image' }]);
+    const imagesClient: any = { getFromFamily };
+    gcp.imagesClient = fakeSdkClient(imagesClient);
+    gcp.projectId = 'test-project';
+    let inserted: any;
+    const instancesClient: any = {
+      insert: vi.fn().mockImplementation(async (req: any) => {
+        inserted = req.instanceResource;
+        return [{ name: 'op' }];
+      }),
+      get: vi.fn().mockResolvedValue([
+        {
+          status: 'RUNNING',
+          networkInterfaces: [
+            { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
+          ],
+        },
+      ]),
+    };
+    gcp.instancesClient = fakeSdkClient(instancesClient);
+    gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
+
+    await gcp.compute().newVM(newVMProps(GpuRuntime.Cuda));
+
+    expect(getFromFamily).toHaveBeenCalledWith({
+      family: 'common-cu129-ubuntu-2404-nvidia-580',
+      project: 'deeplearning-platform-release',
+    });
+    expect(inserted.machineType).toBe(
+      'zones/us-central1-a/machineTypes/n1-standard-4',
+    );
+    expect(inserted.guestAccelerators).toEqual([
+      {
+        acceleratorType: 'zones/us-central1-a/acceleratorTypes/nvidia-tesla-t4',
+        acceleratorCount: 1,
+      },
+    ]);
+    expect(inserted.scheduling).toMatchObject({
+      onHostMaintenance: 'TERMINATE',
+      provisioningModel: 'SPOT',
+    });
+    expect(inserted.networkInterfaces[0]).not.toHaveProperty('nicType');
+  });
+
   it.each([
     ['a Job VM stops', undefined, 'STOP'],
     ['a node pool VM is deleted', { id: 'node-pool-1', tags: {} }, 'DELETE'],
