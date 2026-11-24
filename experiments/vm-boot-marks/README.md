@@ -24,6 +24,10 @@
   round's submissions between the two, so both arms meet the same cloud at
   the same time. Regenerate the patch for each cut:
   `git diff HEAD <cut>~1 -- src/api/services/job-host.ts`.
+  `--image=<ref>` submits that runner image instead of v0.5.6's, and
+  `--baseline-image=<ref>` runs the baseline arm on the branch's own API with
+  that image instead of `baseline.patch`, so the two arms differ only in the
+  image.
   `["diagnose", "gcp"]` holds three `ubuntu:24.04` Jobs running and saves
   each host's systemd ordering, critical chains, journal, pressure and disk
   counters, PID 1's counters and what writes to the serial console

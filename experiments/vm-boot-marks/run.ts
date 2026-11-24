@@ -10,7 +10,10 @@
  * `--baseline` it also builds the branch with baseline.patch applied (the
  * branch before its cuts) and runs that API beside the branch's, alternating
  * each round's submissions between the two, so both arms meet the same cloud
- * at the same time. `diagnose [target...] [--count=N]` (default: gcp, 3)
+ * at the same time. `--image=<ref>` submits that image instead of v0.5.6's,
+ * and `--baseline-image=<ref>` runs a baseline arm on the branch's own API
+ * with that image, so the two arms differ only in the image.
+ * `diagnose [target...] [--count=N]` (default: gcp, 3)
  * instead holds Jobs running and saves each host's systemd ordering and
  * journal, to find what holds up sshd and containerd. All of them, and
  * `cleanup`, use a state directory under RUNNER_TEMP that holds each API's
@@ -132,6 +135,8 @@ const PIECES: [piece: string, from: string, to: string][] = [
 interface Inventory {
   runId: string;
   jobs: Record<string, { target: Target; arm: Arm['name'] }>;
+  // The baseline arm runs the branch's API (--baseline-image).
+  baselineOnHead?: boolean;
 }
 
 function required(name: string): string {
@@ -216,7 +221,7 @@ function prepareBaseline() {
 }
 
 async function startApi(arm: Arm): Promise<void> {
-  if (arm.name === 'baseline') prepareBaseline();
+  if (arm.root !== root) prepareBaseline();
   if (!existsSync(join(arm.root, 'dist/api/server.js')))
     runOrThrow('yarn', ['build'], arm.root);
   mkdirSync(arm.state, { recursive: true });
@@ -422,11 +427,12 @@ function addCredentials(arm: Arm, targets: Target[]) {
     );
 }
 
-function newInventory(): Inventory {
+function newInventory(baselineOnHead: boolean): Inventory {
   mkdirSync(stateRoot, { recursive: true });
   const inventory: Inventory = {
     runId: randomBytes(3).toString('hex'),
     jobs: {},
+    baselineOnHead,
   };
   writeFileSync(inventoryPath, JSON.stringify(inventory));
   return inventory;
@@ -477,9 +483,14 @@ async function run(
   count: number,
   rounds: number,
   withBaseline: boolean,
+  image: string,
+  baselineImage: string | undefined,
 ) {
+  if (baselineImage) ARMS.baseline.root = root;
   const arms = withBaseline ? [ARMS.baseline, ARMS.head] : [ARMS.head];
-  const inventory = newInventory();
+  const imageOf = (arm: Arm) =>
+    (arm.name === 'baseline' && baselineImage) || image;
+  const inventory = newInventory(!!baselineImage);
   for (const arm of arms) {
     await startApi(arm);
     addCredentials(arm, targets);
@@ -495,7 +506,7 @@ async function run(
           const id = `boot-marks-${target}-${inventory.runId}-${arm.name[0]}${pass}${index}`;
           // runner-job's `timings` exits 0 at once without a job's state, so
           // the Job boots exactly as a runner does and then completes.
-          submit(inventory, arm, target, id, IMAGE, ['timings']);
+          submit(inventory, arm, target, id, imageOf(arm), ['timings']);
           ids.get(arm)!.push(id);
         }
     for (const [arm, armIds] of ids) {
@@ -538,7 +549,7 @@ async function run(
     ]),
   );
   evidence('jobs.json', jobs);
-  evidence('summary.json', { image: IMAGE, byTarget, cleanup });
+  evidence('summary.json', { image, baselineImage, byTarget, cleanup });
   console.log(JSON.stringify(byTarget, null, 2));
   // Each arm needs marks from every Job it started to have measured it.
   if (
@@ -631,6 +642,7 @@ async function cleanup() {
   const inventory = JSON.parse(
     readFileSync(inventoryPath, 'utf8'),
   ) as Inventory;
+  if (inventory.baselineOnHead) ARMS.baseline.root = root;
   const jobs: unknown[] = [];
   for (const arm of Object.values(ARMS)) {
     const ids = Object.entries(inventory.jobs)
@@ -655,7 +667,17 @@ if (command === 'run') {
   const targets = (named.length ? named : ['aws', 'gcp', 'azure']) as Target[];
   for (const target of targets)
     if (!(target in TARGETS)) throw new Error(`Unknown target ${target}`);
-  await run(targets, count, rounds, rest.includes('--baseline'));
+  const option = (name: string) =>
+    rest.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const baselineImage = option('baseline-image');
+  await run(
+    targets,
+    count,
+    rounds,
+    rest.includes('--baseline') || !!baselineImage,
+    option('image') ?? IMAGE,
+    baselineImage,
+  );
 } else if (command === 'diagnose') {
   const count = Number(
     rest.find((arg) => arg.startsWith('--count='))?.slice(8) ?? 3,
