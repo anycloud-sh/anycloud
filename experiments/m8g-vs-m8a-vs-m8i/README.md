@@ -1,6 +1,6 @@
 # m8g against m8a and m8i
 
-- Status: Builds complete; spot samples in progress.
+- Status: Complete. Results are below.
 - Decision record: it asks whether AWS Graviton `m8g` (arm64) builds faster
   or cheaper than `m8a` (AMD) and `m8i` (Intel) at the same vCPU count. It
   also asks whether `m8g` has the spot capacity that
@@ -141,24 +141,55 @@ m8g in anycloud would first need arm64 VM Jobs.
 
 ### Spot capacity
 
-Each sample tries a spot launch of every type in every zone of anycloud's
-Job network, one at a time.
-[Run 45271021250](https://github.com/anycloud-sh/anycloud/actions/runs/45271021250)
-(13:37 PST) predates the retry on rate limiting. Six of its us-east-2
-attempts were throttled, so its us-east-2 figures are incomplete. Its
-zones that launched, by region:
+Each sample tries one spot launch of every type in every zone of anycloud's
+Job network, one at a time. There were three samples, with retries on rate
+limiting:
 
-| Type          | us-east-1 | us-east-2 | us-west-2 |
-| ------------- | --------- | --------- | --------- |
-| `m8g.xlarge`  | 0 of 6    | 1 of 3    | 1 of 4    |
-| `m8a.xlarge`  | 2 of 6    | 0 of 3    | 1 of 4    |
-| `m8i.xlarge`  | 4 of 6    | 0 of 3    | 4 of 4    |
-| `m8g.4xlarge` | 5 of 6    | 2 of 3    | 2 of 4    |
-| `m8a.4xlarge` | 1 of 6    | 0 of 3    | 4 of 4    |
-| `m8i.4xlarge` | 1 of 6    | 0 of 3    | 4 of 4    |
+- [45302114722](https://github.com/anycloud-sh/anycloud/actions/runs/45302114722)
+  at 17:04 PST on 2026-11-23;
+- [45337619456](https://github.com/anycloud-sh/anycloud/actions/runs/45337619456)
+  at 22:04 PST;
+- [45409656275](https://github.com/anycloud-sh/anycloud/actions/runs/45409656275)
+  at 06:02 PST on 2026-11-24.
 
-us-east-1e offers none of the six (`Unsupported`). The 17:00, 22:00 and
-06:00 PST samples are pending.
+None was throttled, and every cleanup found nothing left. The table gives
+the zones that took a spot launch, over the three samples, with each
+sample's count in parentheses in that order. us-east-1e offers none of the
+six types (`Unsupported`) and is left out. Every other refusal was
+`InsufficientInstanceCapacity`.
+
+| Type          | us-east-1          | us-east-2        | us-west-2          | All            |
+| ------------- | ------------------ | ---------------- | ------------------ | -------------- |
+| `m8g.xlarge`  | 4 of 15 (0, 4, 0)  | 2 of 9 (0, 2, 0) | 9 of 12 (3, 2, 4)  | 15 of 36 (42%) |
+| `m8a.xlarge`  | 6 of 15 (2, 2, 2)  | 3 of 9 (1, 2, 0) | 7 of 12 (3, 2, 2)  | 16 of 36 (44%) |
+| `m8i.xlarge`  | 12 of 15 (4, 4, 4) | 5 of 9 (2, 2, 1) | 12 of 12 (4, 4, 4) | 29 of 36 (81%) |
+| `m8g.4xlarge` | 12 of 15 (4, 5, 3) | 3 of 9 (2, 1, 0) | 12 of 12 (4, 4, 4) | 27 of 36 (75%) |
+| `m8a.4xlarge` | 6 of 15 (2, 2, 2)  | 2 of 9 (1, 1, 0) | 11 of 12 (4, 4, 3) | 19 of 36 (53%) |
+| `m8i.4xlarge` | 11 of 15 (3, 5, 3) | 5 of 9 (1, 2, 2) | 10 of 12 (2, 4, 4) | 26 of 36 (72%) |
+
+- **m8i has the most spot capacity at both sizes.** In us-east-2,
+  backmesh's region, it is the only family that got 5 of 9 zones. m8a and
+  m8g got 2 or 3 of 9, and none at all at 06:00.
+- **m8a's spot is thin at all three times.** It got 44% of zones at
+  xlarge and 53% at 4xlarge, steady across the samples. This agrees with
+  [m8a-vs-m8i](../m8a-vs-m8i/README.md)'s two samples, so time of day
+  doesn't explain it.
+- **m8g's spot depends on size.** At 4xlarge it is close to m8i (75%),
+  except in us-east-2. At xlarge it varies most by time: us-east-1 took 0, 4
+  and 0 of 5 zones.
+- **us-west-2 has the most spot capacity** for every type.
+- **Placement scores agree but are coarse.** By region, m8i scored 3 in
+  every region in every sample. m8a and m8g scored 1 in us-east-2 in two of
+  the three samples, and 3 elsewhere. `m8g.xlarge` is the exception: it
+  scored 3, 3 and 2 in us-east-1, 3, 3 and 1 in us-east-2, and 1, 3 and 3
+  in us-west-2. Its 1 in us-west-2 came at 17:00, when 3 of 4 zones there
+  took it. `spot-scores.json` in each run has the zone scores.
+
+The earlier sample,
+[45271021250](https://github.com/anycloud-sh/anycloud/actions/runs/45271021250)
+(13:37 PST), ran before the retry on rate limiting. Six of its us-east-2
+attempts were throttled, so it is left out of the table. Its us-east-1 and
+us-west-2 counts are in line with it.
 
 ## Promotion criteria
 
