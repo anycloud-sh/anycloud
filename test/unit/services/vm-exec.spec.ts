@@ -64,9 +64,11 @@ describe('runDetachedOnVm', () => {
     expect(
       calls.some((c) => c.includes('systemd-run') && c.includes('ac-test-1')),
     ).toBe(true);
-    const probe = calls.find(
+    const poll = calls.find(
       (c) => c.includes('systemctl is-active') && c.includes('.done'),
     )!;
+    // The reading after the poll's wait on the VM.
+    const probe = poll.slice(poll.indexOf('probe_state='));
     expect(probe.indexOf('systemctl is-active')).toBeLessThan(
       probe.indexOf('[ -f /tmp/ac-test-1.done ]'),
     );
@@ -461,6 +463,26 @@ describe('runDetachedOnVm against a real local shell (nohup path)', () => {
     );
     expect(res.logTail).toContain('hello detached');
     expect(existsSync(`/tmp/${unit}.done`)).toBe(true);
+  });
+
+  it('sees a result within half a second, in one poll that waits on the VM', async () => {
+    let polls = 0;
+    const exec = (cmd: string, timeoutMs?: number) => {
+      if (cmd.includes('[ -f /tmp/ac-it-wait-')) polls++;
+      return shellExec(cmd, timeoutMs);
+    };
+    const startedAt = Date.now();
+    await runDetachedOnVm(
+      exec,
+      realOpts(`ac-it-wait-${process.pid}`, {
+        command: 'sleep 2',
+        pollIntervalMs: 15_000,
+        totalTimeoutMs: 20_000,
+      }) as never,
+    );
+    // Polls backed off from half a second would see it at 3.5 s, in three.
+    expect(Date.now() - startedAt).toBeLessThan(3_200);
+    expect(polls).toBe(1);
   });
 
   it('surfaces a non-zero exit from the real detached command', async () => {
