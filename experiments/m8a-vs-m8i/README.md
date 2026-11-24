@@ -1,7 +1,8 @@
 # m8a against m8i, and GCP's and Azure's newer CPUs
 
-- Status: Complete. Results are below: AWS first, then
-  [GCP and Azure](#gcp-and-azure).
+- Status: Complete. Results are below: AWS first, then a preliminary
+  [comparison with GitHub's 4-core runner](#against-githubs-4-core-runner),
+  then [GCP and Azure](#gcp-and-azure).
 - Decision record: it asks how much faster AWS m8a (AMD EPYC, Zen 5) builds
   than m8i (Intel Xeon 6), which backmesh's runners land on today, at the same
   vCPU count. backmesh's labels can't choose a VM family, so this runs in
@@ -18,9 +19,10 @@
   (default us-east-2) change the run. `--cloud=gcp` or `--cloud=azure` runs
   that cloud's arms instead, and `--vcpus=4,16` picks the sizes (AWS's default
   is both, the others' 4), and `--arms=<type,...>` keeps just those.
+  `--spot` runs the Jobs on spot VMs.
   `["spot"]` measures spot capacity instead (below).
-  `report <results.json...>` rewrites the report from saved results without a
-  cloud. `["sweep", "--cloud=gcp", "--prefix=<run's Job ID prefix>"]` deletes
+  `report <results.json|hosted .log...>` rewrites the report from saved
+  results, and GitHub-hosted rounds' logs, without a cloud. `["sweep", "--cloud=gcp", "--prefix=<run's Job ID prefix>"]` deletes
   a lost run's GCP VMs and disks by label.
 
 ## What it measures
@@ -167,7 +169,8 @@ medians over 10 Jobs, with ranges in parentheses. Ratio is m8a over m8i.
 - **Scope.** The figures are for on-demand capacity and say nothing about
   spot capacity for m8a. The builds ran in containers on the VM, with
   `cargo fetch` and `go mod download` untimed, so they aren't GitHub
-  workflow times. There is no comparison with GitHub's runners.
+  workflow times. [Against GitHub's 4-core runner](#against-githubs-4-core-runner) compares
+  them with `ubuntu-latest`.
 
 ### Spot capacity
 
@@ -221,6 +224,73 @@ scored 3 in most us-west-2 zones and in use2-az3.
 Both samples are from one time of day. Re-dispatching `["spot"]` at other
 times would show whether m8a spot frees up. On-demand m8a launched all 20 of
 its Jobs at once in the build run.
+
+## Against GitHub's 4-core runner
+
+A preliminary check of whether `m8a.xlarge` on spot builds about twice as fast
+as GitHub's `ubuntu-latest`, which has 4 vCPUs in a public repository. The
+GitHub-hosted arm is [`hosted.yml`](hosted.yml): ten rounds of the same
+`guest.sh`, in the same `docker:27-cli` container with the host's Docker
+socket, three at a time. It runs from a branch of a public repository we own,
+since `workflow_dispatch` needs the workflow on the default branch.
+
+[Spike run 45342533189](https://github.com/anycloud-sh/anycloud/actions/runs/45342533189)
+(`36e6d2e15`, arguments `["run", "--vcpus=4", "--spot",
+"--region=us-east-2,us-east-1,us-west-2", "--rounds=10", "--parallel=3"]`)
+and
+[hosted run 45342571455](https://github.com/backmesh/benchmarks/actions/runs/45342571455)
+on the `experiment/m8a-vs-github-4core` branch of `backmesh/benchmarks`
+ran together on 2026-11-23 from 22:43 to 23:05 PST. All 30 rounds
+succeeded. The spot VMs cost $0.22 with their disks, and cleanup found no
+instance or volume left. The hosted runs cost nothing.
+
+**`m8a.xlarge` took 0.56 of `ubuntu-latest`'s time over the eight timed
+commands (99.5 s against 178.1 s, medians of each round's total), so it was
+1.8× as fast. By build, over each build's timed commands, it took 0.49 of
+the time for Go (2.0×), 0.55 for TypeScript, 0.58 for docker, 0.59 for rust
+and 0.65 for Python. `m8i.xlarge`, which backmesh used before `m8a`, took
+0.83.** These are build steps at the same vCPU count, not Job times. Seconds
+are medians over 10 rounds, with ranges. For `m8a` every p is 0.00018, the
+normal approximation's floor at n = 10 with no overlap; the exact two-sided p
+is about 1.1 × 10⁻⁵.
+
+| Build command      | m8a.xlarge spot  | m8i.xlarge spot  | ubuntu-latest    | m8a / hosted | m8i / hosted (p) |
+| ------------------ | ---------------- | ---------------- | ---------------- | ------------ | ---------------- |
+| docker build       | 46.0 (45.2–47.7) | 65.1 (63.9–66.3) | 79.4 (64.5–90.7) | 0.58         | 0.82 (0.0046)    |
+| go build           | 18.6 (18.4–19.5) | 29.9 (29.0–30.9) | 37.4 (29.5–47.9) | 0.50         | 0.80 (0.0036)    |
+| go test            | 3.4 (3.4–3.7)    | 5.3 (5.1–5.5)    | 7.1 (5.2–8.7)    | 0.49         | 0.75 (0.0046)    |
+| python install     | 0.4 (0.3–0.4)    | 0.6 (0.6–0.7)    | 0.7 (0.6–0.8)    | 0.52         | 0.94 (0.57)      |
+| python test        | 4.9 (4.8–5.5)    | 6.2 (6.1–6.4)    | 7.4 (5.9–9.5)    | 0.66         | 0.83 (0.31)      |
+| rust build         | 14.0 (13.9–15.0) | 23.0 (22.5–23.6) | 23.7 (20.2–31.2) | 0.59         | 0.97 (0.24)      |
+| typescript build   | 10.6 (10.3–11.3) | 15.4 (14.8–15.8) | 18.8 (15.2–24.4) | 0.56         | 0.82 (0.021)     |
+| typescript install | 1.6 (1.6–1.8)    | 2.6 (2.5–2.7)    | 3.5 (2.6–4.5)    | 0.47         | 0.73 (0.0010)    |
+| **All eight**      | **99.5**         | **148.6**        | **178.1**        | **0.56**     | **0.83**         |
+
+- **Same vCPU count, not the same cores.** `m8a.xlarge`'s 4 vCPUs are 4
+  cores, one thread each. `ubuntu-latest`'s, on every round, and `m8i`'s are
+  2 cores with two threads each. Part of `m8a`'s lead is the extra cores.
+- **GitHub's CPUs vary.** The ten hosted rounds landed on five CPUs: AMD EPYC
+  7763 (2), 9V74 (3) and 9V45 (2), and Intel Xeon Platinum 8573C (1) and
+  6975P-C (2). The 6975P-C is `m8i`'s CPU, and those rounds took `m8i`'s
+  time, 147 and 148 s. The 7763 rounds took the longest, 216 and 217 s. So
+  `m8a`'s 99.5 s is 0.46 of the slowest rounds (2.2×) and 0.68 of the
+  fastest (1.5×): the ratio depends on which CPU GitHub draws. The
+  spread is why `ubuntu-latest`'s ranges are wide and some of `m8i`'s p are
+  weak. Ten rounds sample this mix only roughly.
+- **Spot.** EC2 refused `m8a.xlarge` in us-east-1a on all 10 Jobs, and each
+  then launched in us-east-1b; none failed to launch. anycloud tried
+  us-east-1 before us-east-2 for both types: it orders the regions by its
+  catalog, not by `--regions`, as it does for backmesh's Jobs. `m8i.xlarge`
+  launched first time in us-east-2a every time. The spot prices were $0.0531/h
+  for `m8a` and $0.0649/h for `m8i`.
+- **Build steps, not Job time.** No queue, boot, image pull, clone or
+  untimed fetch is in these figures, on either side. A spot `m8a` Job's whole
+  VM time was 220–254 s against its 99.5 s of builds, while `ubuntu-latest`
+  starts in seconds.
+- **Not backmesh's runner.** The VM arms ran `guest.sh` in a container on an
+  anycloud VM Job's raw host, not in backmesh's runner image. Both sides ran
+  the same container, but the host's Docker, disk and network differ.
+  backmesh's own benchmark on its labels is the check to quote.
 
 ## GCP and Azure
 

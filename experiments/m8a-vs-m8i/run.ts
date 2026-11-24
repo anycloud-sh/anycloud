@@ -5,12 +5,12 @@
  * (m8a against m8i), GCP and Azure; see README.md.
  *
  * `run [--cloud=aws] [--vcpus=4,16] [--rounds=10] [--parallel=3]
- * [--region=<the cloud's>]` starts the branch's API and runs rounds of one Job
- * per arm, `--parallel` rounds at a time. `spot [--cloud=aws]` reports the
+ * [--region=<the cloud's>] [--spot]` starts the branch's API and runs rounds
+ * of one Job per arm, `--parallel` rounds at a time. `spot [--cloud=aws]` reports the
  * arms' spot capacity in three US regions. `cleanup` restarts the API from
  * the run's state directory, terminates the inventory's Jobs and checks the
- * cloud for anything left. `report <results.json...>` rewrites the report
- * from saved results, without a cloud.
+ * cloud for anything left. `report <results.json|hosted .log...>` rewrites
+ * the report from saved results and GitHub-hosted runs' logs, without a cloud.
  */
 import { execFile, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -57,6 +57,8 @@ const REFUSAL =
 
 type Cloud = 'aws' | 'gcp' | 'azure';
 type Arm = string;
+// The GitHub-hosted arm, from `hosted.yml`'s logs: 4 vCPUs in a public repo.
+const HOSTED = 'ubuntu-latest';
 
 // The root disk's list price per hour on top of the VM's: 100 GB at
 // anycloud's default `high` tier, as backmesh's GCP and Azure runners have it.
@@ -165,6 +167,8 @@ interface JobResult {
   zone: string | null;
   /** The Job's VMs, failed launches included; vmSeconds sums them. */
   attempts?: number;
+  /** The capacity refusals the API logged for the Job: `<zone> <code>`. */
+  refusals?: string[];
   vmSeconds: number | null;
   pricePerHour: number | null;
   timings: Record<string, number>;
@@ -289,6 +293,7 @@ async function runJob(
   inventory: Inventory,
   arm: Arm,
   round: number,
+  spot: boolean,
 ): Promise<JobResult> {
   const id = `${inventory.cloud === 'aws' ? 'm8' : 'cg'}-${inventory.runId}-r${round}-${shortArm(arm)}`;
   inventory.jobs.push(id);
@@ -311,6 +316,7 @@ async function runJob(
     '0',
     '--no-checkpoint',
     '--host-docker',
+    ...(spot ? ['--spot'] : []),
     '--',
     'sh',
     '-c',
@@ -347,6 +353,7 @@ async function runJob(
     region: vm?.region ?? null,
     zone: vm?.availability_zone ?? null,
     attempts: vms.length,
+    refusals: refusalsOf(id),
     vmSeconds: vm
       ? vms.reduce((sum, v) => sum + (v.ended_at! - v.created_at), 0) / 1000
       : null,
@@ -381,7 +388,8 @@ function shuffle<T>(items: readonly T[]): T[] {
   return out;
 }
 
-const diskPerHour = (arm: Arm) => CLOUDS[cloudOf(arm)].diskPerHour(arm);
+const diskPerHour = (arm: Arm) =>
+  arm === HOSTED ? 0 : CLOUDS[cloudOf(arm)].diskPerHour(arm);
 /** A Job's whole VM time at the VM's and its disk's list prices. */
 const costOf = (r: JobResult) =>
   ((r.vmSeconds ?? 0) / 3600) * ((r.pricePerHour ?? 0) + diskPerHour(r.arm));
@@ -411,6 +419,7 @@ async function run(
   rounds: number,
   parallel: number,
   region: string,
+  spot: boolean,
 ) {
   const inventory = await setUp(cloud, region.split(','));
   const results: JobResult[] = [];
@@ -431,7 +440,7 @@ async function run(
       }
       const round = next++;
       const settled = await Promise.allSettled(
-        shuffle(arms).map((arm) => runJob(inventory, arm, round)),
+        shuffle(arms).map((arm) => runJob(inventory, arm, round, spot)),
       );
       for (const outcome of settled) {
         if (outcome.status === 'fulfilled') results.push(outcome.value);
@@ -704,27 +713,36 @@ async function spot(
     ),
   );
   await verifyClean(inventory);
-  // EC2's refusals the API logged, by Job: `<zone> <code>` for each zone it
-  // moved on from, the last zone's capacity refusal, and rate limiting.
-  const log = readFileSync(join(state, 'api.log'), 'utf8')
-    .split('\n')
-    // The API also prints its migrations, which aren't JSON.
-    .filter((line) => line.startsWith('{'))
-    .map(
-      (line) =>
-        JSON.parse(line) as {
-          message: string;
-          id?: string;
-          vmId?: string;
-          zone?: string;
-          code?: string;
-          error?: { message?: string };
-        },
-    );
   const results = launches.map((launch) => ({
     ...launch,
-    refusals: log
-      .filter((e) => e.id === launch.id || e.vmId?.startsWith(`${launch.id}-`))
+    refusals: refusalsOf(launch.id),
+  }));
+  evidence('spot-launches.json', results);
+  console.log(JSON.stringify(results, null, 2));
+}
+
+/**
+ * The cloud's refusals the API logged for a Job: `<zone> <code>` for each
+ * zone it moved on from, the last zone's capacity refusal, and rate limiting.
+ */
+function refusalsOf(id: string): string[] {
+  return (
+    readFileSync(join(state, 'api.log'), 'utf8')
+      .split('\n')
+      // The API also prints its migrations, which aren't JSON.
+      .filter((line) => line.startsWith('{'))
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            message: string;
+            id?: string;
+            vmId?: string;
+            zone?: string;
+            code?: string;
+            error?: { message?: string };
+          },
+      )
+      .filter((e) => e.id === id || e.vmId?.startsWith(`${id}-`))
       .flatMap((e) => {
         if (e.zone && e.code) return [`${e.zone} ${e.code}`];
         const error = e.error?.message ?? '';
@@ -735,10 +753,8 @@ async function spot(
         if (!refusal) return [];
         const at = e.zone ?? /zones\/([a-z0-9-]+)/.exec(JSON.stringify(e))?.[1];
         return [`${at ?? '?'} ${refusal}`];
-      }),
-  }));
-  evidence('spot-launches.json', results);
-  console.log(JSON.stringify(results, null, 2));
+      })
+  );
 }
 
 async function ec2Scores(arms: Arm[], regions: string[]) {
@@ -881,13 +897,20 @@ function report(results: JobResult[]): string {
     ...new Set(ok.flatMap((r) => Object.keys(r.timings))),
   ].sort();
   const arms = [...new Set(results.map((r) => r.arm))];
-  for (const [a, i] of pairsOf(arms)) {
+  const vmArms = arms.filter((arm) => arm !== HOSTED);
+  const pairs: [Arm, Arm][] = [
+    ...pairsOf(vmArms),
+    ...(arms.includes(HOSTED)
+      ? vmArms.map((a): [Arm, Arm] => [a, HOSTED])
+      : []),
+  ];
+  for (const [a, i] of pairs) {
     const [ra, ri] = [of(a), of(i)];
     const price = (rs: JobResult[]) => rs[0]?.pricePerHour ?? 0;
     lines.push(
       `### ${a} vs ${i} (n = ${ra.length} and ${ri.length})`,
       '',
-      `Seconds; ratio is ${a}'s median over ${i}'s, below 1 is ${a} faster. Cost is the median at on-demand list price ($${price(ra)}/h and $${price(ri)}/h). A Job's cost is its whole VM time at the VM's and the disk's prices ($${diskPerHour(a).toFixed(4)}/h and $${diskPerHour(i).toFixed(4)}/h).`,
+      `Seconds; ratio is ${a}'s median over ${i}'s, below 1 is ${a} faster. Cost is the median at the VMs' list price ($${price(ra)}/h and $${price(ri)}/h; none for ${HOSTED}). A Job's cost is its whole VM time at the VM's and the disk's prices ($${diskPerHour(a).toFixed(4)}/h and $${diskPerHour(i).toFixed(4)}/h).`,
       '',
       `| Build command | ${a} median (range) | ${i} median (range) | Ratio | Mann-Whitney p | ${a} cost | ${i} cost |`,
       '| --- | --- | --- | --- | --- | --- | --- |',
@@ -899,7 +922,7 @@ function report(results: JobResult[]): string {
       const cell = (xs: number[]) =>
         `${fmt(median(xs))} (${fmt(Math.min(...xs))}–${fmt(Math.max(...xs))})`;
       const cost = (xs: number[], rs: JobResult[]) =>
-        `$${((median(xs) / 3600) * price(rs)).toFixed(4)}`;
+        price(rs) ? `$${((median(xs) / 3600) * price(rs)).toFixed(4)}` : '';
       lines.push(
         `| ${metric} | ${cell(xa)} | ${cell(xi)} | ${(median(xa) / median(xi)).toFixed(2)} | ${mannWhitney(xa, xi).toPrecision(2)} | ${cost(xa, ra)} | ${cost(xi, ri)} |`,
       );
@@ -914,7 +937,10 @@ function report(results: JobResult[]): string {
     }
     for (const [what, value] of [
       ['VM time per Job (s)', (r: JobResult) => r.vmSeconds ?? []],
-      ['Cost per Job ($, VM and disk)', (r: JobResult) => costOf(r)],
+      [
+        'Cost per Job ($, VM and disk)',
+        (r: JobResult) => (r.vmSeconds === null ? [] : costOf(r)),
+      ],
     ] as const) {
       const [xa, xi] = [ra.flatMap(value), ri.flatMap(value)];
       if (!xa.length || !xi.length) continue;
@@ -929,9 +955,11 @@ function report(results: JobResult[]): string {
   lines.push('### CPUs', '');
   for (const arm of arms) {
     const cpu = of(arm)[0]?.lscpu ?? {};
-    const failed = results.filter((r) => r.arm === arm && !r.ok).length;
+    const all = results.filter((r) => r.arm === arm);
+    const failed = all.filter((r) => !r.ok).length;
+    const refused = all.filter((r) => r.refusals?.length);
     lines.push(
-      `- ${arm}: ${cpu['Model name'] ?? '?'}; ${cpu['CPU(s)'] ?? '?'} vCPUs, ${cpu['Thread(s) per core'] ?? '?'} threads per core; zones ${[...new Set(of(arm).map((r) => r.zone))].join(', ')}${failed ? `; ${failed} failed` : ''}`,
+      `- ${arm}: ${cpu['Model name'] ?? '?'}; ${cpu['CPU(s)'] ?? '?'} vCPUs, ${cpu['Thread(s) per core'] ?? '?'} threads per core; zones ${[...new Set(of(arm).map((r) => r.zone))].join(', ')}${failed ? `; ${failed} failed` : ''}${refused.length ? `; ${refused.length} of ${all.length} Jobs refused at least once (${refused.flatMap((r) => r.refusals).join(', ')})` : ''}`,
     );
   }
   const spent = results.reduce((sum, r) => sum + costOf(r), 0);
@@ -960,6 +988,7 @@ if (command === 'run') {
     Number(flag('rounds', '10')),
     Number(flag('parallel', '3')),
     flag('region', CLOUDS[cloud].region),
+    rest.includes('--spot'),
   );
 } else if (command === 'spot') {
   await spot(
@@ -973,11 +1002,26 @@ if (command === 'run') {
 } else if (command === 'cleanup') {
   await cleanup();
 } else if (command === 'report') {
-  const results = rest.flatMap(
-    (path) =>
-      (JSON.parse(readFileSync(path, 'utf8')) as { results: JobResult[] })
-        .results,
-  );
+  const results = rest.flatMap((path, round): JobResult[] => {
+    if (!path.endsWith('.log')) {
+      return (
+        JSON.parse(readFileSync(path, 'utf8')) as { results: JobResult[] }
+      ).results;
+    }
+    const { done, ...parsed } = parseLog(readFileSync(path, 'utf8'));
+    return [
+      {
+        id: path,
+        arm: HOSTED,
+        round,
+        ok: done,
+        zone: null,
+        vmSeconds: null,
+        pricePerHour: null,
+        ...parsed,
+      },
+    ];
+  });
   console.log(report(results));
 } else {
   throw new Error(`Unknown command ${command}`);
