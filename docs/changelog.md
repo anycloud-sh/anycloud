@@ -5,6 +5,20 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.83
+
+### AWS launches skip a zone out of capacity at once
+
+When EC2 has no capacity in a zone, anycloud now tries the next zone, type or region immediately instead of retrying that zone for up to a minute. In testing, spot Jobs that met a full zone started in 10–14 s rather than 40–47 s.
+
+### CPU VM Jobs start sooner on GCP
+
+A CPU VM Job host on GCP no longer copies system logs to the slow serial console while booting. In testing, the median time from network start to container start fell from 40.4 to 29.1 s.
+
+### CPU VM Jobs start sooner on Azure and AWS
+
+A CPU VM Job host now pulls the image once containerd is up. In testing, network-to-container time fell from 26.5–32.9 s to 21.6–24.4 s on Azure, and from 13.3 to 12.1 s (median) on AWS. The `running` event's [`bootMarks`](/reference/cli/workloads#anycloud-status) times each start step.
+
 ## 0.1.82
 
 ### GCP generated credentials can launch VM Jobs
