@@ -7,7 +7,7 @@
  * `run [--rounds=20] [--workers=4] [--minutes=75]` builds main's API (this
  * branch with fix.patch reversed) beside the branch's, starts both and runs
  * the rounds. `cleanup` terminates the run's Jobs through both APIs and
- * checks AWS for anything left.
+ * checks AWS for anything left; `check --run=<runId>` checks AWS alone.
  */
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import {
+  DeleteVolumeCommand,
   DescribeInstancesCommand,
   DescribeVolumesCommand,
   EC2Client,
@@ -383,40 +384,50 @@ async function verifyClean(inventory: Inventory) {
       return left?.n === 0 ? true : undefined;
     });
   }
-  const jobs = Object.values(inventory.jobs).flat();
-  const left: { instances: string[]; volumes: string[] } = {
-    instances: [],
-    volumes: [],
-  };
-  for (const region of REGIONS) {
-    const ec2 = new EC2Client({ region, maxAttempts: 5 });
-    const ours = {
-      Name: 'tag:anycloud_deployment',
-      Values: jobs.length ? jobs : ['-'],
-    };
-    const { Reservations = [] } = await ec2.send(
-      new DescribeInstancesCommand({
-        Filters: [
-          ours,
-          {
-            Name: 'instance-state-name',
-            Values: ['pending', 'running', 'stopping', 'stopped'],
-          },
-        ],
-      }),
-    );
-    left.instances.push(
-      ...Reservations.flatMap((r) => r.Instances ?? []).map(
-        (i) => i.InstanceId!,
-      ),
-    );
-    const { Volumes = [] } = await ec2.send(
-      new DescribeVolumesCommand({ Filters: [ours] }),
-    );
-    left.volumes.push(...Volumes.map((v) => v.VolumeId!));
-  }
-  evidence('cleanup.json', { jobs: jobs.length, left });
-  if (left.instances.length || left.volumes.length) {
+  await verifyAws(Object.values(inventory.jobs).flat());
+}
+
+/**
+ * Fails if an instance or volume tagged with one of `jobs` (wildcards
+ * allowed) is left once EBS has had ten minutes to finish deleting. A
+ * volume left `available` is the run's own, so it is deleted and reported.
+ */
+async function verifyAws(jobs: string[]) {
+  const ours = { Name: 'tag:anycloud_deployment', Values: jobs };
+  let left: Record<string, string[]> = {};
+  await until('AWS to finish deleting', 10 * 60_000, 30_000, async () => {
+    left = {};
+    for (const region of REGIONS) {
+      const ec2 = new EC2Client({ region, maxAttempts: 5 });
+      const { Reservations = [] } = await ec2.send(
+        new DescribeInstancesCommand({
+          Filters: [
+            ours,
+            {
+              Name: 'instance-state-name',
+              Values: ['pending', 'running', 'stopping', 'stopped'],
+            },
+          ],
+        }),
+      );
+      for (const i of Reservations.flatMap((r) => r.Instances ?? [])) {
+        (left[i.State?.Name ?? '?'] ??= []).push(i.InstanceId!);
+      }
+      const { Volumes = [] } = await ec2.send(
+        new DescribeVolumesCommand({ Filters: [ours] }),
+      );
+      for (const v of Volumes) {
+        (left[`volume ${v.State}`] ??= []).push(`${region} ${v.VolumeId}`);
+        if (v.State === 'available') {
+          await ec2.send(new DeleteVolumeCommand({ VolumeId: v.VolumeId }));
+        }
+      }
+    }
+    console.log(`AWS left: ${JSON.stringify(left)}`);
+    return Object.keys(left).length ? undefined : true;
+  }).catch(() => undefined);
+  evidence('cleanup.json', { jobs, left });
+  if (Object.keys(left).length) {
     throw new Error(`AWS resources remain: ${JSON.stringify(left)}`);
   }
 }
@@ -430,6 +441,9 @@ if (command === 'run') {
     Number(flag('workers', '4')),
     Number(flag('minutes', '75')),
   );
+} else if (command === 'check') {
+  // A run whose inventory went with its runner: `check --run=<runId>`.
+  await verifyAws([`kab-${flag('run', '-')}-*`]);
 } else if (command === 'cleanup') {
   if (!existsSync(inventoryPath)) {
     evidence('cleanup.json', { note: 'no inventory: run created nothing' });
