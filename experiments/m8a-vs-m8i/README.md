@@ -246,10 +246,13 @@ instance or volume left. The hosted runs cost nothing.
 
 **`m8a.xlarge` took 0.56 of `ubuntu-latest`'s time over the eight timed
 commands (99.5 s against 178.1 s, medians of each round's total), so it was
-1.8× as fast. Go's build and test and `npm ci` were about 2×; the rest 1.5–1.8×.
-`m8i.xlarge`, which backmesh used before `m8a`, took 0.83.** Seconds are
-medians over 10 rounds, with ranges. Every p below is 0.00018, the normal
-approximation's floor at n = 10 with no overlap.
+1.8× as fast. By build, over each build's timed commands, it took 0.49 of
+the time for Go (2.0×), 0.55 for TypeScript, 0.58 for docker, 0.59 for rust
+and 0.65 for Python. `m8i.xlarge`, which backmesh used before `m8a`, took
+0.83.** These are build steps at the same vCPU count, not Job times. Seconds
+are medians over 10 rounds, with ranges. For `m8a` every p is 0.00018, the
+normal approximation's floor at n = 10 with no overlap; the exact two-sided p
+is about 1.1 × 10⁻⁵.
 
 | Build command      | m8a.xlarge spot  | m8i.xlarge spot  | ubuntu-latest    | m8a / hosted | m8i / hosted (p) |
 | ------------------ | ---------------- | ---------------- | ---------------- | ------------ | ---------------- |
@@ -263,11 +266,15 @@ approximation's floor at n = 10 with no overlap.
 | typescript install | 1.6 (1.6–1.8)    | 2.6 (2.5–2.7)    | 3.5 (2.6–4.5)    | 0.47         | 0.73 (0.0010)    |
 | **All eight**      | **99.5**         | **148.6**        | **178.1**        | **0.56**     | **0.83**         |
 
+- **Same vCPU count, not the same cores.** `m8a.xlarge`'s 4 vCPUs are 4
+  cores, one thread each. `ubuntu-latest`'s, on every round, and `m8i`'s are
+  2 cores with two threads each. Part of `m8a`'s lead is the extra cores.
 - **GitHub's CPUs vary.** The ten hosted rounds landed on five CPUs: AMD EPYC
   7763 (2), 9V74 (3) and 9V45 (2), and Intel Xeon Platinum 8573C (1) and
   6975P-C (2). The 6975P-C is `m8i`'s CPU, and those rounds took `m8i`'s
   time, 147 and 148 s. The 7763 rounds took the longest, 216 and 217 s. So
-  `m8a`'s 99.5 s is 0.46 of the slowest round and 0.68 of the fastest. The
+  `m8a`'s 99.5 s is 0.46 of the slowest rounds (2.2×) and 0.68 of the
+  fastest (1.5×): the ratio depends on which CPU GitHub draws. The
   spread is why `ubuntu-latest`'s ranges are wide and some of `m8i`'s p are
   weak. Ten rounds sample this mix only roughly.
 - **Spot.** EC2 refused `m8a.xlarge` in us-east-1a on all 10 Jobs, and each
@@ -276,9 +283,10 @@ approximation's floor at n = 10 with no overlap.
   catalog, not by `--regions`, as it does for backmesh's Jobs. `m8i.xlarge`
   launched first time in us-east-2a every time. The spot prices were $0.0531/h
   for `m8a` and $0.0649/h for `m8i`.
-- **Build time only.** No queue, boot, image pull or clone is in these
-  figures, on either side. `ubuntu-latest` starts in seconds, while a spot VM
-  Job's VM time was 234 s for `m8a` against 99.5 s of builds.
+- **Build steps, not Job time.** No queue, boot, image pull, clone or
+  untimed fetch is in these figures, on either side. A spot `m8a` Job's whole
+  VM time was 220–254 s against its 99.5 s of builds, while `ubuntu-latest`
+  starts in seconds.
 - **Not backmesh's runner.** The VM arms ran `guest.sh` in a container on an
   anycloud VM Job's raw host, not in backmesh's runner image. Both sides ran
   the same container, but the host's Docker, disk and network differ.

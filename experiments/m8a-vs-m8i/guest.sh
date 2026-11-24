@@ -12,6 +12,12 @@ for image in ubuntu:24.04 rust:1.83-bookworm golang:1.22.6-bookworm \
   node:22-bookworm python:3.12-bookworm; do
   docker pull -q "$image" >/dev/null
 done
+# The images' digests, so a later run can tell whether they changed.
+for image in docker:27-cli ubuntu:24.04 rust:1.83-bookworm \
+  golang:1.22.6-bookworm node:22-bookworm python:3.12-bookworm; do
+  docker image inspect -f "IMAGE $image {{index .RepoDigests 0}}" "$image" ||
+    true
+done
 
 # `build <name> <image> <bash script>`: runs the script in a new container of
 # the image; the script times its commands with `timed <label> <command...>`.
