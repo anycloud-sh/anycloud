@@ -203,8 +203,13 @@ if not resumed:
             ? undefined
             : String(profile.diskSizeGb),
         'disk-tier': diskTier ?? undefined,
-        'disk-iops': profile.diskIops?.toString(),
-        'disk-throughput': profile.diskThroughputMibps?.toString(),
+        'disk-iops': (
+          fixture.diskTierCase?.diskIops ?? profile.diskIops
+        )?.toString(),
+        'disk-throughput': (
+          fixture.diskTierCase?.diskThroughputMibps ??
+          profile.diskThroughputMibps
+        )?.toString(),
         'output-bucket': fixture.outputBucket ?? undefined,
         'input-bucket': fixture.inputBucket ?? undefined,
         region: fixture.restrictedCredentialCase

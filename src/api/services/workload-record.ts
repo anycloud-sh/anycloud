@@ -45,7 +45,7 @@ export interface StoredWorkload {
   checkpointBucket: string | null;
   diskSizeGb: number | null;
   diskTier: DiskTier | null;
-  /** A VM Job's own AWS gp3 root volume IOPS and MiB/s (0168). */
+  /** A VM Job's own root volume IOPS and MiB/s (0168). */
   diskIops: number | null;
   diskThroughputMibps: number | null;
   /** A VM Job's region allow-list (0169); null when unset. */

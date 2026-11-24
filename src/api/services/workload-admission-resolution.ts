@@ -17,11 +17,9 @@ import {
   InvalidAnycloudConfigError,
 } from '../../shared/errors.js';
 import {
-  GP3_BASELINE_IOPS,
-  gp3MinimumSizeGb,
-  gp3PerformanceError,
-  gp3TierPerformance,
-} from '../../shared/gp3-performance.js';
+  diskMinimumSizeGb,
+  diskPerformanceError,
+} from '../../shared/disk-performance.js';
 import { isHostedApiImage } from '../../shared/hosted-api.js';
 import {
   computeProviderData,
@@ -456,7 +454,7 @@ export async function resolveWorkloadAdmission(args: {
   if (input.requireNestedVirtualization) {
     resolvedCloudConfig.vmType = nestedVmJobTypes(resolvedCloudConfig);
   }
-  assertGp3Performance(resolvedCloudConfig);
+  assertDiskPerformance(resolvedCloudConfig);
   // No other checkpoint option goes with --no-checkpoint.
   if (
     input.noCheckpoint &&
@@ -551,40 +549,54 @@ export function knownRegions(
 }
 
 /**
- * A VM Job's own gp3 root volume IOPS and MiB/s: AWS only, within AWS's
- * limits, and on a root volume big enough for the IOPS. The root is never
- * grown to fit, since that changes the Job's cost.
+ * A VM Job's own root volume IOPS and MiB/s: on a cloud whose root volume
+ * takes them, within its limits, and on a root big enough for the IOPS. The
+ * root is never grown to fit, since that changes the Job's cost.
  */
-export function assertGp3Performance(config: CloudConfig): void {
+export function assertDiskPerformance(config: CloudConfig): void {
   if (
     config.diskIops === undefined &&
     config.diskThroughputMibps === undefined
   ) {
     return;
   }
-  // cloudtype-boundary-ok: gp3 is AWS's volume type.
-  if (config.cloudProvider !== CloudType.AWS) {
+  const limits = isComputeProvider(config.cloudProvider)
+    ? computeProviderData(config.cloudProvider).diskPerformance
+    : undefined;
+  if (!limits) {
     throw new InvalidAnycloudConfigError(
-      '--disk-iops/--disk-throughput are AWS gp3 only; pin the Job to AWS',
+      '--disk-iops/--disk-throughput take AWS gp3 or GCP Hyperdisk Balanced; pin the Job to AWS or GCP',
     );
   }
   // The launch fills the default tier the same way.
-  const tier = gp3TierPerformance(config.diskTier ?? DEFAULT_DISK_TIER);
-  const invalid = gp3PerformanceError(config, tier.Iops ?? GP3_BASELINE_IOPS);
+  const invalid = diskPerformanceError(
+    limits,
+    config,
+    config.diskTier ?? DEFAULT_DISK_TIER,
+  );
   if (invalid) throw new InvalidAnycloudConfigError(invalid);
-  if (config.diskIops === undefined) return;
-  // The Job's own IOPS never grow its root. A CPU VM Job's root is 30 GiB
-  // unless --disk-size says otherwise; a GPU AMI's is its own, checked at
-  // launch.
-  const minimumSizeGb = gp3MinimumSizeGb(config.diskIops);
   const vmTypes = toArray(config.vmType);
+  const { bootsVmType } = limits;
+  if (bootsVmType && vmTypes.length > 0 && !vmTypes.some(bootsVmType)) {
+    throw new InvalidAnycloudConfigError(
+      `--disk-iops/--disk-throughput set ${limits.volume}, which none of ${vmTypes.join(', ')} boots from`,
+    );
+  }
+  if (config.diskIops === undefined) return;
+  // The Job's own IOPS never grow its root. Without --disk-size, a GCP
+  // Job's Hyperdisk is 100 GiB; an AWS CPU VM Job's root is 30 GiB and a GPU
+  // AMI's is its own, checked at launch.
+  const minimumSizeGb = diskMinimumSizeGb(config.diskIops);
   // Any CPU type in the list may be the one launched, with a 30 GiB root.
   const anyCpu =
     vmTypes.length > 0 &&
     vmTypes.some(
       (type) => gpuRuntimeForVMType(config.cloudProvider, type) === null,
     );
-  const sizeGb = config.diskSizeGb ?? (anyCpu ? JOB_HOST_DISK_GB : undefined);
+  const sizeGb =
+    config.diskSizeGb ??
+    limits.defaultSizeGb ??
+    (anyCpu ? JOB_HOST_DISK_GB : undefined);
   if (sizeGb !== undefined && sizeGb < minimumSizeGb) {
     throw new InvalidAnycloudConfigError(
       `${config.diskIops} IOPS needs a root volume of at least ${minimumSizeGb} GiB (500 IOPS per GiB); pass --disk-size ${minimumSizeGb} or more`,

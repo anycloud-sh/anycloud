@@ -22,8 +22,8 @@ decision guidance, start with [GPUs & VM Types](/platform/gpus-vm-types),
 | Spot                | `--spot`                   | `cloud_config["spot"]`                  | Jobs only                                 |
 | Root disk capacity  | `--disk-size GB`           | `cloud_config["disk_size_gb"]`          | Independent of performance tier           |
 | Root disk tier      | `--disk-tier TIER`         | `cloud_config["disk_tier"]`             | `medium`, `high`, or `ultra`              |
-| gp3 root IOPS       | `--disk-iops N`            | `cloud_config["disk_iops"]`             | AWS VM Jobs only; 3,000–80,000            |
-| gp3 root throughput | `--disk-throughput MiBps`  | `cloud_config["disk_throughput_mibps"]` | AWS VM Jobs only; 125–2,000 MiB/s         |
+| Root IOPS           | `--disk-iops N`            | `cloud_config["disk_iops"]`             | AWS and GCP VM Jobs only                  |
+| Root throughput     | `--disk-throughput MiBps`  | `cloud_config["disk_throughput_mibps"]` | AWS and GCP VM Jobs only                  |
 | Availability zone   | `--zone ZONE`              | `cloud_config["availability_zone"]`     | Provider-specific value                   |
 | Input Bucket        | `--input-bucket NAME`      | `cloud_config["input_bucket"]`          | Jobs only; must exist                     |
 | Output Bucket       | `--output-bucket NAME`     | `cloud_config["output_bucket"]`         | Jobs only; created if needed              |
@@ -264,27 +264,40 @@ match the tier to avoid paying for performance that the VM cannot use.
 Disk tiers are supported on AWS, GCP, and Azure. Other providers reject a
 non-default tier.
 
-### AWS gp3 performance
+### A Job's own disk performance
 
-A Job on its own AWS VM can set its gp3 root volume's IOPS and throughput
+A Job on its own AWS or GCP VM can set its root disk's IOPS and throughput
 itself, instead of the tier's: `--disk-iops` and `--disk-throughput` (MiB/s).
+On AWS they set the gp3 root volume; on GCP, a Hyperdisk Balanced boot disk on
+the VM types that take one (C4, C4D, N4, H3 and the other Hyperdisk families
+above). A GCP type that boots from Persistent Disk keeps its tier's disk, so a
+Job may list one as a fallback; a Job none of whose types takes Hyperdisk is
+refused. For example, `--vm-type c4d-standard-4 --vm-type n2-standard-4
+--disk-iops 3000 --disk-throughput 750` gives `c4d` a cheaper disk than the
+`high` tier's 8,000 IOPS and 1,000 MiB/s, and `n2` the `high` tier's `pd-ssd`.
+
 Either one alone overrides only that value. With the default `high` tier
 (8,000 IOPS, 1,000 MiB/s), `--disk-throughput` alone keeps 8,000 IOPS and is
 checked against them. `--disk-iops` alone keeps the tier's throughput, lowered
-to 0.25 MiB/s per IOPS, rounded down to a whole MiB/s, where AWS requires it
-(750 MiB/s at 3,000 IOPS). AWS's
-limits apply:
+to 0.25 MiB/s per IOPS, rounded down to a whole MiB/s, where the cloud requires
+it (750 MiB/s at 3,000 IOPS). The cloud's limits apply, and anycloud refuses
+values outside them before launch:
 
-- IOPS from 3,000 to 80,000, at most 500 per GiB of the root volume;
-- throughput from 125 to 2,000 MiB/s, at most 0.25 MiB/s per IOPS.
+| Limit                | AWS gp3            | GCP Hyperdisk Balanced                   |
+| -------------------- | ------------------ | ---------------------------------------- |
+| IOPS                 | 3,000–80,000       | 3,000–160,000                            |
+| IOPS per GiB of root | at most 500        | at most 500                              |
+| Throughput           | 125–2,000 MiB/s    | 140–2,400 MiB/s                          |
+| Throughput per IOPS  | at most 0.25 MiB/s | at most 0.25 MiB/s, at least 1/256 MiB/s |
 
-The root volume is never grown to fit the Job's own IOPS, since that changes
-the Job's cost. A CPU VM Job's root is 30 GiB unless `--disk-size` says
+The root disk is never grown to fit the Job's own IOPS, since that changes the
+Job's cost. On AWS a CPU VM Job's root is 30 GiB unless `--disk-size` says
 otherwise, which carries up to 15,000 IOPS; a GPU VM Job's root is its AMI's,
-and at least 30 GiB.
-More IOPS than the root carries are refused with the `--disk-size` they need.
-Any other cloud, a Service, or a VM refuses them. The
-workload's `diskIops` and `diskThroughputMibps` record what was asked.
+and at least 30 GiB. On GCP the Hyperdisk is 100 GiB unless `--disk-size` says
+otherwise, which carries up to 50,000 IOPS. More IOPS than the root carries are
+refused with the `--disk-size` they need. A Service, a VM, or any other cloud
+refuses them. The workload's `diskIops` and `diskThroughputMibps` record what
+was asked.
 
 ## Docker runtime options
 

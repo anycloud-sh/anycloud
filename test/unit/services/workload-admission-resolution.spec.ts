@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   knownRegions,
-  assertGp3Performance,
+  assertDiskPerformance,
   nestedVmJobTypes,
   normalizeCredentiallessComputeRequest,
 } from '../../../src/api/services/workload-admission-resolution';
@@ -11,7 +11,11 @@ import {
   DiskTier,
 } from '../../../src/shared/cloud.js';
 import { TEST_AWS_CRED } from '../helpers/fixtures';
-import { gp3VolumePerformance } from '../../../src/shared/gp3-performance.js';
+import {
+  diskVolumePerformance,
+  GP3_LIMITS,
+  HYPERDISK_BALANCED_LIMITS,
+} from '../../../src/shared/disk-performance.js';
 
 describe('normalizeCredentiallessComputeRequest', () => {
   it('rejects invalid provider strings before provider metadata lookup', () => {
@@ -143,7 +147,7 @@ const cpu3000 = (diskTier: DiskTier | undefined): CloudConfig => ({
   ...(diskTier && { diskTier }),
 });
 
-describe('assertGp3Performance', () => {
+describe('assertDiskPerformance on AWS gp3', () => {
   const aws = (fields: Partial<CloudConfig>): CloudConfig => ({
     cloudProvider: CloudType.AWS,
     ...fields,
@@ -160,7 +164,7 @@ describe('assertGp3Performance', () => {
       // Unset, the tier is the default high one: 8,000 IOPS.
       { diskThroughputMibps: 2000 },
     ]) {
-      expect(() => assertGp3Performance(aws(fields))).not.toThrow();
+      expect(() => assertDiskPerformance(aws(fields))).not.toThrow();
     }
   });
 
@@ -184,7 +188,7 @@ describe('assertGp3Performance', () => {
       ],
     ] as const) {
       expect(
-        () => assertGp3Performance(aws(fields)),
+        () => assertDiskPerformance(aws(fields)),
         JSON.stringify(fields),
       ).toThrow(message);
     }
@@ -194,23 +198,23 @@ describe('assertGp3Performance', () => {
     const cpu = (fields: Partial<CloudConfig>) =>
       aws({ vmType: 't3.medium', ...fields });
     // A CPU VM Job's root is 30 GiB unless --disk-size says otherwise.
-    expect(() => assertGp3Performance(cpu({ diskIops: 15000 }))).not.toThrow();
-    expect(() => assertGp3Performance(cpu({ diskIops: 15001 }))).toThrow(
+    expect(() => assertDiskPerformance(cpu({ diskIops: 15000 }))).not.toThrow();
+    expect(() => assertDiskPerformance(cpu({ diskIops: 15001 }))).toThrow(
       '15001 IOPS needs a root volume of at least 31 GiB (500 IOPS per GiB); pass --disk-size 31 or more',
     );
     expect(() =>
-      assertGp3Performance(cpu({ diskIops: 20000, diskSizeGb: 39 })),
+      assertDiskPerformance(cpu({ diskIops: 20000, diskSizeGb: 39 })),
     ).toThrow('at least 40 GiB');
     expect(() =>
-      assertGp3Performance(cpu({ diskIops: 20000, diskSizeGb: 40 })),
+      assertDiskPerformance(cpu({ diskIops: 20000, diskSizeGb: 40 })),
     ).not.toThrow();
     // A GPU AMI's root is its own size; launch checks it.
     expect(() =>
-      assertGp3Performance(aws({ vmType: 'g4dn.xlarge', diskIops: 20000 })),
+      assertDiskPerformance(aws({ vmType: 'g4dn.xlarge', diskIops: 20000 })),
     ).not.toThrow();
     // A tier's own IOPS keep their existing sizing, with a throughput too.
     expect(() =>
-      assertGp3Performance(
+      assertDiskPerformance(
         cpu({
           diskTier: DiskTier.Ultra,
           diskThroughputMibps: 500,
@@ -222,41 +226,148 @@ describe('assertGp3Performance', () => {
 
   it('admits --disk-iops alone below the tier, whose throughput comes down to fit', () => {
     for (const diskTier of [DiskTier.High, DiskTier.Ultra, undefined])
-      expect(() => assertGp3Performance(cpu3000(diskTier))).not.toThrow();
-    expect(gp3VolumePerformance(DiskTier.High, { diskIops: 3000 })).toEqual({
+      expect(() => assertDiskPerformance(cpu3000(diskTier))).not.toThrow();
+    expect(
+      diskVolumePerformance(GP3_LIMITS, DiskTier.High, { diskIops: 3000 }),
+    ).toEqual({
       Iops: 3000,
       Throughput: 750,
     });
     // EBS takes whole MiB/s: rounded down, still within 0.25 per IOPS.
-    expect(gp3VolumePerformance(DiskTier.High, { diskIops: 3750 })).toEqual({
+    expect(
+      diskVolumePerformance(GP3_LIMITS, DiskTier.High, { diskIops: 3750 }),
+    ).toEqual({
       Iops: 3750,
       Throughput: 937,
     });
-    expect(gp3VolumePerformance(DiskTier.Ultra, { diskIops: 6000 })).toEqual({
+    expect(
+      diskVolumePerformance(GP3_LIMITS, DiskTier.Ultra, { diskIops: 6000 }),
+    ).toEqual({
       Iops: 6000,
       Throughput: 1000,
     });
     expect(
-      gp3VolumePerformance(DiskTier.High, { diskThroughputMibps: 500 }),
+      diskVolumePerformance(GP3_LIMITS, DiskTier.High, {
+        diskThroughputMibps: 500,
+      }),
     ).toEqual({ Iops: 8000, Throughput: 500 });
-    expect(gp3VolumePerformance(DiskTier.Medium, {})).toEqual({});
+    expect(diskVolumePerformance(GP3_LIMITS, DiskTier.Medium, {})).toEqual({});
   });
 
-  it('refuses them on every cloud but AWS', () => {
+  it('refuses them on every cloud but AWS and GCP', () => {
     for (const cloudProvider of [
-      CloudType.GCP,
       CloudType.Azure,
       CloudType.Lambda,
       CloudType.Local,
     ]) {
       expect(() =>
-        assertGp3Performance({ cloudProvider, diskIops: 3000 }),
+        assertDiskPerformance({ cloudProvider, diskIops: 3000 }),
       ).toThrow(
-        '--disk-iops/--disk-throughput are AWS gp3 only; pin the Job to AWS',
+        '--disk-iops/--disk-throughput take AWS gp3 or GCP Hyperdisk Balanced; pin the Job to AWS or GCP',
       );
     }
     expect(() =>
-      assertGp3Performance({ cloudProvider: CloudType.GCP }),
+      assertDiskPerformance({ cloudProvider: CloudType.Azure }),
     ).not.toThrow();
+  });
+});
+
+describe('assertDiskPerformance on GCP Hyperdisk Balanced', () => {
+  const gcp = (fields: Partial<CloudConfig>): CloudConfig => ({
+    cloudProvider: CloudType.GCP,
+    vmType: 'c4d-standard-4',
+    ...fields,
+  });
+
+  it("admits backmesh's spot c4d 3,000 IOPS and 750 MiB/s, and GCP's ranges", () => {
+    for (const fields of [
+      { diskIops: 3000, diskThroughputMibps: 750 },
+      { diskIops: 3000 },
+      // The default high tier's 8,000 IOPS carry 2,000 MiB/s.
+      { diskThroughputMibps: 2000 },
+      { diskThroughputMibps: 140 },
+      // 160,000 IOPS need 320 GiB and at least 625 MiB/s.
+      { diskIops: 160000, diskThroughputMibps: 625, diskSizeGb: 320 },
+      { diskIops: 9600, diskThroughputMibps: 2400 },
+    ]) {
+      expect(
+        () => assertDiskPerformance(gcp(fields)),
+        JSON.stringify(fields),
+      ).not.toThrow();
+    }
+  });
+
+  it("refuses values outside GCP's limits before launch", () => {
+    for (const [fields, message] of [
+      [
+        { diskIops: 2999 },
+        '--disk-iops must be a whole number from 3000 to 160000 on GCP Hyperdisk Balanced',
+      ],
+      [{ diskIops: 160001, diskSizeGb: 400 }, 'from 3000 to 160000'],
+      [{ diskThroughputMibps: 139 }, 'from 140 to 2400'],
+      [{ diskThroughputMibps: 2401, diskIops: 10000 }, 'from 140 to 2400'],
+      // GCP refuses more than a quarter of the IOPS (anycloud#45).
+      [
+        { diskIops: 3000, diskThroughputMibps: 1000 },
+        '--disk-throughput 1000 MiB/s needs at least 4000 IOPS',
+      ],
+      [
+        { diskTier: DiskTier.Medium, diskThroughputMibps: 751 },
+        'needs at least 3004 IOPS',
+      ],
+      // ... and fewer than 1/256 MiB/s per IOPS.
+      [
+        { diskIops: 160000, diskThroughputMibps: 624, diskSizeGb: 320 },
+        '160000 IOPS need at least 625 MiB/s on GCP Hyperdisk Balanced',
+      ],
+    ] as const) {
+      expect(
+        () => assertDiskPerformance(gcp(fields)),
+        JSON.stringify(fields),
+      ).toThrow(message);
+    }
+  });
+
+  it('admits a list with a Persistent Disk fallback, and refuses one no type of which boots from Hyperdisk', () => {
+    const own = { diskIops: 3000, diskThroughputMibps: 750 };
+    expect(() =>
+      assertDiskPerformance(
+        gcp({ ...own, vmType: ['c4d-standard-4', 'n2-standard-4'] }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertDiskPerformance(
+        gcp({ ...own, vmType: ['n2-standard-4', 'n2d-standard-4'] }),
+      ),
+    ).toThrow(
+      '--disk-iops/--disk-throughput set GCP Hyperdisk Balanced, which none of n2-standard-4, n2d-standard-4 boots from',
+    );
+  });
+
+  it('refuses IOPS the 100 GiB default Hyperdisk is too small for, without growing it', () => {
+    expect(() => assertDiskPerformance(gcp({ diskIops: 50000 }))).not.toThrow();
+    expect(() => assertDiskPerformance(gcp({ diskIops: 50001 }))).toThrow(
+      '50001 IOPS needs a root volume of at least 101 GiB (500 IOPS per GiB); pass --disk-size 101 or more',
+    );
+    expect(() =>
+      assertDiskPerformance(gcp({ diskIops: 3000, diskSizeGb: 5 })),
+    ).toThrow('at least 6 GiB');
+  });
+
+  it("fills the throughput the Job leaves out from the tier, within GCP's range for the IOPS", () => {
+    const volume = (diskTier: DiskTier, diskIops: number) =>
+      diskVolumePerformance(HYPERDISK_BALANCED_LIMITS, diskTier, { diskIops });
+    expect(volume(DiskTier.High, 3000)).toEqual({
+      Iops: 3000,
+      Throughput: 750,
+    });
+    expect(volume(DiskTier.High, 160000)).toEqual({
+      Iops: 160000,
+      Throughput: 1000,
+    });
+    expect(volume(DiskTier.Medium, 160000)).toEqual({
+      Iops: 160000,
+      Throughput: 625,
+    });
   });
 });

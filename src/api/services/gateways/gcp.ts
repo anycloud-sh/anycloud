@@ -101,6 +101,19 @@ import {
   sleep,
   withRetry,
 } from '../../../shared/utils.js';
+import {
+  diskMinimumSizeGb,
+  type DiskPerformance,
+  diskVolumePerformance,
+  HYPERDISK_BALANCED_LIMITS,
+} from '../../../shared/disk-performance.js';
+import {
+  GCP_BALANCED_PD_MEDIUM_SERIES,
+  GCP_HYPERDISK_MEDIUM_SERIES,
+  gcpBootsFromFastHyperdisk,
+  isHyperdiskOnlyMetalVariant,
+  matchesGcpSeries,
+} from '../../../shared/gcp-boot-disks.js';
 import { gcpGpuMachineCapability } from '../../../shared/gcp-machine-capabilities.js';
 import { gcpNestedMinCpuPlatform } from '../../../shared/catalog/nested-virtualization.js';
 import { buildJobIngressSpec, isSharedJobIngress } from '../network.js';
@@ -197,66 +210,24 @@ interface GcpBootDisk {
   readonly provisionedThroughput?: number;
 }
 
-// GCP does not expose machine-to-disk compatibility through its APIs. Keep
-// only the exceptions to the common Persistent Disk path at the request site.
-const GCP_HYPERDISK_MEDIUM_SERIES = [
-  'a3-ultragpu',
-  'a4-highgpu',
-  'a4x-highgpu',
-  'a4x-maxgpu',
-  'c4',
-  'c4a',
-  'c4d',
-  'c4n',
-  'g4-standard',
-  'h4d',
-  'n4',
-  'n4a',
-  'n4d',
-] as const;
-const GCP_HYPERDISK_FAST_SERIES = [
-  ...GCP_HYPERDISK_MEDIUM_SERIES,
-  'h3',
-] as const;
-const GCP_BALANCED_PD_MEDIUM_SERIES = [
-  'a3-edgegpu',
-  'a3-highgpu',
-  'a3-megagpu',
-  'c3',
-  'c3d',
-  'g2-standard',
-  'h3',
-  'm3',
-  'z3',
-] as const;
-
-function matchesGcpSeries(vmType: string, series: readonly string[]): boolean {
-  const normalized = vmType.trim().toLowerCase();
-  return series.some(
-    (candidate) =>
-      normalized === candidate || normalized.startsWith(`${candidate}-`),
-  );
-}
-
-function isHyperdiskOnlyMetalVariant(vmType: string): boolean {
-  const normalized = vmType.trim().toLowerCase();
-  return (
-    normalized.endsWith('-metal') &&
-    (normalized.startsWith('c3-') || normalized.startsWith('z3-'))
-  );
-}
-
 function bootDiskFor(
   vmType: string,
   tier: DiskTier,
   requestedSizeGb: number | undefined,
   minimumDefaultSizeGb?: number,
+  own: DiskPerformance = {},
 ): GcpBootDisk {
   const sizeGb = requestedSizeGb ?? minimumDefaultSizeGb;
   const diskSize = sizeGb === undefined ? {} : { diskSizeGb: sizeGb };
   const metal = isHyperdiskOnlyMetalVariant(vmType);
+  const fastHyperdisk = gcpBootsFromFastHyperdisk(vmType);
+  // A Job's own IOPS and MiB/s set Hyperdisk Balanced; a type booting from
+  // Persistent Disk keeps its tier's disk, so a Job's fallback types may.
+  const ownPerformance =
+    fastHyperdisk &&
+    (own.diskIops !== undefined || own.diskThroughputMibps !== undefined);
 
-  if (tier === DiskTier.Medium) {
+  if (tier === DiskTier.Medium && !ownPerformance) {
     if (metal || matchesGcpSeries(vmType, GCP_HYPERDISK_MEDIUM_SERIES)) {
       return { diskType: 'hyperdisk-balanced', ...diskSize };
     }
@@ -268,25 +239,40 @@ function bootDiskFor(
     };
   }
 
-  if (!metal && !matchesGcpSeries(vmType, GCP_HYPERDISK_FAST_SERIES)) {
-    return { diskType: 'pd-ssd', ...diskSize };
-  }
+  if (!fastHyperdisk) return { diskType: 'pd-ssd', ...diskSize };
 
-  const iops = tier === DiskTier.High ? 8_000 : 16_000;
-  const minimumSizeGb = Math.ceil(iops / 500);
-  if (requestedSizeGb !== undefined && requestedSizeGb < minimumSizeGb) {
+  // A VM Job's own IOPS and MiB/s override its tier's.
+  const performance = diskVolumePerformance(
+    HYPERDISK_BALANCED_LIMITS,
+    tier,
+    own,
+  );
+  const iops = performance.Iops!;
+  const minimumSizeGb = diskMinimumSizeGb(iops);
+  const diskSizeGb =
+    requestedSizeGb ??
+    Math.max(
+      HYPERDISK_BALANCED_LIMITS.defaultSizeGb!,
+      minimumDefaultSizeGb ?? 0,
+    );
+  // A Job's own IOPS never grow its disk: that would change its cost.
+  if (diskSizeGb < minimumSizeGb) {
     throw new InvalidAnycloudConfigError(
-      `GCP --disk-tier ${tier} on Hyperdisk Balanced requires ` +
+      `GCP ${
+        own.diskIops !== undefined
+          ? `--disk-iops ${iops}`
+          : `--disk-tier ${tier}`
+      } on Hyperdisk Balanced requires ` +
         `--disk-size of at least ${minimumSizeGb} GB for VM type "${vmType}" ` +
-        `(got ${requestedSizeGb} GB).`,
+        `(got ${diskSizeGb} GB).`,
     );
   }
 
   return {
     diskType: 'hyperdisk-balanced',
-    diskSizeGb: requestedSizeGb ?? Math.max(100, minimumDefaultSizeGb ?? 0),
+    diskSizeGb,
     provisionedIops: iops,
-    provisionedThroughput: 1_000,
+    provisionedThroughput: performance.Throughput!,
   };
 }
 
@@ -591,6 +577,7 @@ export class GCP {
   diskSizeGb?: number;
   minimumDiskSizeGb?: number;
   diskTier: DiskTier;
+  private readonly diskPerformance: DiskPerformance;
   nestedVirtualization: boolean;
   private storageCoordinationPrefix: string;
   private readonly key: GCPCreds | GCPRoleCreds | GCPInstanceCreds;
@@ -609,6 +596,10 @@ export class GCP {
     this.diskSizeGb = gcpConfig.diskSizeGb;
     this.minimumDiskSizeGb = gcpConfig.minimumDiskSizeGb;
     this.diskTier = gcpConfig.diskTier ?? DEFAULT_DISK_TIER;
+    this.diskPerformance = {
+      diskIops: gcpConfig.diskIops,
+      diskThroughputMibps: gcpConfig.diskThroughputMibps,
+    };
     this.nestedVirtualization = gcpConfig.nestedVirtualization ?? false;
     const credentials = gcpConfig.credentials as
       | GCPCreds
@@ -1053,6 +1044,7 @@ export class GCP {
             this.diskTier,
             this.diskSizeGb,
             this.minimumDiskSizeGb,
+            this.diskPerformance,
           );
           return { eligible: true };
         } catch (error) {
@@ -1364,6 +1356,7 @@ export class GCP {
       params.jobHost
         ? Math.max(JOB_HOST_DISK_GB, this.minimumDiskSizeGb ?? 0)
         : this.minimumDiskSizeGb,
+      this.diskPerformance,
     );
     log.info('Resolved GCP boot disk', {
       id: workloadId,

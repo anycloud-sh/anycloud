@@ -839,7 +839,9 @@ function harness(
           provisionedIops:
             options.diskFailure === 'iops' ? 4_000 : diskCase.expectedIops,
           provisionedThroughput:
-            options.diskFailure === 'throughput' ? 500 : 1_000,
+            options.diskFailure === 'throughput'
+              ? 500
+              : (diskCase.expectedThroughputMibps ?? 1_000),
         };
       },
       submitAdmission: async (fixture) => {
@@ -1156,7 +1158,7 @@ function harness(
         if (options.runtimeChildren === 'missing') return fixtures.slice(0, 1);
         if (options.admissionFailure === 'missing-case')
           return fixtures.slice(0, 1);
-        if (options.diskFailure === 'missing-case') return fixtures.slice(0, 5);
+        if (options.diskFailure === 'missing-case') return fixtures.slice(0, 6);
         if (options.runtimeChildren === 'duplicate')
           return [fixtures[0], fixtures[0]];
         if (options.runtimeChildren === 'wrong-order')
@@ -1376,13 +1378,13 @@ function harness(
 }
 
 describe('concrete cloud Job family consumers', () => {
-  test('disk-tier proves all six original boot disks serially before one member finalization', async () => {
+  test('disk-tier proves all seven boot disks serially before one member finalization', async () => {
     const world = harness({ kind: 'disk-tier', target: 'gcp' });
     await expect(world.run()).resolves.toMatchObject({ satisfied: true });
     const submits = world.calls.filter((call) => call.startsWith('submit:'));
-    expect(submits).toHaveLength(6);
+    expect(submits).toHaveLength(7);
     expect(world.calls.filter((call) => call.startsWith('disk:'))).toHaveLength(
-      6,
+      7,
     );
     for (let index = 1; index < submits.length; index += 1) {
       const previousId = submits[index - 1].slice('submit:'.length);
@@ -1392,14 +1394,14 @@ describe('concrete cloud Job family consumers', () => {
     }
     expect(
       world.calls.filter((call) => call.startsWith('release-resources:')),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
     expect(
       world.calls.findIndex((call) => call.startsWith('release:')),
     ).toBeGreaterThan(
       world.calls.findLastIndex((call) => call.startsWith('disk:')),
     );
     expect(world.waits.map(({ timeoutMs }) => timeoutMs)).toEqual(
-      Array(6).fill(1_200_000),
+      Array(7).fill(1_200_000),
     );
     expect(
       world.artifacts.filter(({ name }) => name === 'dedicated-job-result'),
@@ -1672,11 +1674,11 @@ describe('concrete cloud Job family consumers', () => {
     );
     await expect(world.run()).rejects.toThrow('E2E_JOB_FORCED_CLEANUP');
     expect(world.calls.filter((call) => call.startsWith('disk:'))).toHaveLength(
-      6,
+      7,
     );
     expect(
       world.calls.filter((call) => call.startsWith('terminate:')),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
     expect(world.calls.some((call) => call.startsWith('release'))).toBe(false);
     expect(
       world.artifacts.some(({ name }) => name === 'dedicated-job-result'),

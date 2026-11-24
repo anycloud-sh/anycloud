@@ -75,7 +75,7 @@ export interface CreateWorkloadInput {
   requireNestedVirtualization?: boolean;
   /** A VM Job given the host's Docker socket (0167). */
   hostDocker?: boolean;
-  /** A VM Job's own AWS gp3 root volume IOPS and MiB/s (0168). */
+  /** A VM Job's own root volume IOPS and MiB/s (0168). */
   diskIops?: number;
   diskThroughputMibps?: number;
   /** A VM Job's region allow-list (0169). */

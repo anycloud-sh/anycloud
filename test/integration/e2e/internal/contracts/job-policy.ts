@@ -419,6 +419,16 @@ export function jobMemberProfile(
         expectedType: 'hyperdisk-balanced',
         expectedIops: 16_000,
       },
+      // backmesh's spot c4d runners' own setting (anycloud#43).
+      {
+        key: 'ho',
+        vmType: hyperdisk,
+        diskIops: 3_000,
+        diskThroughputMibps: 750,
+        expectedType: 'hyperdisk-balanced',
+        expectedIops: 3_000,
+        expectedThroughputMibps: 750,
+      },
       {
         key: 'pm',
         vmType: persistent,

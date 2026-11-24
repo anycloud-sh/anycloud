@@ -1144,7 +1144,7 @@ test('the gpu-probe-rerun Job outlasts the Starting step before it reports no GP
   expect(rest).toBe('echo "No CUDA GPUs are available"; exit 1');
 });
 
-test('all six disk-tier selections survive the actual CLI parser with one VM and the original held command', async () => {
+test('all seven disk-tier selections survive the actual CLI parser with one VM and the original held command', async () => {
   const w = await harness(profile, { deferPreparation: true });
   const submit = vi.spyOn(w.transport, 'submit').mockResolvedValue(undefined);
   const diskProfile = jobMemberProfile(
@@ -1180,10 +1180,12 @@ test('all six disk-tier selections survive the actual CLI parser with one VM and
       zone: 'c',
     });
     expect(command.opts().diskTier).toBe(diskCase.tier);
+    expect(command.opts().diskIops).toBe(diskCase.diskIops);
+    expect(command.opts().diskThroughput).toBe(diskCase.diskThroughputMibps);
     expect(command.opts().diskSize).toBeUndefined();
     expect(args.includes('--spot')).toBe(false);
   }
-  expect(submit).toHaveBeenCalledTimes(6);
+  expect(submit).toHaveBeenCalledTimes(7);
 });
 
 test('real runtime-secret owners preserve CLI parsing, private observations and both children before resource release', async () => {

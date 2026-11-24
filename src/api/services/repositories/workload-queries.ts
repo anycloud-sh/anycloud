@@ -357,7 +357,7 @@ export interface WorkloadRow {
   no_checkpoint: number; // A VM Job's --no-checkpoint (0166)
   require_nested_virtualization: number; // A VM Job's KVM (0166)
   host_docker: number; // A VM Job's --host-docker (0167)
-  disk_iops: number | null; // A VM Job's AWS gp3 IOPS (0168)
+  disk_iops: number | null; // A VM Job's own root IOPS (0168)
   disk_throughput_mibps: number | null; // ... and MiB/s (0168)
   regions: string | null; // A VM Job's --regions, JSON string[] (0169)
   docker_command: string;
