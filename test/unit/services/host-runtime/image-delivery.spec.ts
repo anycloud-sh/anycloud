@@ -850,8 +850,7 @@ describe('pullImage (detached on a remote VM)', () => {
   it("fails a pull of an image without the host's architecture as invalid", async () => {
     const { fn } = makeExec(['DONE 1'], {
       df: '',
-      logTail:
-        'no matching manifest for linux/arm64/v8 in the manifest list entries',
+      logTail: 'no match for platform in manifest: not found',
     });
 
     const error = await pullImage(

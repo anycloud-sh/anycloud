@@ -581,13 +581,22 @@ export function formatErrorForUser(
 export function archMismatchGuidance(
   text: string,
   image?: string,
-  architecture: ImageArchitecture = 'amd64',
+  architecture?: ImageArchitecture,
 ): string | null {
   const isPlatformMismatch =
     /no matching manifest|does not match the specified platform|no match for platform/i.test(
       text,
     );
-  return isPlatformMismatch ? archMismatchMessage(image, architecture) : null;
+  if (!isPlatformMismatch) return null;
+  // Without the workload's architecture (the CLI's status), the platform the
+  // host's pull asked for: every pull passes the host's own.
+  const requested = /(?:manifest for |specified platform \()linux\/arm64/i.test(
+    text,
+  );
+  return archMismatchMessage(
+    image,
+    architecture ?? (requested ? 'arm64' : 'amd64'),
+  );
 }
 
 /**
