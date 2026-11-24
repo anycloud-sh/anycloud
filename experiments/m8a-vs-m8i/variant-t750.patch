@@ -1,0 +1,33 @@
+diff --git a/src/api/services/gateways/gcp.ts b/src/api/services/gateways/gcp.ts
+index 5f2c21883..1199f628f 100644
+--- a/src/api/services/gateways/gcp.ts
++++ b/src/api/services/gateways/gcp.ts
+@@ -251,6 +251,7 @@ function bootDiskFor(
+   tier: DiskTier,
+   requestedSizeGb: number | undefined,
+   minimumDefaultSizeGb?: number,
++  jobHost = false,
+ ): GcpBootDisk {
+   const sizeGb = requestedSizeGb ?? minimumDefaultSizeGb;
+   const diskSize = sizeGb === undefined ? {} : { diskSizeGb: sizeGb };
+@@ -285,8 +286,10 @@ function bootDiskFor(
+   return {
+     diskType: 'hyperdisk-balanced',
+     diskSizeGb: requestedSizeGb ?? Math.max(100, minimumDefaultSizeGb ?? 0),
+-    provisionedIops: iops,
+-    provisionedThroughput: 1_000,
++    // The experiment's setting for a VM Job host's high tier.
++    ...(jobHost && tier === DiskTier.High
++      ? { provisionedIops: 3_000, provisionedThroughput: 750 }
++      : { provisionedIops: iops, provisionedThroughput: 1_000 }),
+   };
+ }
+ 
+@@ -1364,6 +1367,7 @@ export class GCP {
+       params.jobHost
+         ? Math.max(JOB_HOST_DISK_GB, this.minimumDiskSizeGb ?? 0)
+         : this.minimumDiskSizeGb,
++      params.jobHost,
+     );
+     log.info('Resolved GCP boot disk', {
+       id: workloadId,

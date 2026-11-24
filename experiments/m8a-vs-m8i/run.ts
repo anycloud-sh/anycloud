@@ -19,6 +19,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -41,7 +42,6 @@ const output = process.env.SPIKE_OUTPUT_DIR ?? 'spike-evidence';
 const state = join(process.env.RUNNER_TEMP ?? tmpdir(), 'm8a-vs-m8i');
 const inventoryPath = join(state, 'inventory.json');
 const PORT = 18_432;
-const API_URL = `http://127.0.0.1:${PORT}`;
 const JOB_TIMEOUT_MS = 20 * 60_000;
 // No round starts after this, so the last ones end, and the run cleans up,
 // inside the Spike workflow's 85-minute step.
@@ -56,7 +56,32 @@ const REFUSAL =
   /\b(InsufficientInstanceCapacity|Unsupported|ZONE_RESOURCE_POOL_EXHAUSTED\w*|QUOTA_EXCEEDED|STOCKOUT|does not have enough resources|SkuNotAvailable|ZonalAllocationFailed|AllocationFailed|OverconstrainedAllocationRequest|OperationNotAllowed|throttled|[Pp]reempt\w*)\b/;
 
 type Cloud = 'aws' | 'gcp' | 'azure';
+/**
+ * A VM type, run by the branch's API, or `<type>@<name>`, run by an API built
+ * from this checkout with `variant-<name>.patch` applied and compared with the
+ * type's own arm.
+ */
 type Arm = string;
+const vmOf = (arm: Arm) => arm.split('@')[0]!;
+const variantOf = (arm: Arm) => arm.split('@')[1] ?? 'head';
+
+/** A build of the API and CLI, with its own state, database and port. */
+interface Api {
+  variant: string;
+  root: string;
+  state: string;
+  port: number;
+}
+const apiOf = (variant: string, index = 0): Api =>
+  variant === 'head'
+    ? { variant, root, state, port: PORT }
+    : {
+        variant,
+        root: join(state, `src-${variant}`),
+        state: join(state, variant),
+        port: PORT + 1 + index,
+      };
+const HEAD = apiOf('head');
 // The GitHub-hosted arm, from `hosted.yml`'s logs: 4 vCPUs in a public repo.
 const HOSTED = 'ubuntu-latest';
 
@@ -73,8 +98,20 @@ const HOSTED = 'ubuntu-latest';
 const MONTH_HOURS = 730;
 const GP3_HIGH = (8 + 5_000 * 0.005 + 875 * 0.04) / MONTH_HOURS;
 const PD_SSD = 100 * 0.000232877;
-const HYPERDISK_HIGH =
-  100 * 0.000109589 + 5_000 * 0.000006849 + 860 * 0.000054795;
+const hyperdisk = (iops: number, mbps: number) =>
+  100 * 0.000109589 +
+  Math.max(0, iops - 3_000) * 0.000006849 +
+  Math.max(0, mbps - 140) * 0.000054795;
+// A VM Job host's `high` Hyperdisk: the branch's, and with
+// variant-t750.patch and variant-t500.patch (anycloud#41). `baseline` and
+// `free` price the older runs' arms; see the README.
+const HYPERDISK_HIGH: Record<string, number> = {
+  head: hyperdisk(8_000, 1_000),
+  t750: hyperdisk(3_000, 750),
+  t500: hyperdisk(3_000, 500),
+  baseline: hyperdisk(8_000, 1_000),
+  free: hyperdisk(3_000, 140),
+};
 const PREMIUM_P10 = 19.71 / MONTH_HOURS;
 
 interface CloudSpec {
@@ -106,7 +143,8 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
     spotRegions: ['us-central1', 'us-east4', 'us-east1'],
     arms: (n) =>
       ['n2', 'n2d', 'c3d', 'c4d', 'n4d'].map((f) => `${f}-standard-${n}`),
-    diskPerHour: (arm) => (/^(c4d|n4d)-/.test(arm) ? HYPERDISK_HIGH : PD_SSD),
+    diskPerHour: (arm) =>
+      /^(c4d|n4d)-/.test(arm) ? HYPERDISK_HIGH[variantOf(arm)]! : PD_SSD,
     env: () => ({
       GCP_PROJECT_ID: required('GCP_PROJECT_ID'),
       GCP_CLIENT_EMAIL: required('GCP_CLIENT_EMAIL'),
@@ -137,25 +175,33 @@ const vcpusOf = (arm: Arm) =>
   cloudOf(arm) === 'aws'
     ? 4 * (Number(/^m8\w\.(\d*)xlarge$/.exec(arm)?.[1]) || 1)
     : Number(/(\d+)/.exec(arm.replace(/^\w+?-standard-|^Standard_D/, ''))?.[1]);
-/** Each arm with its size's first (today's), on any cloud and size. */
+/**
+ * Each variant arm with its type's own arm, and each other arm with its
+ * size's first (today's), on any cloud and size.
+ */
 const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
   arms.flatMap((arm) => {
-    const today = CLOUDS[cloudOf(arm)].arms(vcpusOf(arm))[0]!;
+    const today = arm.includes('@')
+      ? vmOf(arm)
+      : CLOUDS[cloudOf(arm)].arms(vcpusOf(arm))[0]!;
     return arm !== today && arms.includes(today) ? [[arm, today]] : [];
   });
-/** A Job ID's arm part: m8a-xlarge, c4d-4, d4ads-v6. */
+/** A Job ID's arm part: m8a-xlarge, c4d-4, d4ads-v6, c4d-4-t500. */
 const shortArm = (arm: Arm) =>
   arm
     .replace('Standard_', '')
     .replace('-standard-', '-')
-    .replace(/[._]/g, '-')
+    .replace(/[._@]/g, '-')
     .toLowerCase();
 
 interface Inventory {
   runId: string;
   cloud: Cloud;
   regions: string[];
-  jobs: string[];
+  /** The run's APIs, by variant; `head` first. */
+  variants: string[];
+  /** Each Job's ID and its API's variant. */
+  jobs: { id: string; variant: string }[];
 }
 
 interface JobResult {
@@ -192,19 +238,25 @@ function evidence(name: string, value: unknown) {
 }
 
 const execFileAsync = promisify(execFile);
-async function cli(args: string[], env: object = {}, timeoutMs = 300_000) {
+const apiUrl = (api: Api) => `http://127.0.0.1:${api.port}`;
+async function cli(
+  args: string[],
+  env: object = {},
+  timeoutMs = 300_000,
+  api = HEAD,
+) {
   const { stdout } = await execFileAsync(
     process.execPath,
-    [join(root, 'dist/cli/index.js'), ...args],
+    [join(api.root, 'dist/cli/index.js'), ...args],
     {
-      cwd: root,
+      cwd: api.root,
       timeout: timeoutMs,
       maxBuffer: 64 * 1024 * 1024,
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
-        ANYCLOUD_DIR: join(state, 'cli'),
-        API_URL,
+        ANYCLOUD_DIR: join(api.state, 'cli'),
+        API_URL: apiUrl(api),
         IS_TEST: 'true',
         CI: 'true',
         GITHUB_TOKEN: 'dummy-token-for-test',
@@ -223,55 +275,80 @@ async function cli(args: string[], env: object = {}, timeoutMs = 300_000) {
   return stdout;
 }
 
-async function query<T>(sql: string): Promise<T[]> {
+async function query<T>(sql: string, api = HEAD): Promise<T[]> {
   return (
-    JSON.parse(await cli(['db', 'query', '--json', sql])) as { rows: T[] }
+    JSON.parse(await cli(['db', 'query', '--json', sql], {}, 300_000, api)) as {
+      rows: T[];
+    }
   ).rows;
 }
 
-const apiHealthy = () =>
-  fetch(`${API_URL}/health`)
+const apiHealthy = (api: Api) =>
+  fetch(`${apiUrl(api)}/health`)
     .then((response) => response.ok)
     .catch(() => false);
 
-async function startApi(): Promise<void> {
+function runOrThrow(command: string, args: string[], cwd: string) {
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
+  if (result.status !== 0)
+    throw new Error(`${command} ${args.join(' ')} failed`);
+}
+
+async function startApi(api: Api): Promise<void> {
   // The run's API outlives a run step that timed out; cleanup reuses it and
   // its token.
-  if (await apiHealthy()) return;
-  if (!existsSync(join(root, 'dist/api/server.js'))) {
-    const build = spawnSync('yarn', ['build'], { cwd: root, stdio: 'inherit' });
-    if (build.status !== 0) throw new Error('yarn build failed');
+  if (await apiHealthy(api)) return;
+  if (api.variant !== 'head' && !existsSync(api.root)) {
+    runOrThrow('git', ['worktree', 'add', '--detach', api.root, 'HEAD'], root);
+    runOrThrow(
+      'git',
+      ['apply', join(import.meta.dirname, `variant-${api.variant}.patch`)],
+      api.root,
+    );
+    symlinkSync(join(root, 'node_modules'), join(api.root, 'node_modules'));
   }
+  if (!existsSync(join(api.root, 'dist/api/server.js')))
+    runOrThrow('yarn', ['build'], api.root);
+  mkdirSync(api.state, { recursive: true });
   const token = randomBytes(32).toString('hex');
-  writeLocalApiToken(state, token);
-  writeLocalApiToken(join(state, 'cli'), token);
-  const logPath = join(state, 'api.log');
-  const api = spawn(process.execPath, [join(root, 'dist/api/server.js')], {
-    cwd: root,
-    detached: true,
-    stdio: ['ignore', openSync(logPath, 'a'), openSync(logPath, 'a')],
-    env: {
-      ...process.env,
-      ANYCLOUD_DIR: state,
-      SQLITE_PATH: join(state, 'api.db'),
-      CIPHER_KEY: '',
-      IS_TEST: 'true',
-      PORT: String(PORT),
-      GITHUB_TOKEN: 'dummy-token-for-test',
+  writeLocalApiToken(api.state, token);
+  writeLocalApiToken(join(api.state, 'cli'), token);
+  const logPath = join(api.state, 'api.log');
+  const server = spawn(
+    process.execPath,
+    [join(api.root, 'dist/api/server.js')],
+    {
+      cwd: api.root,
+      detached: true,
+      stdio: ['ignore', openSync(logPath, 'a'), openSync(logPath, 'a')],
+      env: {
+        ...process.env,
+        ANYCLOUD_DIR: api.state,
+        SQLITE_PATH: join(api.state, 'api.db'),
+        CIPHER_KEY: '',
+        IS_TEST: 'true',
+        PORT: String(api.port),
+        GITHUB_TOKEN: 'dummy-token-for-test',
+      },
     },
-  });
-  api.unref();
+  );
+  server.unref();
   process.on('exit', () => {
-    api.kill('SIGTERM');
-    evidence('api.log', readFileSync(logPath, 'utf8'));
+    server.kill('SIGTERM');
+    evidence(
+      api.variant === 'head' ? 'api.log' : `api-${api.variant}.log`,
+      readFileSync(logPath, 'utf8'),
+    );
   });
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    if (await apiHealthy()) return;
+    if (await apiHealthy(api)) return;
     await sleep(1_000);
   }
-  throw new Error('API never became healthy; see api.log');
+  throw new Error(`The ${api.variant} API never became healthy; see its log`);
 }
+
+const apisOf = (variants: string[]) => variants.map((v, i) => apiOf(v, i));
 
 /** Parses the guest's `LSCPU`, `SYSBENCH` and `BENCH` lines. */
 function parseLog(log: string) {
@@ -296,41 +373,53 @@ async function runJob(
   spot: boolean,
 ): Promise<JobResult> {
   const id = `${inventory.cloud === 'aws' ? 'm8' : 'cg'}-${inventory.runId}-r${round}-${shortArm(arm)}`;
-  inventory.jobs.push(id);
+  const variant = variantOf(arm);
+  const api = apisOf(inventory.variants).find((a) => a.variant === variant)!;
+  inventory.jobs.push({ id, variant });
   writeFileSync(inventoryPath, JSON.stringify(inventory));
   const guest = readFileSync(join(import.meta.dirname, 'guest.sh'));
-  await cli([
-    'job',
-    'docker:27-cli',
-    '--id',
-    id,
-    '--credentials',
-    `${inventory.cloud}-spike`,
-    '--regions',
-    inventory.regions.join(','),
-    '--vm-type',
-    arm,
-    '--disk-size',
-    '100',
-    '--max-retries',
-    '0',
-    '--no-checkpoint',
-    '--host-docker',
-    ...(spot ? ['--spot'] : []),
-    '--',
-    'sh',
-    '-c',
-    `echo ${guest.toString('base64')} | base64 -d | sh`,
-  ]);
+  await cli(
+    [
+      'job',
+      'docker:27-cli',
+      '--id',
+      id,
+      '--credentials',
+      `${inventory.cloud}-spike`,
+      '--regions',
+      inventory.regions.join(','),
+      '--vm-type',
+      vmOf(arm),
+      '--disk-size',
+      '100',
+      '--max-retries',
+      '0',
+      '--no-checkpoint',
+      '--host-docker',
+      ...(spot ? ['--spot'] : []),
+      '--',
+      'sh',
+      '-c',
+      `echo ${guest.toString('base64')} | base64 -d | sh`,
+    ],
+    {},
+    300_000,
+    api,
+  );
   console.log(`round ${round}: submitted ${id}`);
   // The VM is deleted when the Job ends, so its log is followed from the start.
-  const log = await cli(['logs', id, '--follow'], {}, JOB_TIMEOUT_MS).catch(
+  const log = await cli(
+    ['logs', id, '--follow'],
+    {},
+    JOB_TIMEOUT_MS,
+    api,
+  ).catch(
     (error: Error & { output?: string }) => `${error.output}\n${error.message}`,
   );
   writeFileSync(join(output, `${id}.log`), log);
   const parsed = parseLog(log);
   // The API ends the VM after the Job; wait for that, so its lifetime is final.
-  await cli(['terminate', id]).catch(() => undefined);
+  await cli(['terminate', id], {}, 300_000, api).catch(() => undefined);
   // Every VM the Job had, failed attempts too, newest first.
   const vms = await until(`${id}'s VMs to end`, 10 * 60_000, async () => {
     const rows = await query<{
@@ -341,10 +430,30 @@ async function runJob(
       ended_at: number | null;
     }>(
       `SELECT region, availability_zone, price_per_hour, created_at, ended_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at DESC`,
+      api,
     );
     return rows.every((row) => row.ended_at) ? rows : undefined;
   });
   const [vm] = vms;
+  // The host's boot marks, seconds after its kernel started, from the Job's
+  // Running event; `pull` is the user data's pull of the Job's image.
+  const [running] = await query<{ metadata: string | null }>(
+    `SELECT metadata FROM workload_events WHERE workload_id = '${id}' AND state = 'running' ORDER BY id DESC LIMIT 1`,
+    api,
+  );
+  const marks = ((running?.metadata &&
+    (JSON.parse(running.metadata) as { bootMarks?: Record<string, number> })
+      .bootMarks) ||
+    {}) as Record<string, number>;
+  const boot = {
+    ...(marks['container-started'] !== undefined && {
+      'boot kernel to container start': marks['container-started'],
+    }),
+    ...(marks['pull-end'] !== undefined &&
+      marks['pull-start'] !== undefined && {
+        'boot image pull': marks['pull-end'] - marks['pull-start'],
+      }),
+  };
   return {
     id,
     arm,
@@ -353,12 +462,12 @@ async function runJob(
     region: vm?.region ?? null,
     zone: vm?.availability_zone ?? null,
     attempts: vms.length,
-    refusals: refusalsOf(id),
+    refusals: refusalsOf(id, api),
     vmSeconds: vm
       ? vms.reduce((sum, v) => sum + (v.ended_at! - v.created_at), 0) / 1000
       : null,
     pricePerHour: vm?.price_per_hour ?? null,
-    timings: parsed.timings,
+    timings: { ...boot, ...parsed.timings },
     sysbench: parsed.sysbench,
     lscpu: parsed.lscpu,
     ...(parsed.done ? {} : { failure: log.split('\n').slice(-40).join('\n') }),
@@ -394,22 +503,31 @@ const diskPerHour = (arm: Arm) =>
 const costOf = (r: JobResult) =>
   ((r.vmSeconds ?? 0) / 3600) * ((r.pricePerHour ?? 0) + diskPerHour(r.arm));
 
-/** Records an empty inventory, then starts the API with CI's credentials. */
-async function setUp(cloud: Cloud, regions: string[]): Promise<Inventory> {
+/** Records an empty inventory, then starts each API with CI's credentials. */
+async function setUp(
+  cloud: Cloud,
+  regions: string[],
+  variants = ['head'],
+): Promise<Inventory> {
   mkdirSync(state, { recursive: true });
   mkdirSync(output, { recursive: true });
   const inventory: Inventory = {
     runId: randomBytes(3).toString('hex'),
     cloud,
     regions,
+    variants,
     jobs: [],
   };
   writeFileSync(inventoryPath, JSON.stringify(inventory));
-  await startApi();
-  await cli(
-    ['credentials', 'new', `${cloud}-spike`, '--provider', cloud],
-    CLOUDS[cloud].env(),
-  );
+  for (const api of apisOf(variants)) {
+    await startApi(api);
+    await cli(
+      ['credentials', 'new', `${cloud}-spike`, '--provider', cloud],
+      CLOUDS[cloud].env(),
+      300_000,
+      api,
+    );
+  }
   return inventory;
 }
 
@@ -421,7 +539,11 @@ async function run(
   region: string,
   spot: boolean,
 ) {
-  const inventory = await setUp(cloud, region.split(','));
+  const variants = [
+    'head',
+    ...new Set(arms.flatMap((a) => a.split('@').slice(1))),
+  ];
+  const inventory = await setUp(cloud, region.split(','), variants);
   const results: JobResult[] = [];
   const save = () => {
     evidence('results.json', { region, results });
@@ -460,20 +582,29 @@ async function run(
   }
 }
 
-/** Terminates the Jobs, waits for the API's cleanup, then asks the cloud. */
+/** Terminates the Jobs, waits for each API's cleanup, then asks the cloud. */
 async function verifyClean(inventory: Inventory) {
-  if (inventory.jobs.length) {
-    await cli(['terminate', ...inventory.jobs]).catch((error: unknown) =>
+  for (const api of apisOf(inventory.variants)) {
+    const ids = inventory.jobs
+      .filter((job) => job.variant === api.variant)
+      .map((job) => job.id);
+    if (!ids.length) continue;
+    await cli(['terminate', ...ids], {}, 300_000, api).catch((error: unknown) =>
       console.warn(String(error)),
     );
-  }
-  const list = inventory.jobs.map((id) => `'${id}'`).join(',') || "''";
-  await until('the API to clean up every Job', 15 * 60_000, async () => {
-    const [left] = await query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM workloads w WHERE w.id IN (${list}) AND (w.cleaned_at IS NULL OR EXISTS (SELECT 1 FROM vms v WHERE v.workload_id = w.id AND v.ended_at IS NULL))`,
+    const list = ids.map((id) => `'${id}'`).join(',');
+    await until(
+      `the ${api.variant} API to clean up every Job`,
+      15 * 60_000,
+      async () => {
+        const [left] = await query<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM workloads w WHERE w.id IN (${list}) AND (w.cleaned_at IS NULL OR EXISTS (SELECT 1 FROM vms v WHERE v.workload_id = w.id AND v.ended_at IS NULL))`,
+          api,
+        );
+        return left?.n === 0 ? true : undefined;
+      },
     );
-    return left?.n === 0 ? true : undefined;
-  });
+  }
   const left = inventory.jobs.length ? await leftovers(inventory) : [];
   evidence('cleanup.json', { jobs: inventory.jobs.length, left });
   if (left.length) {
@@ -486,7 +617,8 @@ async function verifyClean(inventory: Inventory) {
  * one of the run's Job IDs: instances and volumes on AWS, instances and disks
  * in every GCP zone, and every Azure resource.
  */
-async function leftovers({ cloud, regions, jobs }: Inventory) {
+async function leftovers({ cloud, regions, jobs: inventoryJobs }: Inventory) {
+  const jobs = inventoryJobs.map((job) => job.id);
   const ours = (id: string | null | undefined) => !!id && jobs.includes(id);
   const left: string[] = [];
   if (cloud === 'gcp') {
@@ -627,7 +759,7 @@ async function spot(
         .map(async ({ arm, k }, index) => {
           // Such as cgs-1a2b3c-usc1-c4d-4; IDs are at most 28 characters.
           const id = `${cloud === 'aws' ? 'm8' : 'cg'}s-${inventory.runId}-${region.replace(/^us-(\w)\w+?-?(\d)$/, 'us$1$2')}-${shortArm(arm)}${count > 1 ? `-${k}` : ''}`;
-          inventory.jobs.push(id);
+          inventory.jobs.push({ id, variant: 'head' });
           writeFileSync(inventoryPath, JSON.stringify(inventory));
           // Spaced out: twelve launches at once hit the account's
           // RunInstances rate limit in run 45247427638.
@@ -725,9 +857,9 @@ async function spot(
  * The cloud's refusals the API logged for a Job: `<zone> <code>` for each
  * zone it moved on from, the last zone's capacity refusal, and rate limiting.
  */
-function refusalsOf(id: string): string[] {
+function refusalsOf(id: string, api = HEAD): string[] {
   return (
-    readFileSync(join(state, 'api.log'), 'utf8')
+    readFileSync(join(api.state, 'api.log'), 'utf8')
       .split('\n')
       // The API also prints its migrations, which aren't JSON.
       .filter((line) => line.startsWith('{'))
@@ -836,10 +968,11 @@ async function cleanup() {
     evidence('cleanup.json', { note: 'no inventory: run created nothing' });
     return;
   }
-  await startApi();
-  await verifyClean(
-    JSON.parse(readFileSync(inventoryPath, 'utf8')) as Inventory,
-  );
+  const inventory = JSON.parse(
+    readFileSync(inventoryPath, 'utf8'),
+  ) as Inventory;
+  for (const api of apisOf(inventory.variants)) await startApi(api);
+  await verifyClean(inventory);
 }
 
 const median = (xs: number[]) => {
@@ -912,7 +1045,7 @@ function report(results: JobResult[]): string {
       '',
       `Seconds; ratio is ${a}'s median over ${i}'s, below 1 is ${a} faster. Cost is the median at the VMs' list price ($${price(ra)}/h and $${price(ri)}/h; none for ${HOSTED}). A Job's cost is its whole VM time at the VM's and the disk's prices ($${diskPerHour(a).toFixed(4)}/h and $${diskPerHour(i).toFixed(4)}/h).`,
       '',
-      `| Build command | ${a} median (range) | ${i} median (range) | Ratio | Mann-Whitney p | ${a} cost | ${i} cost |`,
+      `| Measure | ${a} median (range) | ${i} median (range) | Ratio | Mann-Whitney p | ${a} cost | ${i} cost |`,
       '| --- | --- | --- | --- | --- | --- | --- |',
     );
     for (const metric of metrics) {
@@ -976,11 +1109,14 @@ const flag = (name: string, fallback: string) =>
 const cloud = flag('cloud', 'aws') as Cloud;
 if (!(cloud in CLOUDS)) throw new Error(`Unknown cloud ${cloud}`);
 // `--arms=<type,...>` runs just those of the sizes' arms.
+// `--variants=<name,...>` adds each arm's `@<name>` arms; see Arm.
+const variants = flag('variants', '').split(',').filter(Boolean);
 const only = flag('arms', '').split(',').filter(Boolean);
 const arms = flag('vcpus', cloud === 'aws' ? '4,16' : '4')
   .split(',')
   .flatMap((n) => CLOUDS[cloud].arms(Number(n)))
-  .filter((arm) => !only.length || only.includes(arm));
+  .filter((arm) => !only.length || only.includes(arm))
+  .flatMap((arm) => [arm, ...variants.map((v) => `${arm}@${v}`)]);
 if (command === 'run') {
   await run(
     cloud,

@@ -2,16 +2,21 @@
 # The Job's process, in docker:27-cli with the host's Docker socket: the CPU
 # facts, sysbench, then backmesh's five benchmark builds (benchmarks/builds/
 # bench.yml in backmesh/backmesh), each in its toolchain's official image.
-# Image pulls, clones and dependency fetches that the benchmark's commands
-# don't include are untimed; each of the benchmark's commands prints
-# `BENCH <build> <command> <ms>`. Any failure prints `BENCH_FAIL` and exits 1.
+# The toolchain images' pulls are timed as one. Clones and dependency fetches
+# that the benchmark's commands don't include are untimed. Each timed step
+# prints `BENCH <build> <command> <ms>`. Any failure prints `BENCH_FAIL` and
+# exits 1.
 set -eu
 apk add --no-cache -q bash coreutils git >/dev/null
 
+# The toolchains' pulls, timed together: the host's Docker writes them to the
+# root disk.
+start=$(date +%s%N)
 for image in ubuntu:24.04 rust:1.83-bookworm golang:1.22.6-bookworm \
   node:22-bookworm python:3.12-bookworm; do
   docker pull -q "$image" >/dev/null
 done
+echo "BENCH pull toolchain-images $((($(date +%s%N) - start) / 1000000))"
 # The images' digests, so a later run can tell whether they changed.
 for image in docker:27-cli ubuntu:24.04 rust:1.83-bookworm \
   golang:1.22.6-bookworm node:22-bookworm python:3.12-bookworm; do
