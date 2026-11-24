@@ -19,12 +19,12 @@ anycloud Job that runs code its owner doesn't fully trust.
 
 Asked by the owner on 2026-11-13: "investigate what would make more sense for
 us". Context: backmesh's public-repos design draft
-([anycloud-sh/backmesh#332](https://github.com/anycloud-sh/backmesh/pull/332),
-`docs/design-public-repos.md` § 2.3 and Q6), which names this as "the one
-network gap". Code is cited at `origin/main` `364432ef5`, under
-`src/api/services/` unless the path says otherwise. _(external)_ marks cloud
-behavior documented by the provider and not re-verified here. _(inference)_
-marks reasoning the code doesn't show.
+([anycloud-sh/backmesh#332](https://github.com/anycloud-sh/backmesh/pull/332);
+the design is kept privately), which names this as "the one network gap".
+Code is cited at `origin/main` `364432ef5`, under `src/api/services/` unless
+the path says otherwise. _(external)_ marks cloud behavior documented by the
+provider and not re-verified here. _(inference)_ marks reasoning the code
+doesn't show.
 
 ## Where VM Jobs land today
 
@@ -62,8 +62,9 @@ GitHub and the anycloud API. It never dials a runner. A runner dials:
 - the Ubuntu mirror.
 
 All of these are public. The anycloud API's SSH into the runner is the only
-inbound path (backmesh `docs/design-public-repos.md` § 2.2-2.3). So neither
-option below changes how the control plane reaches runners.
+inbound path
+([backmesh's public repositories page](https://backmesh.com/public-repos/)).
+So neither option below changes how the control plane reaches runners.
 
 ## Options
 
@@ -251,8 +252,8 @@ recommendations, adopted with its acceptance.
    that DNS and metadata survive. AWS SGs don't filter the Amazon resolver or
    instance metadata, and GCP can't block its metadata server _(external)_.
 7. **Unrelated to the network:** a GCP Job can still read project-wide metadata
-   (backmesh `design-public-repos.md` § 2.1). Recommendation, adopted: out of
-   scope here.
+   ([backmesh's public repositories page](https://backmesh.com/public-repos/)).
+   Recommendation, adopted: out of scope here.
 
 ## Tracking
 
