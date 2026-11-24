@@ -96,6 +96,8 @@ export interface Monitor {
   readonly intervalMs: number;
   start(): void;
   stop(): void;
+  /** Run a tick now, or once more as soon as the one in flight finishes. */
+  kick(): void;
   /**
    * Epoch ms of the last finished tick, or of `start()` before the first one.
    * Null while stopped. A tick that threw still counts as finished — the
@@ -117,10 +119,12 @@ export function createMonitor(
   let active = false;
   let generation = 0;
   let completedAt: number | null = null;
+  let kicked = false;
 
   const run = async (scheduledGeneration: number) => {
     timerId = null;
     if (!active || scheduledGeneration !== generation) return;
+    kicked = false;
     try {
       await task();
     } catch (error) {
@@ -133,7 +137,8 @@ export function createMonitor(
     // liveness for a monitor that is no longer running.
     if (!active || scheduledGeneration !== generation) return;
     completedAt = Date.now();
-    timerId = setTimeout(() => run(scheduledGeneration), intervalMs).unref();
+    const waitMs = kicked ? 0 : intervalMs;
+    timerId = setTimeout(() => run(scheduledGeneration), waitMs).unref();
   };
 
   return {
@@ -159,6 +164,16 @@ export function createMonitor(
         timerId = null;
       }
       log.info(`Stopped ${name}`, { id: 'system' });
+    },
+    kick: () => {
+      if (!active) return;
+      // A running tick has no timer; the next re-arms at once.
+      if (timerId === null) {
+        kicked = true;
+        return;
+      }
+      clearTimeout(timerId);
+      void run(generation);
     },
     lastCompletedAt: () => completedAt,
   };
@@ -401,6 +416,11 @@ export async function runWorkloadReconcileOnce(options?: {
     });
     return emptyWorkloadReconcileStatus(startedAt, { failed: true });
   }
+}
+
+/** Admit a just-queued Workload now rather than at the next interval. */
+export function kickProvisioningScheduler(): void {
+  monitors.find((monitor) => monitor.name === 'provisioning-scheduler')?.kick();
 }
 
 /** One provisioning-scheduler tick with composed dependencies. */
