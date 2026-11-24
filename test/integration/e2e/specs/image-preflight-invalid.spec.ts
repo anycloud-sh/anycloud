@@ -41,7 +41,7 @@ test('image preflight rejects invalid images before provisioning', async ({
   };
 
   const architectureId = e2e.names.workload('imgpf-arch');
-  await rejectsBeforeProvision(architectureId, 'x86_64', [
+  await rejectsBeforeProvision(architectureId, 'has no linux/amd64 build', [
     'job',
     '--id',
     architectureId,
