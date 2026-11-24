@@ -1,14 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * m8a (AMD Zen 5) against m8i (Intel) at equal vCPUs: backmesh's five
- * benchmark builds in anycloud VM Jobs; see README.md.
+ * Newer CPU generations against the ones backmesh's runners land on today,
+ * at equal vCPUs: backmesh's five benchmark builds in anycloud VM Jobs on AWS
+ * (m8a against m8i), GCP and Azure; see README.md.
  *
- * `run [--rounds=10] [--parallel=3] [--region=us-east-2]` starts the branch's
- * API and runs rounds of one Job per arm, `--parallel` rounds at a time.
- * `spot` reports m8a's and m8i's spot capacity in three US regions.
- * `cleanup` restarts the API from the run's state directory, terminates the
- * inventory's Jobs and checks AWS for anything left. `report <results.json...>`
- * rewrites the report from saved results, without a cloud.
+ * `run [--cloud=aws] [--vcpus=4,16] [--rounds=10] [--parallel=3]
+ * [--region=<the cloud's>]` starts the branch's API and runs rounds of one Job
+ * per arm, `--parallel` rounds at a time. `spot [--cloud=aws]` reports the
+ * arms' spot capacity in three US regions. `cleanup` restarts the API from
+ * the run's state directory, terminates the inventory's Jobs and checks the
+ * cloud for anything left. `report <results.json...>` rewrites the report
+ * from saved results, without a cloud.
  */
 import { execFile, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -29,6 +31,9 @@ import {
   EC2Client,
   GetSpotPlacementScoresCommand,
 } from '@aws-sdk/client-ec2';
+import { DefaultAzureCredential } from '@azure/identity';
+import { ResourceManagementClient } from '@azure/arm-resources';
+import { DisksClient, InstancesClient } from '@google-cloud/compute';
 import { writeLocalApiToken } from '../../test/integration/helpers/local-api-token.js';
 
 const root = join(import.meta.dirname, '..', '..');
@@ -37,27 +42,116 @@ const state = join(process.env.RUNNER_TEMP ?? tmpdir(), 'm8a-vs-m8i');
 const inventoryPath = join(state, 'inventory.json');
 const PORT = 18_432;
 const API_URL = `http://127.0.0.1:${PORT}`;
-const JOB_TIMEOUT_MS = 40 * 60_000;
-// Stops starting rounds once the VMs' list-price cost reaches this.
+const JOB_TIMEOUT_MS = 20 * 60_000;
+// No round starts after this, so the last ones end, and the run cleans up,
+// inside the Spike workflow's 85-minute step.
+const ROUNDS_WINDOW_MS = 45 * 60_000;
+// Stops starting rounds once the VMs' and disks' list-price cost reaches this.
 const COST_CAP_USD = 8;
 const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
 // The last zone's refusal, which ends the launch attempt.
 const LAST_ZONE_REFUSAL = /Availability Zone you requested \(([a-z0-9-]+)\)/;
+// Capacity, quota and rate refusals in the API's log, on any cloud.
+const REFUSAL =
+  /\b(InsufficientInstanceCapacity|Unsupported|ZONE_RESOURCE_POOL_EXHAUSTED\w*|QUOTA_EXCEEDED|STOCKOUT|does not have enough resources|SkuNotAvailable|ZonalAllocationFailed|AllocationFailed|OverconstrainedAllocationRequest|OperationNotAllowed|throttled|[Pp]reempt\w*)\b/;
 
-const ARMS = [
-  'm8a.xlarge',
-  'm8i.xlarge',
-  'm8a.4xlarge',
-  'm8i.4xlarge',
-] as const;
-type Arm = (typeof ARMS)[number];
-const PAIRS: [Arm, Arm][] = [
-  ['m8a.xlarge', 'm8i.xlarge'],
-  ['m8a.4xlarge', 'm8i.4xlarge'],
-];
+type Cloud = 'aws' | 'gcp' | 'azure';
+type Arm = string;
+
+// The root disk's list price per hour on top of the VM's: 100 GB at
+// anycloud's default `high` tier, as backmesh's GCP and Azure runners have it.
+// AWS: gp3 at the tier's 8,000 IOPS and 1,000 MiB/s, which these Jobs get;
+// backmesh's runners pass 4,000 and 500 ($0.08/GB, $0.005/IOPS over 3,000
+// and $0.04/MiB/s over 125, a month). GCP (Iowa, cloud.google.com/compute/
+// disks-image-pricing, 2026-11): pd-ssd at $0.000232877/GiB-h; Hyperdisk
+// Balanced, which c4d and n4d need, at $0.000109589/GiB-h with 8,000 IOPS
+// and 1,000 MB/s provisioned ($0.000006849/IOPS-h over 3,000 and
+// $0.000054795/MBps-h over 140). Azure: Premium SSD P10 (128 GiB) at
+// $19.71 a month.
+const MONTH_HOURS = 730;
+const GP3_HIGH = (8 + 5_000 * 0.005 + 875 * 0.04) / MONTH_HOURS;
+const PD_SSD = 100 * 0.000232877;
+const HYPERDISK_HIGH =
+  100 * 0.000109589 + 5_000 * 0.000006849 + 860 * 0.000054795;
+const PREMIUM_P10 = 19.71 / MONTH_HOURS;
+
+interface CloudSpec {
+  region: string;
+  spotRegions: string[];
+  /** Each size's arms, today's first: every other arm is compared with it. */
+  arms: (vcpus: number) => Arm[];
+  diskPerHour: (arm: Arm) => number;
+  env: () => object;
+}
+
+const CLOUDS: Record<Cloud, CloudSpec> = {
+  aws: {
+    region: 'us-east-2',
+    spotRegions: ['us-east-1', 'us-east-2', 'us-west-2'],
+    arms: (n) =>
+      ['m8i', 'm8a'].map((f) => `${f}.${n === 4 ? '' : n / 4}xlarge`),
+    diskPerHour: () => GP3_HIGH,
+    env: () => ({
+      AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID'),
+      AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY'),
+    }),
+  },
+  // backmesh: n2, then n2d. c4d and n4d are Zen 5, c3d Zen 4.
+  gcp: {
+    // us-central1 refused on-demand n4d-standard-4 in every zone in run
+    // 45260033603.
+    region: 'us-central1,us-east1',
+    spotRegions: ['us-central1', 'us-east4', 'us-east1'],
+    arms: (n) =>
+      ['n2', 'n2d', 'c3d', 'c4d', 'n4d'].map((f) => `${f}-standard-${n}`),
+    diskPerHour: (arm) => (/^(c4d|n4d)-/.test(arm) ? HYPERDISK_HIGH : PD_SSD),
+    env: () => ({
+      GCP_PROJECT_ID: required('GCP_PROJECT_ID'),
+      GCP_CLIENT_EMAIL: required('GCP_CLIENT_EMAIL'),
+      GCP_PRIVATE_KEY: required('GCP_PRIVATE_KEY'),
+    }),
+  },
+  // backmesh: Dadsv5 first. v6 is Zen 4, v7 Zen 5.
+  azure: {
+    region: 'eastus2',
+    spotRegions: ['eastus2', 'eastus', 'centralus'],
+    arms: (n) =>
+      ['ads_v5', 'ads_v6', 'as_v6', 'ads_v7', 'as_v7'].map(
+        (f) => `Standard_D${n}${f}`,
+      ),
+    diskPerHour: () => PREMIUM_P10,
+    env: () => ({
+      AZURE_APPLICATION_ID: required('AZURE_CLIENT_ID'),
+      AZURE_SECRET: required('AZURE_CLIENT_SECRET'),
+      AZURE_SUBSCRIPTION_ID: required('AZURE_SUBSCRIPTION_ID'),
+      AZURE_DIRECTORY_ID: required('AZURE_TENANT_ID'),
+    }),
+  },
+};
+
+const cloudOf = (arm: Arm): Cloud =>
+  arm.startsWith('Standard_') ? 'azure' : arm.includes('-') ? 'gcp' : 'aws';
+const vcpusOf = (arm: Arm) =>
+  cloudOf(arm) === 'aws'
+    ? 4 * (Number(/^m8\w\.(\d*)xlarge$/.exec(arm)?.[1]) || 1)
+    : Number(/(\d+)/.exec(arm.replace(/^\w+?-standard-|^Standard_D/, ''))?.[1]);
+/** Each arm with its size's first (today's), on any cloud and size. */
+const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
+  arms.flatMap((arm) => {
+    const today = CLOUDS[cloudOf(arm)].arms(vcpusOf(arm))[0]!;
+    return arm !== today && arms.includes(today) ? [[arm, today]] : [];
+  });
+/** A Job ID's arm part: m8a-xlarge, c4d-4, d4ads-v6. */
+const shortArm = (arm: Arm) =>
+  arm
+    .replace('Standard_', '')
+    .replace('-standard-', '-')
+    .replace(/[._]/g, '-')
+    .toLowerCase();
 
 interface Inventory {
   runId: string;
+  cloud: Cloud;
   regions: string[];
   jobs: string[];
 }
@@ -67,7 +161,10 @@ interface JobResult {
   arm: Arm;
   round: number;
   ok: boolean;
+  region?: string | null;
   zone: string | null;
+  /** The Job's VMs, failed launches included; vmSeconds sums them. */
+  attempts?: number;
   vmSeconds: number | null;
   pricePerHour: number | null;
   timings: Record<string, number>;
@@ -128,7 +225,15 @@ async function query<T>(sql: string): Promise<T[]> {
   ).rows;
 }
 
+const apiHealthy = () =>
+  fetch(`${API_URL}/health`)
+    .then((response) => response.ok)
+    .catch(() => false);
+
 async function startApi(): Promise<void> {
+  // The run's API outlives a run step that timed out; cleanup reuses it and
+  // its token.
+  if (await apiHealthy()) return;
   if (!existsSync(join(root, 'dist/api/server.js'))) {
     const build = spawnSync('yarn', ['build'], { cwd: root, stdio: 'inherit' });
     if (build.status !== 0) throw new Error('yarn build failed');
@@ -158,10 +263,7 @@ async function startApi(): Promise<void> {
   });
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const healthy = await fetch(`${API_URL}/health`)
-      .then((response) => response.ok)
-      .catch(() => false);
-    if (healthy) return;
+    if (await apiHealthy()) return;
     await sleep(1_000);
   }
   throw new Error('API never became healthy; see api.log');
@@ -188,7 +290,7 @@ async function runJob(
   arm: Arm,
   round: number,
 ): Promise<JobResult> {
-  const id = `m8-${inventory.runId}-r${round}-${arm.replace('.', '-')}`;
+  const id = `${inventory.cloud === 'aws' ? 'm8' : 'cg'}-${inventory.runId}-r${round}-${shortArm(arm)}`;
   inventory.jobs.push(id);
   writeFileSync(inventoryPath, JSON.stringify(inventory));
   const guest = readFileSync(join(import.meta.dirname, 'guest.sh'));
@@ -198,9 +300,9 @@ async function runJob(
     '--id',
     id,
     '--credentials',
-    'aws-spike',
+    `${inventory.cloud}-spike`,
     '--regions',
-    inventory.regions[0]!,
+    inventory.regions.join(','),
     '--vm-type',
     arm,
     '--disk-size',
@@ -223,24 +325,31 @@ async function runJob(
   const parsed = parseLog(log);
   // The API ends the VM after the Job; wait for that, so its lifetime is final.
   await cli(['terminate', id]).catch(() => undefined);
-  const vm = await until(`${id}'s VM to end`, 10 * 60_000, async () => {
-    const [row] = await query<{
+  // Every VM the Job had, failed attempts too, newest first.
+  const vms = await until(`${id}'s VMs to end`, 10 * 60_000, async () => {
+    const rows = await query<{
+      region: string | null;
       availability_zone: string | null;
       price_per_hour: number | null;
       created_at: number;
       ended_at: number | null;
     }>(
-      `SELECT availability_zone, price_per_hour, created_at, ended_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT region, availability_zone, price_per_hour, created_at, ended_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at DESC`,
     );
-    return row?.ended_at ? row : row ? undefined : null;
+    return rows.every((row) => row.ended_at) ? rows : undefined;
   });
+  const [vm] = vms;
   return {
     id,
     arm,
     round,
     ok: parsed.done,
+    region: vm?.region ?? null,
     zone: vm?.availability_zone ?? null,
-    vmSeconds: vm?.ended_at ? (vm.ended_at - vm.created_at) / 1000 : null,
+    attempts: vms.length,
+    vmSeconds: vm
+      ? vms.reduce((sum, v) => sum + (v.ended_at! - v.created_at), 0) / 1000
+      : null,
     pricePerHour: vm?.price_per_hour ?? null,
     timings: parsed.timings,
     sysbench: parsed.sysbench,
@@ -272,29 +381,38 @@ function shuffle<T>(items: readonly T[]): T[] {
   return out;
 }
 
+const diskPerHour = (arm: Arm) => CLOUDS[cloudOf(arm)].diskPerHour(arm);
+/** A Job's whole VM time at the VM's and its disk's list prices. */
 const costOf = (r: JobResult) =>
-  ((r.vmSeconds ?? 0) / 3600) * (r.pricePerHour ?? 0);
+  ((r.vmSeconds ?? 0) / 3600) * ((r.pricePerHour ?? 0) + diskPerHour(r.arm));
 
-/** Records an empty inventory, then starts the API with CI's AWS credentials. */
-async function setUp(regions: string[]): Promise<Inventory> {
+/** Records an empty inventory, then starts the API with CI's credentials. */
+async function setUp(cloud: Cloud, regions: string[]): Promise<Inventory> {
   mkdirSync(state, { recursive: true });
   mkdirSync(output, { recursive: true });
   const inventory: Inventory = {
     runId: randomBytes(3).toString('hex'),
+    cloud,
     regions,
     jobs: [],
   };
   writeFileSync(inventoryPath, JSON.stringify(inventory));
   await startApi();
-  await cli(['credentials', 'new', 'aws-spike', '--provider', 'aws'], {
-    AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID'),
-    AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY'),
-  });
+  await cli(
+    ['credentials', 'new', `${cloud}-spike`, '--provider', cloud],
+    CLOUDS[cloud].env(),
+  );
   return inventory;
 }
 
-async function run(rounds: number, parallel: number, region: string) {
-  const inventory = await setUp([region]);
+async function run(
+  cloud: Cloud,
+  arms: Arm[],
+  rounds: number,
+  parallel: number,
+  region: string,
+) {
+  const inventory = await setUp(cloud, region.split(','));
   const results: JobResult[] = [];
   const save = () => {
     evidence('results.json', { region, results });
@@ -303,8 +421,9 @@ async function run(rounds: number, parallel: number, region: string) {
   // Each round starts one Job per arm at once, in a random order, so drift
   // over the run and a slow minute hit every arm alike.
   let next = 1;
+  const lastStart = Date.now() + ROUNDS_WINDOW_MS;
   const worker = async () => {
-    while (next <= rounds) {
+    while (next <= rounds && Date.now() < lastStart) {
       const spent = results.reduce((sum, r) => sum + costOf(r), 0);
       if (spent >= COST_CAP_USD) {
         console.warn(`Cost cap: $${spent.toFixed(2)} spent; no more rounds`);
@@ -312,7 +431,7 @@ async function run(rounds: number, parallel: number, region: string) {
       }
       const round = next++;
       const settled = await Promise.allSettled(
-        shuffle(ARMS).map((arm) => runJob(inventory, arm, round)),
+        shuffle(arms).map((arm) => runJob(inventory, arm, round)),
       );
       for (const outcome of settled) {
         if (outcome.status === 'fulfilled') results.push(outcome.value);
@@ -325,14 +444,14 @@ async function run(rounds: number, parallel: number, region: string) {
   await verifyClean(inventory);
   const failed = results.filter((r) => !r.ok);
   console.log(report(results));
-  if (failed.length || results.length < rounds * ARMS.length) {
+  if (failed.length || results.length < rounds * arms.length) {
     throw new Error(
-      `${failed.length} Jobs failed; ${results.length} of ${rounds * ARMS.length} reported`,
+      `${failed.length} Jobs failed; ${results.length} of ${rounds * arms.length} reported`,
     );
   }
 }
 
-/** Terminates the Jobs, waits for the API's cleanup, then asks AWS directly. */
+/** Terminates the Jobs, waits for the API's cleanup, then asks the cloud. */
 async function verifyClean(inventory: Inventory) {
   if (inventory.jobs.length) {
     await cli(['terminate', ...inventory.jobs]).catch((error: unknown) =>
@@ -346,123 +465,242 @@ async function verifyClean(inventory: Inventory) {
     );
     return left?.n === 0 ? true : undefined;
   });
-  const filter = { Name: 'tag:anycloud_deployment', Values: inventory.jobs };
-  const left = { instances: [] as string[], volumes: [] as string[] };
-  for (const region of inventory.jobs.length ? inventory.regions : []) {
-    const ec2 = new EC2Client({ region });
-    const { Reservations } = await ec2.send(
-      new DescribeInstancesCommand({
-        Filters: [
-          filter,
-          {
-            Name: 'instance-state-name',
-            Values: ['pending', 'running', 'stopping', 'stopped'],
-          },
-        ],
-      }),
-    );
-    const { Volumes } = await ec2.send(
-      new DescribeVolumesCommand({ Filters: [filter] }),
-    );
-    left.instances.push(
-      ...(Reservations ?? []).flatMap((r) =>
-        (r.Instances ?? []).map((i) => i.InstanceId!),
-      ),
-    );
-    left.volumes.push(...(Volumes ?? []).map((v) => v.VolumeId!));
-  }
+  const left = inventory.jobs.length ? await leftovers(inventory) : [];
   evidence('cleanup.json', { jobs: inventory.jobs.length, left });
-  if (left.instances.length || left.volumes.length) {
-    throw new Error(`AWS resources remain: ${JSON.stringify(left)}`);
+  if (left.length) {
+    throw new Error(`Cloud resources remain: ${JSON.stringify(left)}`);
   }
 }
 
-const SPOT_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2'];
-
 /**
- * Spot capacity for each arm: EC2's placement scores (1–10) for one instance
- * in each region and in each of its zones, then one real spot VM Job per arm
- * and region through anycloud, which reports whether a VM launched, where,
- * and the capacity refusals the API logged on the way.
+ * The cloud's resources tagged (labelled, on GCP) `anycloud_deployment` with
+ * one of the run's Job IDs: instances and volumes on AWS, instances and disks
+ * in every GCP zone, and every Azure resource.
  */
-async function spot() {
-  const ec2 = new EC2Client({ region: 'us-east-1' });
-  const scores: Record<string, unknown> = {};
-  for (const arm of ARMS) {
-    for (const single of [false, true]) {
-      const { SpotPlacementScores } = await ec2.send(
-        new GetSpotPlacementScoresCommand({
-          InstanceTypes: [arm],
-          TargetCapacity: 1,
-          SingleAvailabilityZone: single,
-          RegionNames: SPOT_REGIONS,
+async function leftovers({ cloud, regions, jobs }: Inventory) {
+  const ours = (id: string | null | undefined) => !!id && jobs.includes(id);
+  const left: string[] = [];
+  if (cloud === 'gcp') {
+    left.push(...(await gcpLeftovers(ours)).map((r) => `${r.kind} ${r.name}`));
+  } else if (cloud === 'azure') {
+    const resources = new ResourceManagementClient(
+      new DefaultAzureCredential(),
+      required('AZURE_SUBSCRIPTION_ID'),
+    ).resources.list({ filter: "tagName eq 'anycloud_deployment'" });
+    for await (const r of resources)
+      if (ours(r.tags?.anycloud_deployment)) left.push(r.id!);
+  } else {
+    const filter = { Name: 'tag:anycloud_deployment', Values: jobs };
+    for (const region of regions) {
+      const ec2 = new EC2Client({ region });
+      const { Reservations } = await ec2.send(
+        new DescribeInstancesCommand({
+          Filters: [
+            filter,
+            {
+              Name: 'instance-state-name',
+              Values: ['pending', 'running', 'stopping', 'stopped'],
+            },
+          ],
         }),
       );
-      scores[`${arm} ${single ? 'zones' : 'regions'}`] = (
-        SpotPlacementScores ?? []
-      ).map((s) => `${s.AvailabilityZoneId ?? s.Region} ${s.Score}`);
+      const { Volumes } = await ec2.send(
+        new DescribeVolumesCommand({ Filters: [filter] }),
+      );
+      left.push(
+        ...(Reservations ?? []).flatMap((r) =>
+          (r.Instances ?? []).map((i) => i.InstanceId!),
+        ),
+        ...(Volumes ?? []).map((v) => v.VolumeId!),
+      );
     }
   }
-  evidence('spot-scores.json', scores);
-  console.log(JSON.stringify(scores, null, 2));
+  return left;
+}
 
-  const inventory = await setUp(SPOT_REGIONS);
+const gcpOptions = () => ({
+  projectId: required('GCP_PROJECT_ID'),
+  credentials: {
+    client_email: required('GCP_CLIENT_EMAIL'),
+    private_key: required('GCP_PRIVATE_KEY').replace(/\\n/g, '\n'),
+  },
+});
+
+/** GCP instances and disks whose `anycloud_deployment` label `ours` takes. */
+async function gcpLeftovers(ours: (id: string | undefined) => boolean) {
+  const project = required('GCP_PROJECT_ID');
+  const filter = 'labels.anycloud_deployment:*';
+  const found: { kind: 'instance' | 'disk'; name: string; zone: string }[] = [];
+  for await (const [zone, { instances }] of new InstancesClient(
+    gcpOptions(),
+  ).aggregatedListAsync({ project, filter })) {
+    for (const i of instances ?? [])
+      if (ours(i.labels?.anycloud_deployment))
+        found.push({ kind: 'instance', name: i.name!, zone });
+  }
+  for await (const [zone, { disks }] of new DisksClient(
+    gcpOptions(),
+  ).aggregatedListAsync({ project, filter })) {
+    for (const d of disks ?? [])
+      if (ours(d.labels?.anycloud_deployment))
+        found.push({ kind: 'disk', name: d.name!, zone });
+  }
+  return found.map((r) => ({ ...r, zone: r.zone.replace(/^zones\//, '') }));
+}
+
+/**
+ * Deletes the GCP instances and disks of the Jobs whose IDs start with
+ * `prefix`, for a run whose API and inventory were lost with its runner.
+ */
+async function sweep(prefix: string) {
+  if (!/^(cg|m8)s?-[0-9a-f]{6}-/.test(prefix)) {
+    throw new Error(`${prefix} is not a run's Job ID prefix`);
+  }
+  const ours = (id: string | undefined) => !!id?.startsWith(prefix);
+  const project = required('GCP_PROJECT_ID');
+  const found = await gcpLeftovers(ours);
+  console.log(JSON.stringify(found, null, 2));
+  const instances = new InstancesClient(gcpOptions());
+  const disks = new DisksClient(gcpOptions());
+  // Deletes what's left until nothing is: instances first, since an
+  // instance's boot disk goes with it. A delete already under way fails, so
+  // errors only wait for the next pass.
+  await until('the sweep', 10 * 60_000, async () => {
+    const now = await gcpLeftovers(ours);
+    if (!now.length) return true;
+    const kind = now.some((r) => r.kind === 'instance') ? 'instance' : 'disk';
+    await Promise.allSettled(
+      now
+        .filter((r) => r.kind === kind)
+        .map(({ name, zone }) =>
+          kind === 'instance'
+            ? instances.delete({ project, zone, instance: name })
+            : disks.delete({ project, zone, disk: name }),
+        ),
+    );
+    return undefined;
+  }).catch((error: unknown) => console.warn(String(error)));
+  const left = await gcpLeftovers(ours);
+  evidence('sweep.json', { prefix, deleted: found, left });
+  if (left.length)
+    throw new Error(`GCP resources remain: ${JSON.stringify(left)}`);
+}
+
+/**
+ * Spot capacity for each arm in the cloud's three spot regions: the cloud's
+ * placement scores for one instance (EC2's 1–10 and Azure's High, Medium or
+ * Low; GCP has none), by region and by zone, then, on AWS and GCP, one real
+ * spot VM Job per arm and region through anycloud, which reports whether a VM
+ * launched, where, and the capacity refusals the API logged on the way.
+ */
+async function spot(
+  cloud: Cloud,
+  arms: Arm[],
+  regions: string[],
+  { hold, count }: { hold: number; count: number },
+) {
+  if (cloud !== 'gcp') {
+    const scores =
+      cloud === 'aws'
+        ? await ec2Scores(arms, regions)
+        : await azureScores(arms, regions);
+    evidence('spot-scores.json', scores);
+    console.log(JSON.stringify(scores, null, 2));
+  }
+  // Azure gives CI's subscription 3 spot vCPUs a region: scores only.
+  if (cloud === 'azure') return;
+  const inventory = await setUp(cloud, regions);
+  const copies = Array.from({ length: count }, (_, k) => k);
   const launches = await Promise.all(
-    SPOT_REGIONS.flatMap((region) =>
-      ARMS.map(async (arm, index) => {
-        // Such as m8s-1a2b3c-use2-a4; IDs are at most 28 characters.
-        const id = `m8s-${inventory.runId}-${region.replace(/^us-(\w)\w+-/, 'us$1')}-${arm[2]}${arm.includes('4x') ? 4 : 1}`;
-        inventory.jobs.push(id);
-        writeFileSync(inventoryPath, JSON.stringify(inventory));
-        // Spaced out: twelve launches at once hit the account's
-        // RunInstances rate limit in run 45247427638.
-        await sleep(
-          (SPOT_REGIONS.indexOf(region) * ARMS.length + index) * 10_000,
-        );
-        const submitted = Date.now();
-        await cli([
-          'job',
-          'alpine:3.20',
-          '--id',
-          id,
-          '--credentials',
-          'aws-spike',
-          '--regions',
-          region,
-          '--vm-type',
-          arm,
-          '--spot',
-          '--max-retries',
-          '0',
-          '--no-checkpoint',
-          '--',
-          'sleep',
-          '60',
-        ]);
-        // A VM row exists from "Creating VM"; its zone is set once EC2 has
-        // accepted the launch.
-        const outcome = await until(
-          `${id}'s VM`,
-          SPOT_LAUNCH_WAIT_MS,
-          async () => {
-            const [row] = await query<{ state: string; zone: string | null }>(
-              `SELECT w.state, (SELECT v.availability_zone FROM vms v WHERE v.workload_id = w.id AND v.availability_zone IS NOT NULL LIMIT 1) AS zone FROM workloads w WHERE w.id = '${id}'`,
-            );
-            return row?.zone || row?.state === 'failed' ? row : undefined;
-          },
-        ).catch(() => undefined);
-        const seconds = Math.round((Date.now() - submitted) / 1000);
-        await cli(['terminate', id]).catch(() => undefined);
-        return {
-          id,
-          arm,
-          region,
-          zone: outcome?.zone ?? null,
-          outcome: outcome?.zone
-            ? `launched within ${seconds} s`
-            : (outcome?.state ?? 'no VM within 10 min'),
-        };
-      }),
+    regions.flatMap((region) =>
+      arms
+        .flatMap((arm) => copies.map((k) => ({ arm, k })))
+        .map(async ({ arm, k }, index) => {
+          // Such as cgs-1a2b3c-usc1-c4d-4; IDs are at most 28 characters.
+          const id = `${cloud === 'aws' ? 'm8' : 'cg'}s-${inventory.runId}-${region.replace(/^us-(\w)\w+?-?(\d)$/, 'us$1$2')}-${shortArm(arm)}${count > 1 ? `-${k}` : ''}`;
+          inventory.jobs.push(id);
+          writeFileSync(inventoryPath, JSON.stringify(inventory));
+          // Spaced out: twelve launches at once hit the account's
+          // RunInstances rate limit in run 45247427638.
+          await sleep(
+            (regions.indexOf(region) * arms.length * count + index) * 10_000,
+          );
+          const submitted = Date.now();
+          await cli([
+            'job',
+            'alpine:3.20',
+            '--id',
+            id,
+            '--credentials',
+            `${cloud}-spike`,
+            '--regions',
+            region,
+            '--vm-type',
+            arm,
+            '--spot',
+            '--max-retries',
+            '0',
+            '--no-checkpoint',
+            '--',
+            'sleep',
+            String(hold),
+          ]);
+          // The Job leaves provisioning once the cloud has accepted a VM: GCP
+          // sets the VM's zone before it has.
+          const outcome = await until(
+            `${id}'s VM`,
+            SPOT_LAUNCH_WAIT_MS,
+            async () => {
+              const [row] = await query<{ state: string; zone: string | null }>(
+                `SELECT w.state, (SELECT v.availability_zone FROM vms v WHERE v.workload_id = w.id AND v.availability_zone IS NOT NULL LIMIT 1) AS zone FROM workloads w WHERE w.id = '${id}'`,
+              );
+              return row && !['queued', 'provisioning'].includes(row.state)
+                ? row
+                : undefined;
+            },
+          ).catch(() => undefined);
+          const seconds = Math.round((Date.now() - submitted) / 1000);
+          // A quota refusal also leaves provisioning, to retrying.
+          const launched =
+            outcome?.zone && !['failed', 'retrying'].includes(outcome.state);
+          // `--hold`: the Job sleeps that long, and a spot reclaim ends it
+          // early in another state than succeeded (`--max-retries 0`).
+          const held =
+            launched && hold > 60
+              ? await until(`${id} to end`, (hold + 900) * 1000, async () => {
+                  const [row] = await query<{
+                    state: string;
+                    vms: number;
+                    price: number | null;
+                  }>(
+                    `SELECT w.state, (SELECT COUNT(*) FROM vms v WHERE v.workload_id = w.id) AS vms, (SELECT MAX(v.price_per_hour) FROM vms v WHERE v.workload_id = w.id) AS price FROM workloads w WHERE w.id = '${id}'`,
+                  );
+                  return row &&
+                    ![
+                      'queued',
+                      'provisioning',
+                      'initializing',
+                      'running',
+                    ].includes(row.state)
+                    ? {
+                        ...row,
+                        seconds: Math.round((Date.now() - submitted) / 1000),
+                      }
+                    : undefined;
+                }).catch(() => undefined)
+              : undefined;
+          await cli(['terminate', id]).catch(() => undefined);
+          return {
+            id,
+            arm,
+            region,
+            zone: outcome?.zone ?? null,
+            outcome: launched
+              ? `launched within ${seconds} s`
+              : (outcome?.state ?? 'no VM within 10 min'),
+            ...(held && { ended: held }),
+          };
+        }),
     ),
   );
   await verifyClean(inventory);
@@ -492,11 +730,89 @@ async function spot() {
         const error = e.error?.message ?? '';
         const zone = LAST_ZONE_REFUSAL.exec(error)?.[1];
         if (zone) return [`${zone} InsufficientInstanceCapacity`];
-        return error.includes('throttled') ? ['RunInstances throttled'] : [];
+        // GCP and anything else: the refusal and the zone it names.
+        const refusal = REFUSAL.exec(JSON.stringify(e))?.[1];
+        if (!refusal) return [];
+        const at = e.zone ?? /zones\/([a-z0-9-]+)/.exec(JSON.stringify(e))?.[1];
+        return [`${at ?? '?'} ${refusal}`];
       }),
   }));
   evidence('spot-launches.json', results);
   console.log(JSON.stringify(results, null, 2));
+}
+
+async function ec2Scores(arms: Arm[], regions: string[]) {
+  const ec2 = new EC2Client({ region: 'us-east-1' });
+  const scores: Record<string, unknown> = {};
+  for (const arm of arms) {
+    for (const single of [false, true]) {
+      const { SpotPlacementScores } = await ec2.send(
+        new GetSpotPlacementScoresCommand({
+          InstanceTypes: [arm],
+          TargetCapacity: 1,
+          SingleAvailabilityZone: single,
+          RegionNames: regions,
+        }),
+      );
+      scores[`${arm} ${single ? 'zones' : 'regions'}`] = (
+        SpotPlacementScores ?? []
+      ).map((s) => `${s.AvailabilityZoneId ?? s.Region} ${s.Score}`);
+    }
+  }
+  return scores;
+}
+
+/**
+ * Azure's Spot Placement Score for one VM of each arm, by region and, per
+ * region, by zone. A refusal (such as a missing permission) is recorded as
+ * the score.
+ */
+async function azureScores(arms: Arm[], regions: string[]) {
+  const { token } = await new DefaultAzureCredential().getToken(
+    'https://management.azure.com/.default',
+  );
+  const generate = async (desiredLocations: string[], zones: boolean) => {
+    const response = await fetch(
+      `https://management.azure.com/subscriptions/${required('AZURE_SUBSCRIPTION_ID')}/providers/Microsoft.Compute/locations/${desiredLocations[0]}/placementScores/spot/generate?api-version=2025-06-05`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          desiredLocations,
+          desiredSizes: arms.map((sku) => ({ sku })),
+          desiredCount: 1,
+          availabilityZones: zones,
+        }),
+      },
+    );
+    const body = (await response.json()) as {
+      placementScores?: {
+        sku: string;
+        region: string;
+        availabilityZone?: string;
+        score: string;
+        isQuotaAvailable?: boolean;
+      }[];
+    };
+    if (!response.ok || !body.placementScores) {
+      return [`${response.status} ${JSON.stringify(body).slice(0, 600)}`];
+    }
+    return body.placementScores.map(
+      (s) =>
+        `${s.sku} ${s.region}${s.availabilityZone ? `-${s.availabilityZone}` : ''} ${s.score}${s.isQuotaAvailable === false ? ' (no quota)' : ''}`,
+    );
+  };
+  return {
+    regions: await generate(regions, false),
+    ...Object.fromEntries(
+      await Promise.all(
+        regions.map(async (r) => [`${r} zones`, await generate([r], true)]),
+      ),
+    ),
+  };
 }
 
 async function cleanup() {
@@ -564,13 +880,14 @@ function report(results: JobResult[]): string {
   const metrics = [
     ...new Set(ok.flatMap((r) => Object.keys(r.timings))),
   ].sort();
-  for (const [a, i] of PAIRS) {
+  const arms = [...new Set(results.map((r) => r.arm))];
+  for (const [a, i] of pairsOf(arms)) {
     const [ra, ri] = [of(a), of(i)];
     const price = (rs: JobResult[]) => rs[0]?.pricePerHour ?? 0;
     lines.push(
       `### ${a} vs ${i} (n = ${ra.length} and ${ri.length})`,
       '',
-      `Seconds; ratio is m8a's median over m8i's, below 1 is m8a faster. Cost is the median at on-demand list price ($${price(ra)}/h and $${price(ri)}/h).`,
+      `Seconds; ratio is ${a}'s median over ${i}'s, below 1 is ${a} faster. Cost is the median at on-demand list price ($${price(ra)}/h and $${price(ri)}/h). A Job's cost is its whole VM time at the VM's and the disk's prices ($${diskPerHour(a).toFixed(4)}/h and $${diskPerHour(i).toFixed(4)}/h).`,
       '',
       `| Build command | ${a} median (range) | ${i} median (range) | Ratio | Mann-Whitney p | ${a} cost | ${i} cost |`,
       '| --- | --- | --- | --- | --- | --- | --- |',
@@ -595,19 +912,32 @@ function report(results: JobResult[]): string {
         `| sysbench cpu, ${kind === 'single' ? '1 thread' : 'all threads'} (events/s, higher is faster) | ${fmt(median(xa))} | ${fmt(median(xi))} | ${(median(xa) / median(xi)).toFixed(2)} | ${mannWhitney(xa, xi).toPrecision(2)} | | |`,
       );
     }
+    for (const [what, value] of [
+      ['VM time per Job (s)', (r: JobResult) => r.vmSeconds ?? []],
+      ['Cost per Job ($, VM and disk)', (r: JobResult) => costOf(r)],
+    ] as const) {
+      const [xa, xi] = [ra.flatMap(value), ri.flatMap(value)];
+      if (!xa.length || !xi.length) continue;
+      const m = (xs: number[]) =>
+        what.startsWith('Cost') ? median(xs).toFixed(4) : fmt(median(xs));
+      lines.push(
+        `| ${what} | ${m(xa)} | ${m(xi)} | ${(median(xa) / median(xi)).toFixed(2)} | ${mannWhitney(xa, xi).toPrecision(2)} | | |`,
+      );
+    }
     lines.push('');
   }
   lines.push('### CPUs', '');
-  for (const arm of ARMS) {
+  for (const arm of arms) {
     const cpu = of(arm)[0]?.lscpu ?? {};
+    const failed = results.filter((r) => r.arm === arm && !r.ok).length;
     lines.push(
-      `- ${arm}: ${cpu['Model name'] ?? '?'}; ${cpu['CPU(s)'] ?? '?'} vCPUs, ${cpu['Thread(s) per core'] ?? '?'} threads per core; zones ${[...new Set(of(arm).map((r) => r.zone))].join(', ')}`,
+      `- ${arm}: ${cpu['Model name'] ?? '?'}; ${cpu['CPU(s)'] ?? '?'} vCPUs, ${cpu['Thread(s) per core'] ?? '?'} threads per core; zones ${[...new Set(of(arm).map((r) => r.zone))].join(', ')}${failed ? `; ${failed} failed` : ''}`,
     );
   }
   const spent = results.reduce((sum, r) => sum + costOf(r), 0);
   lines.push(
     '',
-    `${results.length} Jobs, ${results.length - ok.length} failed; VMs' list-price cost $${spent.toFixed(2)}.`,
+    `${results.length} Jobs, ${results.length - ok.length} failed; VMs' and disks' list-price cost $${spent.toFixed(2)}.`,
   );
   return `${lines.join('\n')}\n`;
 }
@@ -615,14 +945,31 @@ function report(results: JobResult[]): string {
 const [command = 'run', ...rest] = process.argv.slice(2);
 const flag = (name: string, fallback: string) =>
   rest.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
+const cloud = flag('cloud', 'aws') as Cloud;
+if (!(cloud in CLOUDS)) throw new Error(`Unknown cloud ${cloud}`);
+// `--arms=<type,...>` runs just those of the sizes' arms.
+const only = flag('arms', '').split(',').filter(Boolean);
+const arms = flag('vcpus', cloud === 'aws' ? '4,16' : '4')
+  .split(',')
+  .flatMap((n) => CLOUDS[cloud].arms(Number(n)))
+  .filter((arm) => !only.length || only.includes(arm));
 if (command === 'run') {
   await run(
+    cloud,
+    arms,
     Number(flag('rounds', '10')),
     Number(flag('parallel', '3')),
-    flag('region', 'us-east-2'),
+    flag('region', CLOUDS[cloud].region),
   );
 } else if (command === 'spot') {
-  await spot();
+  await spot(
+    cloud,
+    arms,
+    flag('regions', CLOUDS[cloud].spotRegions.join(',')).split(','),
+    { hold: Number(flag('hold', '60')), count: Number(flag('count', '1')) },
+  );
+} else if (command === 'sweep') {
+  await sweep(flag('prefix', ''));
 } else if (command === 'cleanup') {
   await cleanup();
 } else if (command === 'report') {
