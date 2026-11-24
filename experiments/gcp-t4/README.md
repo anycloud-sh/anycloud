@@ -1,6 +1,9 @@
 # One T4 on a GCP N1 machine
 
-- Status: Ready, not yet dispatched.
+- Status: Passed in
+  [Spike run 45332827691](https://github.com/anycloud-sh/anycloud/actions/runs/45332827691)
+  at `9b31dd4` (2026-11-24): the first spot attempt ran on `n1-standard-4-t4`
+  in asia-southeast2-a and printed its `Tesla T4`.
 - Decision record: [anycloud#9](https://github.com/anycloud-sh/anycloud/issues/9).
   The catalog now publishes `n1-standard-4-t4` and `n1-highmem-4-t4`, each an
   N1 machine with one attached `nvidia-tesla-t4`. This run proves a T4 VM Job
