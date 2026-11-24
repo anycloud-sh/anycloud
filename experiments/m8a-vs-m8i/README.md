@@ -112,7 +112,7 @@ until the API has cleaned them up. It then asks the cloud for anything tagged
 any remain: EC2 instances and volumes, GCP instances and disks in every zone,
 and every Azure resource. `cleanup` reuses the run's API if it is still up,
 or restarts it from the same state, and repeats that check. No round starts
-after 55 minutes, so a run ends inside the Spike step. If the runner is lost
+after 45 minutes (55 in the runs below), so a run ends inside the Spike step. If the runner is lost
 with its state, the Job IDs are in the run log; on GCP `sweep` deletes them,
 elsewhere delete their resources by that tag. The region's shared anycloud network and
 security group are not the run's; they stay.
@@ -364,7 +364,7 @@ started a second API with a new token while the first still served the port.
 and
 [run 45278096799](https://github.com/anycloud-sh/anycloud/actions/runs/45278096799)
 confirmed nothing labelled with that run's IDs remains. The fixes are in
-`run.ts`: Jobs time out after 20 minutes, no round starts after 55, and
+`run.ts`: Jobs time out after 20 minutes, no round starts after 45, and
 `cleanup` reuses a running API. In the Azure 4-vCPU run, the run step's check
 saw one virtual network still being deleted. The owned cleanup step found
 nothing minutes later.

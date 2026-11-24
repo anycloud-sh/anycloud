@@ -45,7 +45,7 @@ const API_URL = `http://127.0.0.1:${PORT}`;
 const JOB_TIMEOUT_MS = 20 * 60_000;
 // No round starts after this, so the last ones end, and the run cleans up,
 // inside the Spike workflow's 85-minute step.
-const ROUNDS_WINDOW_MS = 55 * 60_000;
+const ROUNDS_WINDOW_MS = 45 * 60_000;
 // Stops starting rounds once the VMs' and disks' list-price cost reaches this.
 const COST_CAP_USD = 8;
 const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
@@ -53,14 +53,15 @@ const SPOT_LAUNCH_WAIT_MS = 10 * 60_000;
 const LAST_ZONE_REFUSAL = /Availability Zone you requested \(([a-z0-9-]+)\)/;
 // Capacity, quota and rate refusals in the API's log, on any cloud.
 const REFUSAL =
-  /\b(InsufficientInstanceCapacity|Unsupported|ZONE_RESOURCE_POOL_EXHAUSTED\w*|QUOTA_EXCEEDED|STOCKOUT|does not have enough resources|SkuNotAvailable|ZonalAllocationFailed|AllocationFailed|OverconstrainedAllocationRequest|OperationNotAllowed|throttled)\b/;
+  /\b(InsufficientInstanceCapacity|Unsupported|ZONE_RESOURCE_POOL_EXHAUSTED\w*|QUOTA_EXCEEDED|STOCKOUT|does not have enough resources|SkuNotAvailable|ZonalAllocationFailed|AllocationFailed|OverconstrainedAllocationRequest|OperationNotAllowed|throttled|[Pp]reempt\w*)\b/;
 
 type Cloud = 'aws' | 'gcp' | 'azure';
 type Arm = string;
 
 // The root disk's list price per hour on top of the VM's: 100 GB at
-// anycloud's default `high` tier, as backmesh's runners have it.
-// AWS: gp3 at 8,000 IOPS and 1,000 MiB/s ($0.08/GB, $0.005/IOPS over 3,000
+// anycloud's default `high` tier, as backmesh's GCP and Azure runners have it.
+// AWS: gp3 at the tier's 8,000 IOPS and 1,000 MiB/s, which these Jobs get;
+// backmesh's runners pass 4,000 and 500 ($0.08/GB, $0.005/IOPS over 3,000
 // and $0.04/MiB/s over 125, a month). GCP (Iowa, cloud.google.com/compute/
 // disks-image-pricing, 2026-11): pd-ssd at $0.000232877/GiB-h; Hyperdisk
 // Balanced, which c4d and n4d need, at $0.000109589/GiB-h with 8,000 IOPS
@@ -160,7 +161,10 @@ interface JobResult {
   arm: Arm;
   round: number;
   ok: boolean;
+  region?: string | null;
   zone: string | null;
+  /** The Job's VMs, failed launches included; vmSeconds sums them. */
+  attempts?: number;
   vmSeconds: number | null;
   pricePerHour: number | null;
   timings: Record<string, number>;
@@ -321,24 +325,31 @@ async function runJob(
   const parsed = parseLog(log);
   // The API ends the VM after the Job; wait for that, so its lifetime is final.
   await cli(['terminate', id]).catch(() => undefined);
-  const vm = await until(`${id}'s VM to end`, 10 * 60_000, async () => {
-    const [row] = await query<{
+  // Every VM the Job had, failed attempts too, newest first.
+  const vms = await until(`${id}'s VMs to end`, 10 * 60_000, async () => {
+    const rows = await query<{
+      region: string | null;
       availability_zone: string | null;
       price_per_hour: number | null;
       created_at: number;
       ended_at: number | null;
     }>(
-      `SELECT availability_zone, price_per_hour, created_at, ended_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT region, availability_zone, price_per_hour, created_at, ended_at FROM vms WHERE workload_id = '${id}' ORDER BY created_at DESC`,
     );
-    return row?.ended_at ? row : row ? undefined : null;
+    return rows.every((row) => row.ended_at) ? rows : undefined;
   });
+  const [vm] = vms;
   return {
     id,
     arm,
     round,
     ok: parsed.done,
+    region: vm?.region ?? null,
     zone: vm?.availability_zone ?? null,
-    vmSeconds: vm?.ended_at ? (vm.ended_at - vm.created_at) / 1000 : null,
+    attempts: vms.length,
+    vmSeconds: vm
+      ? vms.reduce((sum, v) => sum + (v.ended_at! - v.created_at), 0) / 1000
+      : null,
     pricePerHour: vm?.price_per_hour ?? null,
     timings: parsed.timings,
     sysbench: parsed.sysbench,
@@ -582,8 +593,12 @@ async function sweep(prefix: string) {
  * spot VM Job per arm and region through anycloud, which reports whether a VM
  * launched, where, and the capacity refusals the API logged on the way.
  */
-async function spot(cloud: Cloud, arms: Arm[]) {
-  const regions = CLOUDS[cloud].spotRegions;
+async function spot(
+  cloud: Cloud,
+  arms: Arm[],
+  regions: string[],
+  { hold, count }: { hold: number; count: number },
+) {
   if (cloud !== 'gcp') {
     const scores =
       cloud === 'aws'
@@ -595,63 +610,95 @@ async function spot(cloud: Cloud, arms: Arm[]) {
   // Azure gives CI's subscription 3 spot vCPUs a region: scores only.
   if (cloud === 'azure') return;
   const inventory = await setUp(cloud, regions);
+  const copies = Array.from({ length: count }, (_, k) => k);
   const launches = await Promise.all(
     regions.flatMap((region) =>
-      arms.map(async (arm, index) => {
-        // Such as cgs-1a2b3c-usc1-c4d-4; IDs are at most 28 characters.
-        const id = `${cloud === 'aws' ? 'm8' : 'cg'}s-${inventory.runId}-${region.replace(/^us-(\w)\w+?-?(\d)$/, 'us$1$2')}-${shortArm(arm)}`;
-        inventory.jobs.push(id);
-        writeFileSync(inventoryPath, JSON.stringify(inventory));
-        // Spaced out: twelve launches at once hit the account's
-        // RunInstances rate limit in run 45247427638.
-        await sleep((regions.indexOf(region) * arms.length + index) * 10_000);
-        const submitted = Date.now();
-        await cli([
-          'job',
-          'alpine:3.20',
-          '--id',
-          id,
-          '--credentials',
-          `${cloud}-spike`,
-          '--regions',
-          region,
-          '--vm-type',
-          arm,
-          '--spot',
-          '--max-retries',
-          '0',
-          '--no-checkpoint',
-          '--',
-          'sleep',
-          '60',
-        ]);
-        // The Job leaves provisioning once the cloud has accepted a VM: GCP
-        // sets the VM's zone before it has.
-        const outcome = await until(
-          `${id}'s VM`,
-          SPOT_LAUNCH_WAIT_MS,
-          async () => {
-            const [row] = await query<{ state: string; zone: string | null }>(
-              `SELECT w.state, (SELECT v.availability_zone FROM vms v WHERE v.workload_id = w.id AND v.availability_zone IS NOT NULL LIMIT 1) AS zone FROM workloads w WHERE w.id = '${id}'`,
-            );
-            return row && !['queued', 'provisioning'].includes(row.state)
-              ? row
+      arms
+        .flatMap((arm) => copies.map((k) => ({ arm, k })))
+        .map(async ({ arm, k }, index) => {
+          // Such as cgs-1a2b3c-usc1-c4d-4; IDs are at most 28 characters.
+          const id = `${cloud === 'aws' ? 'm8' : 'cg'}s-${inventory.runId}-${region.replace(/^us-(\w)\w+?-?(\d)$/, 'us$1$2')}-${shortArm(arm)}${count > 1 ? `-${k}` : ''}`;
+          inventory.jobs.push(id);
+          writeFileSync(inventoryPath, JSON.stringify(inventory));
+          // Spaced out: twelve launches at once hit the account's
+          // RunInstances rate limit in run 45247427638.
+          await sleep(
+            (regions.indexOf(region) * arms.length * count + index) * 10_000,
+          );
+          const submitted = Date.now();
+          await cli([
+            'job',
+            'alpine:3.20',
+            '--id',
+            id,
+            '--credentials',
+            `${cloud}-spike`,
+            '--regions',
+            region,
+            '--vm-type',
+            arm,
+            '--spot',
+            '--max-retries',
+            '0',
+            '--no-checkpoint',
+            '--',
+            'sleep',
+            String(hold),
+          ]);
+          // The Job leaves provisioning once the cloud has accepted a VM: GCP
+          // sets the VM's zone before it has.
+          const outcome = await until(
+            `${id}'s VM`,
+            SPOT_LAUNCH_WAIT_MS,
+            async () => {
+              const [row] = await query<{ state: string; zone: string | null }>(
+                `SELECT w.state, (SELECT v.availability_zone FROM vms v WHERE v.workload_id = w.id AND v.availability_zone IS NOT NULL LIMIT 1) AS zone FROM workloads w WHERE w.id = '${id}'`,
+              );
+              return row && !['queued', 'provisioning'].includes(row.state)
+                ? row
+                : undefined;
+            },
+          ).catch(() => undefined);
+          const seconds = Math.round((Date.now() - submitted) / 1000);
+          const launched = outcome?.zone && outcome.state !== 'failed';
+          // `--hold`: the Job sleeps that long, and a spot reclaim ends it
+          // early in another state than succeeded (`--max-retries 0`).
+          const held =
+            launched && hold > 60
+              ? await until(`${id} to end`, (hold + 900) * 1000, async () => {
+                  const [row] = await query<{
+                    state: string;
+                    vms: number;
+                    price: number | null;
+                  }>(
+                    `SELECT w.state, (SELECT COUNT(*) FROM vms v WHERE v.workload_id = w.id) AS vms, (SELECT MAX(v.price_per_hour) FROM vms v WHERE v.workload_id = w.id) AS price FROM workloads w WHERE w.id = '${id}'`,
+                  );
+                  return row &&
+                    ![
+                      'queued',
+                      'provisioning',
+                      'initializing',
+                      'running',
+                    ].includes(row.state)
+                    ? {
+                        ...row,
+                        seconds: Math.round((Date.now() - submitted) / 1000),
+                      }
+                    : undefined;
+                }).catch(() => undefined)
               : undefined;
-          },
-        ).catch(() => undefined);
-        const seconds = Math.round((Date.now() - submitted) / 1000);
-        await cli(['terminate', id]).catch(() => undefined);
-        const launched = outcome?.zone && outcome.state !== 'failed';
-        return {
-          id,
-          arm,
-          region,
-          zone: outcome?.zone ?? null,
-          outcome: launched
-            ? `launched within ${seconds} s`
-            : (outcome?.state ?? 'no VM within 10 min'),
-        };
-      }),
+          await cli(['terminate', id]).catch(() => undefined);
+          return {
+            id,
+            arm,
+            region,
+            zone: outcome?.zone ?? null,
+            outcome: launched
+              ? `launched within ${seconds} s`
+              : (outcome?.state ?? 'no VM within 10 min'),
+            ...(held && { ended: held }),
+          };
+        }),
     ),
   );
   await verifyClean(inventory);
@@ -913,7 +960,12 @@ if (command === 'run') {
     flag('region', CLOUDS[cloud].region),
   );
 } else if (command === 'spot') {
-  await spot(cloud, arms);
+  await spot(
+    cloud,
+    arms,
+    flag('regions', CLOUDS[cloud].spotRegions.join(',')).split(','),
+    { hold: Number(flag('hold', '60')), count: Number(flag('count', '1')) },
+  );
 } else if (command === 'sweep') {
   await sweep(flag('prefix', ''));
 } else if (command === 'cleanup') {
