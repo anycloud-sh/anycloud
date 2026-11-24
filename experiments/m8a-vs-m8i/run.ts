@@ -103,11 +103,14 @@ const hyperdisk = (iops: number, mbps: number) =>
   Math.max(0, iops - 3_000) * 0.000006849 +
   Math.max(0, mbps - 140) * 0.000054795;
 // A VM Job host's `high` Hyperdisk: the branch's, and with
-// variant-t750.patch and variant-t500.patch (anycloud#41).
+// variant-t750.patch and variant-t500.patch (anycloud#41). `baseline` and
+// `free` price the older runs' arms; see the README.
 const HYPERDISK_HIGH: Record<string, number> = {
   head: hyperdisk(8_000, 1_000),
   t750: hyperdisk(3_000, 750),
   t500: hyperdisk(3_000, 500),
+  baseline: hyperdisk(8_000, 1_000),
+  free: hyperdisk(3_000, 140),
 };
 const PREMIUM_P10 = 19.71 / MONTH_HOURS;
 

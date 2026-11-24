@@ -62,7 +62,9 @@ module downloads. `npm ci`, `uv sync` and `docker build` keep their
 downloads, as in the benchmark. In the docker build these are k6's base
 images and modules. Each Job also records two of the host's boot marks from
 its Running event: `boot kernel to container start` and `boot image pull`,
-the user data's pull of `docker:27-cli`.
+the user data's pull of `docker:27-cli`. The pull's end mark is written only
+once Docker has started, so `boot image pull` includes the rest of Docker's
+start when the pull finishes first.
 
 On GCP the arms are `n2-standard-4` (backmesh's first today), `n2d-standard-4`
 (its second, AMD Zen 3), `c3d-standard-4` (Zen 4), and `c4d-standard-4` and
@@ -509,8 +511,16 @@ round: `c4d-standard-4`, on demand, in us-east4 (every Job in us-east4-a),
   $0.011/h).
 - [Run 45353870772](https://github.com/anycloud-sh/anycloud/actions/runs/45353870772)
   (`cee978edf`): today against 3,000 IOPS at 750 MiB/s ($0.044/h, the most
-  GCP allows at 3,000 IOPS) and at 500 ($0.031/h), with this directory's
-  `variant-t750.patch` and `variant-t500.patch`.
+  GCP allows at 3,000 IOPS) and at 500 ($0.031/h).
+
+Both runs used an older layout of this directory: the branch carried a
+variant's setting (6,000 / 240 in the first run, 3,000 / 750 in the second),
+`@baseline` built today's from a `baseline.patch`, and `@free` and `@t500`
+patched the branch. `variant-t750.patch` and `variant-t500.patch` now patch
+today's setting instead. `report` prices those runs' `@baseline` and `@free`
+arms, but takes their unpatched arm for today's: it prices that arm at
+8,000 / 1,000 and compares the other arms with it rather than with
+`@baseline`.
 
 Both runs' 36 Jobs succeeded and their cleanup found nothing left; each cost
 $0.69. [Run 45343058302](https://github.com/anycloud-sh/anycloud/actions/runs/45343058302)
