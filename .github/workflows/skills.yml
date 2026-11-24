@@ -35,7 +35,7 @@ env:
 
 jobs:
   validate:
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -84,7 +84,7 @@ jobs:
   preflight:
     needs: validate
     if: github.ref == 'refs/heads/main' # main only — blocks PRs and accidental feature-branch dispatch
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       # backmesh's image has no OpenSSH client.
       - name: Install ssh
@@ -104,7 +104,7 @@ jobs:
   publish:
     needs: [validate, preflight]
     if: github.ref == 'refs/heads/main' # main only — blocks PRs and accidental feature-branch dispatch
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@v5
       # backmesh's image has no OpenSSH client.

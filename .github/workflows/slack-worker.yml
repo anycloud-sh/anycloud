@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     name: Verify Slack Worker
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -37,7 +37,7 @@ jobs:
     name: Deploy Slack Worker
     needs: verify
     if: github.ref == 'refs/heads/main'
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloudflare-deploy
     steps:
       - uses: actions/checkout@v5

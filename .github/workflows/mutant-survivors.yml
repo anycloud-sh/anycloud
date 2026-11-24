@@ -20,7 +20,7 @@ jobs:
       ${{ !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     permissions:
       contents: read
     timeout-minutes: 30
@@ -73,7 +73,7 @@ jobs:
   # Only this job can write, and it never checks out or runs the PR's code.
   comment:
     needs: mutate
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     permissions:
       pull-requests: write
     timeout-minutes: 5

@@ -101,10 +101,10 @@ permissions: {}
 
 jobs:
   nuke:
-    # The Local nuke is sized for backmesh-kvm-16; a standard hosted runner
+    # The Local nuke is sized for backmesh-ubuntu-2404-kvm-16vcpu; a standard hosted runner
     # shuts down under its 300 microVMs, so it runs only on backmesh runners.
     if: (inputs.provider || 'azure') != 'local' || !(vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]'))
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || (inputs.provider || 'azure') == 'local' && 'backmesh-kvm-16' || 'backmesh-od-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || (inputs.provider || 'azure') == 'local' && 'backmesh-ubuntu-2404-kvm-16vcpu' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     environment: ${{ (inputs.provider || 'azure') != 'local' && 'cloud-e2e' || '' }}
     # Timeout headroom is for seeded DB load, the real overlay, and manual
     # larger dispatch runs.

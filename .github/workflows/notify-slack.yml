@@ -16,7 +16,7 @@ permissions: {}
 jobs:
   notify:
     if: ${{ !cancelled() }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     permissions: {}
     timeout-minutes: 2
     steps:

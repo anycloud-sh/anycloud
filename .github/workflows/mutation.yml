@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   mutation:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

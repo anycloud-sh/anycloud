@@ -273,7 +273,7 @@ function untrustedEvents(): [string, Value][] {
 describe('routing expressions', () => {
   const route = (github: Value, backend: string) =>
     evaluate(
-      `(vars.CI_BACKEND == 'hosted' || ${UNTRUSTED_PULL_REQUEST}) && 'ubuntu-latest' || 'backmesh-4'`,
+      `(vars.CI_BACKEND == 'hosted' || ${UNTRUSTED_PULL_REQUEST}) && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu'`,
       { github, vars: { CI_BACKEND: backend } },
     );
 
@@ -286,16 +286,16 @@ describe('routing expressions', () => {
 
   it('keeps our own pull requests and pushes on the configured backend', () => {
     const push = { event_name: 'push', repository: REPOSITORY, event: {} };
-    expect(route(SAME_REPOSITORY, 'backmesh')).toBe('backmesh-4');
-    expect(route(SAME_REPOSITORY, '')).toBe('backmesh-4');
-    expect(route(push, '')).toBe('backmesh-4');
+    expect(route(SAME_REPOSITORY, 'backmesh')).toBe('backmesh-ubuntu-2404-4vcpu');
+    expect(route(SAME_REPOSITORY, '')).toBe('backmesh-ubuntu-2404-4vcpu');
+    expect(route(push, '')).toBe('backmesh-ubuntu-2404-4vcpu');
     expect(route(SAME_REPOSITORY, 'hosted')).toBe('ubuntu-latest');
     expect(route(push, 'hosted')).toBe('ubuntu-latest');
   });
 
   it('sends only runs that follow untrusted pull requests to GitHub-hosted runners', () => {
     const follow = (github: Value) =>
-      evaluate(`${UNTRUSTED_WORKFLOW_RUN} && 'ubuntu-latest' || 'backmesh-2'`, {
+      evaluate(`${UNTRUSTED_WORKFLOW_RUN} && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu'`, {
         github,
       });
     expect(follow(followingRun('outsider/anycloud', 'outsider'))).toBe(
@@ -304,8 +304,8 @@ describe('routing expressions', () => {
     expect(follow(followingRun(REPOSITORY, 'dependabot[bot]'))).toBe(
       'ubuntu-latest',
     );
-    expect(follow(followingRun(REPOSITORY, 'depombo'))).toBe('backmesh-2');
-    expect(follow(SAME_REPOSITORY)).toBe('backmesh-2');
+    expect(follow(followingRun(REPOSITORY, 'depombo'))).toBe('backmesh-ubuntu-2404-2vcpu');
+    expect(follow(SAME_REPOSITORY)).toBe('backmesh-ubuntu-2404-2vcpu');
   });
 
   it('follows GitHub expression semantics', () => {
@@ -358,7 +358,7 @@ describe('untrusted pull requests and the runs they start', () => {
     ]) {
       expect(ids, id).toContain(id);
     }
-    // The Local nuke needs a backmesh-kvm-16; a hosted runner can't hold it.
+    // The Local nuke needs a backmesh-ubuntu-2404-kvm-16vcpu; a hosted runner can't hold it.
     expect(ids).not.toContain('local-smolvm-nuke > nuke.yml:nuke');
   });
 
@@ -369,7 +369,7 @@ describe('untrusted pull requests and the runs they start', () => {
         .map((job) => [job.id, job]),
     );
     expect(new Set(reached.get('tests.yml:test')?.runsOn)).toEqual(
-      new Set(['backmesh-4']),
+      new Set(['backmesh-ubuntu-2404-4vcpu']),
     );
     expect(reached.get('integration.yml:cloud-sad-tests')?.environment).toBe(
       'cloud-e2e',
@@ -379,7 +379,7 @@ describe('untrusted pull requests and the runs they start', () => {
     ]);
     // The Local nuke runs on backmesh and is skipped on hosted runners.
     const nuke = 'local-smolvm-nuke > nuke.yml:nuke';
-    expect(reached.get(nuke)?.runsOn).toEqual(['backmesh-kvm-16']);
+    expect(reached.get(nuke)?.runsOn).toEqual(['backmesh-ubuntu-2404-kvm-16vcpu']);
     expect(
       reachedJobs('integration.yml', SAME_REPOSITORY, 'hosted').map(
         (job) => job.id,

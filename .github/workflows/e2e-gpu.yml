@@ -116,7 +116,7 @@ jobs:
     name: e2e-gpu-serve-vitest / ${{ matrix.provider }}
     if: ${{ !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit }}
     continue-on-error: false
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 180
     strategy:
@@ -199,7 +199,7 @@ jobs:
   azure-ghcr-probe-vitest:
     if: ${{ inputs.azure_ghcr_probe_only }}
     continue-on-error: false
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     concurrency:
       group: e2e-gpu-qualification-azure
@@ -311,7 +311,7 @@ jobs:
     name: e2e-mace-vitest / ${{ matrix.provider }}
     if: ${{ !inputs.azure_ghcr_probe_only && !inputs.service_cleanup_audit }}
     continue-on-error: false
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 180
     strategy:
@@ -402,7 +402,7 @@ jobs:
     name: e2e-disk-tier-vitest / gcp
     if: ${{ !inputs.azure_ghcr_probe_only && !inputs.mace_only && !inputs.service_cleanup_audit && (inputs.provider == 'all' || inputs.provider == 'gcp') }}
     continue-on-error: false
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 180
     concurrency:
@@ -470,7 +470,7 @@ jobs:
           retention-days: 3
 
   post-cleanup-aws:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
     if: >-
@@ -494,7 +494,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
 
   post-cleanup-azure:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
     if: >-
@@ -522,7 +522,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
 
   post-cleanup-gcp:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
     if: >-
@@ -553,7 +553,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
 
   post-cleanup-lambda:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-gpu-serve-vitest, e2e-mace-vitest, e2e-disk-tier-vitest]
     if: >-
@@ -580,7 +580,7 @@ jobs:
 
   service-native-audit:
     if: ${{ !inputs.azure_ghcr_probe_only && inputs.service_cleanup_audit != '' }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 10
     concurrency:

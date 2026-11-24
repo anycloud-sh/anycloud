@@ -42,7 +42,7 @@ permissions: {}
 jobs:
   resolve:
     name: Pin comparison revisions
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -89,7 +89,7 @@ jobs:
   compare:
     name: Compare (${{ matrix.profile }}, ${{ matrix.response }}, ${{ matrix.boundary }})
     needs: resolve
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-od-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     timeout-minutes: ${{ matrix.profile == 'backlog3' && matrix.response == 'mixed' && 240 || 120 }}
     strategy:
       fail-fast: false
@@ -212,7 +212,7 @@ jobs:
     name: Complete comparison report
     needs: compare
     if: ${{ !cancelled() }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: 10
     permissions:
       contents: read
