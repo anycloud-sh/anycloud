@@ -247,7 +247,11 @@ class FakeEc2 {
 
 let accounts = 0;
 /** A gateway on its own account, so the process-wide VPC lock starts empty. */
-function gateway(ec2: FakeEc2, account = `AKIA-${++accounts}`) {
+function gateway(
+  ec2: FakeEc2,
+  account = `AKIA-${++accounts}`,
+  { sdkLaunch = false } = {},
+) {
   const aws = new AWS(
     completeCloudConfig({
       cloudProvider: CloudType.AWS,
@@ -257,6 +261,7 @@ function gateway(ec2: FakeEc2, account = `AKIA-${++accounts}`) {
     }),
   );
   aws.ec2client = ec2 as any;
+  if (!sdkLaunch) aws.ec2LaunchClient = ec2 as any;
   vi.spyOn(
     internalsOf<{ resolveAmi: AWS['resolveAmi'] }>(aws),
     'resolveAmi',
@@ -457,6 +462,46 @@ describe('AWS Jobs network (RFC 0053)', () => {
         .newVM(makeNewVMProps({ vmId: 'job-1-1', network, jobHost: true })),
     ).rejects.toThrow('InsufficientInstanceCapacity');
     expect(ec2.launches).toHaveLength(2);
+  });
+
+  it('0053/S5 leaves a zone out of capacity at once, retrying only throttling', async () => {
+    const ec2 = new FakeEc2();
+    const aws = gateway(ec2, undefined, { sdkLaunch: true });
+    const network = await prepare(aws);
+    // RunInstances through the gateway's own SDK client, so its retries run:
+    // EC2 answers a full zone with HTTP 500, which the SDK reads as transient.
+    const sent: string[] = [];
+    Object.assign(aws.ec2LaunchClient.config.requestHandler, {
+      handle: async (request: { body: string }) => {
+        const token = new URLSearchParams(request.body).get('ClientToken')!;
+        sent.push(token);
+        // Zone b throttles the first try, then is full too.
+        const [statusCode, code] =
+          token === 'job-1-0.us-east-1b' && !sent.slice(0, -1).includes(token)
+            ? [503, 'RequestLimitExceeded']
+            : [500, 'InsufficientInstanceCapacity'];
+        return {
+          response: {
+            statusCode,
+            headers: {},
+            body: new TextEncoder().encode(
+              `<Response><Errors><Error><Code>${code}</Code><Message>${code}</Message></Error></Errors><RequestID>r</RequestID></Response>`,
+            ),
+          },
+        };
+      },
+    });
+
+    await expect(
+      aws
+        .compute()
+        .newVM(makeNewVMProps({ vmId: 'job-1-0', network, jobHost: true })),
+    ).rejects.toThrow('InsufficientInstanceCapacity');
+    expect(sent).toEqual([
+      'job-1-0.us-east-1a',
+      'job-1-0.us-east-1b',
+      'job-1-0.us-east-1b',
+    ]);
   });
 
   it('0053/I3 fails the Job when the VPC cannot be made, never using the default VPC', async () => {

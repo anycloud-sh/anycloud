@@ -8,6 +8,7 @@ import {
   AssumeRoleWithWebIdentityCommand,
   STSClient,
 } from '@aws-sdk/client-sts';
+import { StandardRetryStrategy } from '@smithy/util-retry';
 import type {
   AWSCreds,
   AWSInstanceCreds,
@@ -50,11 +51,43 @@ export function createAwsInstanceCloudFormationClient(
   });
 }
 
+/** The SDK's standard retries, except for errors with these codes. */
+class StandardRetryStrategyExcept extends StandardRetryStrategy {
+  constructor(
+    maxAttempts: number,
+    private readonly noRetryCodes: ReadonlySet<string>,
+  ) {
+    super(maxAttempts);
+  }
+
+  override refreshRetryTokenForRetry(
+    ...[token, errorInfo]: Parameters<
+      StandardRetryStrategy['refreshRetryTokenForRetry']
+    >
+  ) {
+    return this.noRetryCodes.has(errorInfo.error?.name ?? '')
+      ? Promise.reject(errorInfo.error)
+      : super.refreshRetryTokenForRetry(token, errorInfo);
+  }
+}
+
 export function createAwsEc2Client(
   credentials: AwsClientCredentials,
-  options: AwsClientOptions,
+  {
+    noRetryCodes,
+    ...options
+  }: AwsClientOptions & { readonly noRetryCodes?: ReadonlySet<string> },
 ): EC2Client {
-  return new EC2Client({ ...options, credentials });
+  return new EC2Client({
+    ...options,
+    credentials,
+    ...(noRetryCodes && {
+      retryStrategy: new StandardRetryStrategyExcept(
+        options.maxAttempts ?? 3,
+        noRetryCodes,
+      ),
+    }),
+  });
 }
 
 export function createAwsGatewayClients(

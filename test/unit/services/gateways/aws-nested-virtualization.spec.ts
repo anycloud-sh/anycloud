@@ -48,6 +48,7 @@ async function launch(support: boolean | null) {
   vi.spyOn(internal, 'ensureSharedSecurityGroup').mockResolvedValue('sg-test');
   const launches: RunInstancesCommandInput[] = [];
   const instance = { InstanceId: 'i-test', PublicIpAddress: '192.0.2.1' };
+  aws.ec2LaunchClient = aws.ec2client;
   vi.spyOn(aws.ec2client, 'send').mockImplementation(async (command: any) => {
     if (command instanceof RunInstancesCommand) {
       launches.push(command.input);

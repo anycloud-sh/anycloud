@@ -776,6 +776,7 @@ async function mintScopedS3Token(
 
 export class AWS {
   ec2client: EC2Client; // Public for testing
+  ec2LaunchClient: EC2Client; // Public for testing
   s3client: S3Client; // Public for testing
   vmType: string;
   type: CloudType;
@@ -831,6 +832,12 @@ export class AWS {
     };
     const clients = createAwsGatewayClients(this.credentials, clientOptions);
     this.ec2client = clients.ec2;
+    // EC2 answers a full zone with HTTP 500, which the SDK would back off
+    // and retry for 25–55 s before the launch could try the next zone.
+    this.ec2LaunchClient = createAwsEc2Client(this.credentials, {
+      ...clientOptions,
+      noRetryCodes: AWS_ZONE_REFUSAL_CODES,
+    });
     this.s3client = clients.s3;
     this.spot = awsConfig.spot;
     this.diskSizeGb = awsConfig.diskSizeGb;
@@ -1395,7 +1402,7 @@ export class AWS {
     for (const [index, subnet] of subnets.entries()) {
       if (create) break;
       try {
-        create = await this.ec2client.send(
+        create = await this.ec2LaunchClient.send(
           new RunInstancesCommand({
             ...instanceParams,
             // Keep the client token stable for this durable attempt.

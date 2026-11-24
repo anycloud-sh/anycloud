@@ -3376,7 +3376,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3418,7 +3418,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3460,7 +3460,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3499,7 +3499,7 @@ describe('AWS GPU image support', () => {
             ],
           }),
       };
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3539,7 +3539,7 @@ describe('AWS GPU image support', () => {
               ],
             }),
         };
-        aws.ec2client = mockEC2Client as any;
+        aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
         await aws.compute().newVM(
           makeNewVMProps({
@@ -3615,7 +3615,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       return aws.compute().newVM(
         makeNewVMProps({
@@ -3703,7 +3703,7 @@ describe('AWS GPU image support', () => {
             Reservations: [{ Instances: [existing] }],
           }),
       };
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       const vm = await aws.compute().newVM(
         makeNewVMProps({
@@ -3748,7 +3748,7 @@ describe('AWS GPU image support', () => {
       const mockEC2Client = {
         send: vi.fn().mockRejectedValue(new Error('EC2 lookup timed out')),
       };
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await expect(
         aws.compute().newVM(
@@ -3822,7 +3822,7 @@ describe('AWS GPU image support', () => {
         const mockEC2Client = {
           send: vi.fn().mockRejectedValue(noDefaultVpc),
         };
-        aws.ec2client = mockEC2Client as any;
+        aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
         const launch = expect(
           aws.compute().newVM(newVmParams),
@@ -3871,7 +3871,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3912,7 +3912,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -3965,7 +3965,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4015,7 +4015,7 @@ describe('AWS GPU image support', () => {
             ],
           });
         const ec2client = { send };
-        aws.ec2client = ec2client as any;
+        aws.ec2client = aws.ec2LaunchClient = ec2client as any;
 
         await aws.compute().newVM(makeNewVMProps({ resourceScope }));
 
@@ -4059,7 +4059,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4110,7 +4110,7 @@ describe('AWS GPU image support', () => {
             ],
           });
         const mockEC2Client = { send };
-        aws.ec2client = mockEC2Client as any;
+        aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
         await aws.compute().newVM(
           makeNewVMProps({
             vmId: 'test-vm',
@@ -4167,7 +4167,7 @@ describe('AWS GPU image support', () => {
             ],
           }),
       };
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
       await aws.compute().newVM(
         makeNewVMProps({
           vmId: 'test-vm',
@@ -4218,7 +4218,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       const vm = await aws.compute().newVM(
         makeNewVMProps({
@@ -4272,7 +4272,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4338,7 +4338,7 @@ describe('AWS GPU image support', () => {
               ],
             }),
         };
-        aws.ec2client = mockEC2Client as any;
+        aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
         await aws.compute().newVM(
           makeNewVMProps({
@@ -4390,7 +4390,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4440,7 +4440,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4490,7 +4490,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
@@ -4544,7 +4544,7 @@ describe('AWS GPU image support', () => {
           }),
       };
 
-      aws.ec2client = mockEC2Client as any;
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
 
       await aws.compute().newVM(
         makeNewVMProps({
