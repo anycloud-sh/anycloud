@@ -280,6 +280,7 @@ n1-standard-8,8,30,,,,us-central1,${ZONE},0.38,0.08
       acceleratorName: 'T4',
       acceleratorCount: 1,
       gpuInfo: 't4-info',
+      nestedVirtualizationSupported: undefined,
     });
   });
 });

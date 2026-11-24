@@ -365,6 +365,8 @@ export function normalizeGcpCatalogWithDiagnostics(
           acceleratorName: gpu.acceleratorName,
           acceleratorCount: gpu.acceleratorCount,
           gpuInfo: accelerator.GpuInfo || null,
+          // Unqualified with an attached GPU, so unknown rather than N1's.
+          nestedVirtualizationSupported: undefined,
         });
       }
       continue;
