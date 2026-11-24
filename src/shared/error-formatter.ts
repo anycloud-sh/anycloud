@@ -6,6 +6,7 @@
 
 import { CloudType } from './cloud.js';
 import { DeployError } from './errors.js';
+import type { ImageArchitecture } from './image.js';
 
 /**
  * Standard Error with optional code property
@@ -565,11 +566,12 @@ export function formatErrorForUser(
 }
 
 /**
- * If `text` is a Docker "no linux/amd64 build" pull error, return actionable
- * rebuild guidance; otherwise null. VM workloads require x86_64, so an image without
- * a linux/amd64 variant cannot run there. The exact wording varies by Docker
- * version and image shape, so we match all three known forms:
- *   "no matching manifest for linux/amd64 in the manifest list entries" (manifest list, no amd64)
+ * If `text` is a Docker "no build for this platform" pull error, return
+ * actionable rebuild guidance; otherwise null. A VM runs only its own
+ * architecture's build: linux/amd64, or linux/arm64 on an arm64 type. The
+ * exact wording varies by Docker version and image shape, so we match all
+ * three known forms:
+ *   "no matching manifest for linux/arm64/v8 in the manifest list entries" (manifest list)
  *   "... does not match the specified platform"                          (single-arch image)
  *   "no match for platform in manifest"
  *
@@ -584,22 +586,31 @@ export function archMismatchGuidance(
     /no matching manifest|does not match the specified platform|no match for platform/i.test(
       text,
     );
-  return isPlatformMismatch ? archMismatchMessage(image) : null;
+  if (!isPlatformMismatch) return null;
+  // The platform the host asked for, not the one the image has.
+  const requested = /(?:manifest for |specified platform \()linux\/arm64/i.test(
+    text,
+  );
+  return archMismatchMessage(image, requested ? 'arm64' : 'amd64');
 }
 
 /**
- * The rebuild-for-linux/amd64 guidance message. Use this directly when the
- * caller already knows the image lacks an amd64 build (e.g. the server-side
- * manifest check); use `archMismatchGuidance` to detect-then-message from a
- * Docker error string.
+ * The rebuild-for-this-architecture guidance message. Use this directly when
+ * the caller already knows the image lacks the VM's build (e.g. the
+ * server-side manifest check); use `archMismatchGuidance` to
+ * detect-then-message from a Docker error string.
  */
-export function archMismatchMessage(image?: string): string {
+export function archMismatchMessage(
+  image?: string,
+  architecture: ImageArchitecture = 'amd64',
+): string {
   const subject = image ?? 'This image';
   const ref = image ?? 'IMAGE';
+  const platform = `linux/${architecture}`;
   return (
-    `${subject} has no linux/amd64 build. VM workloads require x86_64 — ` +
-    `rebuild and push a linux/amd64 image:\n` +
-    `  docker buildx build --platform linux/amd64 -t ${ref} --push .`
+    `${subject} has no ${platform} build, which this VM type runs — ` +
+    `rebuild and push a ${platform} (or multi-platform) image:\n` +
+    `  docker buildx build --platform ${platform} -t ${ref} --push .`
   );
 }
 

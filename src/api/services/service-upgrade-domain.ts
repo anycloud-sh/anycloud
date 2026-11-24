@@ -21,6 +21,9 @@ import { WorkloadState, WorkloadType } from '../../shared/workload.js';
 import type { User } from './entities.js';
 import { assertImageAccessible } from './image-manifest.js';
 import type { ImageInspection } from '../../shared/image-registry.js';
+import type { ImageArchitecture } from '../../shared/image.js';
+import { vmArchitecture } from '../../shared/cloud-config.js';
+import { toArray } from '../../shared/utils.js';
 import type { OwnershipScope } from './repositories/ownership-filter.js';
 import type { ServeUpdateRequest } from './serve/runtime.js';
 import { serveUrl } from './serve.js';
@@ -62,6 +65,7 @@ export interface ServiceUpgradeDomainDependencies {
   inspectImage(
     image: string,
     githubToken: string | null,
+    architecture: ImageArchitecture,
   ): Promise<ImageInspection>;
   buildDockerCommand(args: {
     workload: StoredWorkload;
@@ -131,12 +135,19 @@ export function createServiceUpgradeDomain(
         await dependencies.prepareCheckpoint(found, 'upgrade');
         await dependencies.preflightSecrets(found.secretNames);
 
+        // Admission keeps a type list to one architecture.
+        const [vmType] = toArray(found.vmType);
+        const architecture =
+          found.cloudProvider && vmType
+            ? vmArchitecture(found.cloudProvider, vmType)
+            : 'amd64';
         const inspection = await dependencies.inspectImage(
           input.image,
           actor.token,
+          architecture,
         );
-        assertImageAccessible(input.image, inspection);
-        const { amd64Digest } = inspection;
+        assertImageAccessible(input.image, inspection, architecture);
+        const { digest } = inspection;
 
         const requestedCommand =
           input.command && input.command.length > 0 ? input.command : undefined;
@@ -170,7 +181,7 @@ export function createServiceUpgradeDomain(
             ...(input.binds === undefined
               ? {}
               : { dockerOptions: effectiveDockerOptions }),
-            imageDigest: amd64Digest ?? undefined,
+            imageDigest: digest ?? undefined,
             githubToken: actor.token ?? null,
           },
         });

@@ -1,9 +1,13 @@
 /** GHCR checks only the token, so every pull logs in under this name. */
 export const GHCR_TOKEN_USERNAME = 'x-access-token';
 
+/** A VM's CPU architecture, as OCI platforms name it. */
+export type ImageArchitecture = 'amd64' | 'arm64';
+
 export enum ImageVerdict {
   Ok = 'ok',
-  NoAmd64 = 'no_amd64',
+  /** The image has no linux build for the requested architecture. */
+  NoPlatform = 'no_platform',
   NotFound = 'not_found',
   Unauthorized = 'unauthorized',
   Unknown = 'unknown',

@@ -4,6 +4,7 @@ import { resolveCheckpointTarget } from '../../shared/checkpoint.js';
 import {
   cloudCredentialIdentityKey,
   validateNewBucketName,
+  vmArchitecture,
 } from '../../shared/cloud-config.js';
 import { errorMessage } from '../../shared/log-diagnostics.js';
 import { archMismatchMessage } from '../../shared/error-formatter.js';
@@ -20,6 +21,7 @@ import {
 import { type CloudConfig, type CloudCredentials } from '../../shared/cloud.js';
 import { WorkloadType } from '../../shared/workload.js';
 import {
+  type ImageArchitecture,
   ImageInspectionFailureReason,
   ImageVerdict,
 } from '../../shared/image.js';
@@ -367,6 +369,29 @@ function workloadBucketHostPaths(
   };
 }
 
+/**
+ * The CPU architecture the requested VM types share; a GPU request runs on
+ * amd64. A Job pins one image build, so a list can't mix architectures.
+ */
+function requestedArchitecture(
+  vmTypes: string[],
+  targets: readonly ComputeValidationTarget[],
+): ImageArchitecture {
+  const arm64 = vmTypes.filter((vmType) =>
+    targets.some(
+      ({ config }) => vmArchitecture(config.cloudProvider, vmType) === 'arm64',
+    ),
+  );
+  if (arm64.length === 0) return 'amd64';
+  const amd64 = vmTypes.filter((vmType) => !arm64.includes(vmType));
+  if (amd64.length > 0) {
+    throw new InvalidAnycloudConfigError(
+      `The VM type list mixes arm64 (${arm64.join(', ')}) and amd64 (${amd64.join(', ')}); list types of one architecture.`,
+    );
+  }
+  return 'arm64';
+}
+
 /** Run every semantic admission check and produce the only persistable value. */
 export async function prepareWorkloadCreation(args: {
   resolved: ResolvedWorkloadAdmission;
@@ -386,18 +411,24 @@ export async function prepareWorkloadCreation(args: {
   ) {
     throw GithubSignInRequiredError.needs(SERVICE_URL_NEEDS);
   }
+  const architecture = requestedArchitecture(
+    toArray(cloudConfig.vmType),
+    requestShapeTargets.values,
+  );
   await preflightRuntimeSecrets(input.secrets);
   signal?.throwIfAborted();
 
   const {
     verdict: imageVerdict,
-    amd64Digest,
+    digest,
     imageRuntime,
     compressedLayerBytes,
     failureReason: imageFailureReason,
-  } = await inspectImage(input.image, actor.token);
-  if (imageVerdict === ImageVerdict.NoAmd64) {
-    throw new InvalidAnycloudConfigError(archMismatchMessage(input.image));
+  } = await inspectImage(input.image, actor.token, architecture);
+  if (imageVerdict === ImageVerdict.NoPlatform) {
+    throw new InvalidAnycloudConfigError(
+      archMismatchMessage(input.image, architecture),
+    );
   }
   if (imageVerdict === ImageVerdict.NotFound) {
     throw new InvalidAnycloudConfigError(
@@ -422,7 +453,7 @@ export async function prepareWorkloadCreation(args: {
     );
   }
 
-  const imageDigest = amd64Digest ?? undefined;
+  const imageDigest = digest ?? undefined;
   const finalId = await validateId(input.id || generateJobId(input.image));
   validateImplicitCheckpointName(finalId, cloudConfig);
   progress.finalId = finalId;

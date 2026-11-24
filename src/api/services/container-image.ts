@@ -14,7 +14,7 @@ function digestQualifiedImageReference(image: string, digest: string): string {
 
 /**
  * Resolve the exact image reference a substrate should run. When submit-time
- * inspection resolved an amd64 digest, runtime execution stays pinned to it
+ * inspection resolved a platform digest, runtime execution stays pinned to it
  * instead of following a mutable tag.
  */
 export function resolveWorkloadImage(workload: {

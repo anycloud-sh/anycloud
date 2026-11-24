@@ -111,7 +111,7 @@ security sandbox. Anycloud does not place its private SSH key or an ambient
 cloud storage identity on a VM host. Explicit environment values and named
 Secrets are still injected into the VM container.
 
-The supplied image must be Linux/amd64, provide `/bin/sh` and POSIX `sleep`,
+The supplied image must be Linux/amd64 (Linux/arm64 on an AWS Graviton type), provide `/bin/sh` and POSIX `sleep`,
 allow entrypoint and command replacement, and tolerate `/workspace` as its
 working directory. Anycloud replaces the image entrypoint, command, and working
 directory with its long-running VM container profile; it does not install or

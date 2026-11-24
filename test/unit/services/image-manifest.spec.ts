@@ -98,7 +98,7 @@ describe('inspectImage', () => {
       );
     const result = await inspectImage('python:3.11');
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.compressedLayerBytes).toBe(30);
     expect(String(fetchMock.mock.calls[1][0])).toContain(
       `/v2/library/python/manifests/${AMD64_DIGEST}`,
@@ -126,7 +126,7 @@ describe('inspectImage', () => {
 
     const result = await inspectImage('ghcr.io/x/y:tag');
 
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.compressedLayerBytes).toBe(42);
     expect(result).not.toHaveProperty('stargzDigest');
   });
@@ -139,7 +139,7 @@ describe('inspectImage', () => {
     );
     const result = await inspectImage('ghcr.io/x/y:tag');
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBeNull();
+    expect(result.digest).toBeNull();
     expect(result.compressedLayerBytes).toBeNull();
   });
 
@@ -157,7 +157,7 @@ describe('inspectImage', () => {
     const result = await inspectImage('ghcr.io/x/y:tag');
 
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.compressedLayerBytes).toBe(300);
     expect(String(fetchMock.mock.calls[1][0])).toContain(
       `/v2/x/y/blobs/${CONFIG_DIGEST}`,
@@ -213,7 +213,7 @@ describe('inspectImage', () => {
     const headerless = await inspectImage('ghcr.io/x/y:tag');
     expect(headerless).toMatchObject({
       verdict: ImageVerdict.Ok,
-      amd64Digest: digestOf(manifest),
+      digest: digestOf(manifest),
     });
     expect(headerless).not.toHaveProperty('env');
   });
@@ -251,10 +251,10 @@ describe('inspectImage', () => {
     const result = await inspectImage('ghcr.io/x/y:tag');
 
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBeNull();
+    expect(result.digest).toBeNull();
   });
 
-  it('returns "no_amd64" for a single linux/arm64 manifest', async () => {
+  it('returns "no_platform" for a single linux/arm64 manifest', async () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(singleManifest(), {
@@ -266,11 +266,11 @@ describe('inspectImage', () => {
       );
 
     expect(await verdictOf('ghcr.io/x/arm-only:tag')).toBe(
-      ImageVerdict.NoAmd64,
+      ImageVerdict.NoPlatform,
     );
   });
 
-  it('returns "no_amd64" for a single windows/amd64 manifest', async () => {
+  it('returns "no_platform" for a single windows/amd64 manifest', async () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(singleManifest(), {
@@ -282,7 +282,7 @@ describe('inspectImage', () => {
       );
 
     expect(await verdictOf('ghcr.io/x/windows-amd64:tag')).toBe(
-      ImageVerdict.NoAmd64,
+      ImageVerdict.NoPlatform,
     );
   });
 
@@ -309,7 +309,7 @@ describe('inspectImage', () => {
     const result = await inspectImage(`ghcr.io/x/y@${pinnedDigest}`);
 
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(pinnedDigest);
+    expect(result.digest).toBe(pinnedDigest);
   });
 
   it('resolves a digest-pinned image index to the linux/amd64 child digest', async () => {
@@ -321,11 +321,53 @@ describe('inspectImage', () => {
     const result = await inspectImage(`ghcr.io/x/y@${pinnedIndexDigest}`);
 
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.compressedLayerBytes).toBe(12);
   });
 
-  it('returns "no_amd64" when the index lacks amd64 (ignoring attestation entries)', async () => {
+  it('resolves an index to its linux/arm64 child for an arm64 VM', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(index('amd64', 'arm64')))
+      .mockResolvedValueOnce(jsonResponse(singleManifest(CONFIG_DIGEST, [7])));
+
+    const result = await inspectImage(
+      'docker.io/library/alpine:3',
+      null,
+      'arm64',
+    );
+
+    expect(result.verdict).toBe(ImageVerdict.Ok);
+    expect(result.digest).toBe(ARM64_DIGEST);
+    expect(fetchMock.mock.calls[1]?.[0]).toContain(ARM64_DIGEST);
+  });
+
+  it('returns "no_platform" for an arm64 VM when the index has only amd64', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(index('amd64')));
+
+    const result = await inspectImage('ghcr.io/x/amd-only:tag', null, 'arm64');
+
+    expect(result.verdict).toBe(ImageVerdict.NoPlatform);
+    expect(result.digest).toBeNull();
+  });
+
+  it('accepts a single linux/arm64 manifest for an arm64 VM', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(singleManifest(), {
+          headers: { 'docker-content-digest': ARM64_DIGEST },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ os: 'linux', architecture: 'arm64' }),
+      );
+
+    const result = await inspectImage('ghcr.io/x/arm-only:tag', null, 'arm64');
+
+    expect(result.verdict).toBe(ImageVerdict.Ok);
+    expect(result.digest).toBe(ARM64_DIGEST);
+  });
+
+  it('returns "no_platform" when the index lacks amd64 (ignoring attestation entries)', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
         manifests: [
@@ -335,7 +377,7 @@ describe('inspectImage', () => {
       }),
     );
     expect(await verdictOf('ghcr.io/x/arm-only:tag')).toBe(
-      ImageVerdict.NoAmd64,
+      ImageVerdict.NoPlatform,
     );
   });
 
@@ -441,7 +483,7 @@ describe('inspectImage', () => {
         'ghcr.io/anycloud-sh/arm64-only-test:latest',
         'dummy-token-for-test',
       ),
-    ).toBe(ImageVerdict.NoAmd64);
+    ).toBe(ImageVerdict.NoPlatform);
 
     // Initial manifest probe is anonymous...
     expect(fetchMock.mock.calls[0][1]?.headers?.Authorization).toBeUndefined();
@@ -587,7 +629,7 @@ describe('inspectImage', () => {
     const result = await inspectImage('ghcr.io/x/y:tag', 'gh_secret');
 
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(fetchMock.mock.calls[0][1]?.headers?.Authorization).toBeUndefined();
     expect(fetchMock.mock.calls[1][1]?.headers?.Authorization).toBeUndefined();
     expect(fetchMock.mock.calls[2][1]?.headers?.Authorization).toBe(
@@ -782,7 +824,7 @@ describe('inspectImage imageRuntime detection', () => {
 
     const result = await inspectImage('ghcr.io/x/y:tag');
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.imageRuntime).toBe(ImageRuntime.Cuda);
     // The platform-manifest hop was made against the amd64 entry digest.
     expect(String(fetchMock.mock.calls[1][0])).toContain(
@@ -811,7 +853,7 @@ describe('inspectImage imageRuntime detection', () => {
 
     const result = await inspectImage('ghcr.io/x/y:tag');
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
   });
 
@@ -822,7 +864,7 @@ describe('inspectImage imageRuntime detection', () => {
 
     const result = await inspectImage('ghcr.io/x/y:tag');
     expect(result.verdict).toBe(ImageVerdict.Ok);
-    expect(result.amd64Digest).toBe(AMD64_DIGEST);
+    expect(result.digest).toBe(AMD64_DIGEST);
     expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
   });
 });

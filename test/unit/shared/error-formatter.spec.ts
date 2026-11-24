@@ -807,6 +807,15 @@ describe('archMismatchGuidance', () => {
     });
   }
 
+  it('names linux/arm64 when an arm64 host found no build for it', () => {
+    const out = archMismatchGuidance(
+      'no matching manifest for linux/arm64/v8 in the manifest list entries',
+      'ghcr.io/x/y:latest',
+    );
+    expect(out).toContain('has no linux/arm64 build');
+    expect(out).toContain('--platform linux/arm64');
+  });
+
   it('falls back to "This image"/IMAGE when no image is given', () => {
     const out = archMismatchGuidance('no matching manifest for linux/amd64');
     expect(out).toContain('This image');

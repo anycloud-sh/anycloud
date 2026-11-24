@@ -847,6 +847,23 @@ describe('pullImage (detached on a remote VM)', () => {
     expect(isUserError(error)).toBe(true);
   });
 
+  it("fails a pull of an image without the host's architecture as invalid", async () => {
+    const { fn } = makeExec(['DONE 1'], {
+      df: '',
+      logTail:
+        'no matching manifest for linux/arm64/v8 in the manifest list entries',
+    });
+
+    const error = await pullImage(newDocker(fn), mockStoredWorkload()).catch(
+      (cause: unknown) => cause,
+    );
+
+    expect((error as Error).message).toContain(
+      "Failed to pull image 'nginx:latest' on vm.example.test: nginx:latest has no linux/arm64 build",
+    );
+    expect(isUserError(error)).toBe(true);
+  });
+
   it.each([
     ['free space', '/dev/root 97G 3G 94G 3% /', false],
     ['100% use with 1.9G free', '/dev/root 193G 191G 1.9G 100% /', false],

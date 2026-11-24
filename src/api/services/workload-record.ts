@@ -69,7 +69,7 @@ export interface StoredWorkload {
   checkpointStorageCredentialId: string | null; // NULL = use compute credential for checkpoint bucket storage
   checkpointStorageRegion: string | null; // Region for cross-cloud checkpoint bucket storage
   command: string[] | null; // Override container CMD (args after -- in CLI)
-  imageDigest: string | null; // API-resolved linux/amd64 Docker manifest digest (sha256:...)
+  imageDigest: string | null; // API-resolved Docker manifest digest of the VM architecture's build (sha256:...)
   imageRuntime: ImageRuntime | null; // GPU runtime the image base expects (detected at submit). null = legacy/undetected. Insert-only. See migration 0066.
   vmDurationMs: number | null; // Total VM compute time (sum of all VM lifetimes; clipped to the requested window in aggregate cost responses)
   // Portion of vmDurationMs that fell after teardown was requested. Reported

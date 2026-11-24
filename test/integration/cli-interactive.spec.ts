@@ -505,7 +505,7 @@ vi.mock('../../src/shared/image-registry.js', async () => {
   return {
     inspectImage: vi.fn().mockResolvedValue({
       verdict: ImageVerdict.Ok,
-      amd64Digest:
+      digest:
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageRuntime: ImageRuntime.Unknown,
       compressedLayerBytes: null,

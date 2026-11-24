@@ -75,6 +75,21 @@ with Client() as client:
 Exact VM names are provider-specific. Prefer GPU selection when portability
 matters more than a particular SKU.
 
+<span id="arm64"></span>
+
+### AWS Graviton (arm64)
+
+AWS Graviton types, such as `m8g.xlarge` or `c8g.2xlarge`, run on arm64. The
+image needs a `linux/arm64` build: a multi-platform image runs on Graviton and
+x86-64 types alike. See [Container Images](/platform/container-images#architecture).
+
+```bash
+anycloud job alpine:3 --credentials my-aws --vm-type m8g.xlarge --spot -- uname -m
+```
+
+A fallback pool can't mix Graviton and x86-64 types. Graviton GPU types, such
+as `g5g`, aren't supported yet.
+
 ## Use ordered fallbacks
 
 Repeat a GPU or VM option to define an ordered pool. Anycloud tries the
