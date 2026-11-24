@@ -2,7 +2,8 @@
 
 - Status: Complete. Results are below: AWS first, then a preliminary
   [comparison with GitHub's 4-core runner](#against-githubs-4-core-runner),
-  then [GCP and Azure](#gcp-and-azure).
+  then [GCP and Azure](#gcp-and-azure), then
+  [`c4d`'s Hyperdisk settings](#c4ds-hyperdisk-settings).
 - Decision record: it asks how much faster AWS m8a (AMD EPYC, Zen 5) builds
   than m8i (Intel Xeon 6), which backmesh's runners land on today, at the same
   vCPU count. backmesh's labels can't choose a VM family, so this runs in
@@ -20,6 +21,9 @@
   that cloud's arms instead, and `--vcpus=4,16` picks the sizes (AWS's default
   is both, the others' 4), and `--arms=<type,...>` keeps just those.
   `--spot` runs the Jobs on spot VMs.
+  `--variants=<name,...>` also runs each arm as `<type>@<name>` from a second
+  API, built from this checkout with `variant-<name>.patch` applied, and
+  compares it with the branch's arm; each round runs every variant.
   `["spot"]` measures spot capacity instead (below).
   `report <results.json|hosted .log...>` rewrites the report from saved
   results, and GitHub-hosted rounds' logs, without a cloud. `["sweep", "--cloud=gcp", "--prefix=<run's Job ID prefix>"]` deletes
@@ -50,11 +54,15 @@ gp3 root disk:
    - python: `uv sync --frozen` and the three pytest files of pydantic
      v2.11.7, with Python 3.12 and uv 0.13.9.
 
-Only the benchmark's own commands are timed. Image pulls and clones are not.
-Neither are `cargo fetch` and `go mod download`, so rust and go time the
-compile rather than the crate and module downloads. `npm ci`, `uv sync` and
-`docker build` keep their downloads, as in the benchmark. In the docker build
-these are k6's base images and modules.
+Only the benchmark's own commands are timed, and the five toolchain images'
+pulls together (`pull toolchain-images`), which the host's Docker writes to
+the root disk. Clones are not. Neither are `cargo fetch` and
+`go mod download`, so rust and go time the compile rather than the crate and
+module downloads. `npm ci`, `uv sync` and `docker build` keep their
+downloads, as in the benchmark. In the docker build these are k6's base
+images and modules. Each Job also records two of the host's boot marks from
+its Running event: `boot kernel to container start` and `boot image pull`,
+the user data's pull of `docker:27-cli`.
 
 On GCP the arms are `n2-standard-4` (backmesh's first today), `n2d-standard-4`
 (its second, AMD Zen 3), `c3d-standard-4` (Zen 4), and `c4d-standard-4` and
@@ -484,6 +492,64 @@ confirmed nothing labelled with that run's IDs remains. The fixes are in
 saw one virtual network still being deleted. The owned cleanup step found
 nothing minutes later.
 
+## c4d's Hyperdisk settings
+
+[anycloud#41](https://github.com/anycloud-sh/anycloud/issues/41) asks whether a
+VM Job host on `c4d` needs the `high` tier's Hyperdisk Balanced at 8,000 IOPS
+and 1,000 MiB/s, which costs $0.092/h at 100 GB. GCP bills IOPS over 3,000
+($0.000006849/h each) and throughput over 140 MiB/s ($0.000054795/h per
+MiB/s), and caps throughput at a quarter of the IOPS. `--variants` ran today's
+setting beside cheaper ones, each from its own API, one Job of each per
+round: `c4d-standard-4`, on demand, in us-east4 (every Job in us-east4-a),
+`--rounds=12 --parallel=2`, n = 12 per arm.
+
+- [Run 45336210940](https://github.com/anycloud-sh/anycloud/actions/runs/45336210940)
+  (`a72beffa9`): today against 6,000 IOPS and 240 MiB/s (pd-ssd's per-VM
+  baseline, $0.037/h) and 3,000 and 140 (Hyperdisk's free baseline,
+  $0.011/h).
+- [Run 45353870772](https://github.com/anycloud-sh/anycloud/actions/runs/45353870772)
+  (`cee978edf`): today against 3,000 IOPS at 750 MiB/s ($0.044/h, the most
+  GCP allows at 3,000 IOPS) and at 500 ($0.031/h), with this directory's
+  `variant-t750.patch` and `variant-t500.patch`.
+
+Both runs' 36 Jobs succeeded and their cleanup found nothing left; each cost
+$0.69. [Run 45343058302](https://github.com/anycloud-sh/anycloud/actions/runs/45343058302)
+asked for 3,000 IOPS at 1,000 MiB/s, which GCP refuses (above), so it
+doesn't count.
+
+Each cell is the setting's median over today's in the same run, with the
+Mann-Whitney p. Today's medians: VM time 268 s and 277 s, toolchain pulls
+26.1 s in both, `docker build` 57.9 s and 58.0 s.
+
+| Measure                        | 6,000 / 240    | 3,000 / 140    | 3,000 / 750  | 3,000 / 500   |
+| ------------------------------ | -------------- | -------------- | ------------ | ------------- |
+| boot kernel to container start | 1.03 (0.21)    | 1.14 (0.0001)  | 1.06 (0.050) | 1.04 (0.31)   |
+| boot image pull                | 1.22 (0.011)   | 1.40 (0.0006)  | 1.02 (0.20)  | 1.03 (0.14)   |
+| pull toolchain-images          | 1.17 (<0.0001) | 1.51 (<0.0001) | 1.04 (0.014) | 1.06 (0.0002) |
+| docker build                   | 1.04 (0.0014)  | 1.15 (<0.0001) | 1.03 (0.026) | 1.04 (0.017)  |
+| go, rust, typescript, python   | 0.97–1.00      | 0.97–1.02      | 0.97–1.00    | 0.98–1.01     |
+| VM time per Job                | 1.06 (0.0073)  | 1.19 (0.0006)  | 1.02 (0.51)  | 1.04 (0.75)   |
+| Cost per Job, on demand        | 0.85           | 0.84           | 0.84         | 0.81          |
+| Cost per Job, spot, vs `n2`    | 1.01           | 0.90           | 1.05         | 0.97          |
+
+**Every cheaper setting slows image extraction.** The CPU-bound builds don't
+change, but the toolchain pulls and `docker build`, which write image layers
+to the root disk, are 3–6% slower even at 3,000 IOPS and 750 MiB/s, and
+15–51% slower at the free baseline. No setting met the bar of no significant
+slowdown (p ≥ 0.05 and within about 2% on VM time, pulls, `docker build` and
+boot), so anycloud keeps 8,000 IOPS and 1,000 MiB/s.
+
+**Spot.** At the catalog's us-east4 spot price for `c4d-standard-4`
+($0.0967/h), a Job at today's setting costs $0.0146 in the second run, 1.39
+times `n2`'s $0.0105 (from the spot section above, which used us-central1's
+on-demand VM time). At 3,000 IOPS and 750 MiB/s it would cost $0.0110, 1.05
+times `n2`, for about 0.6 of `n2`'s VM time.
+
+A side finding: the 3,000 / 1,000 Jobs never started. GCP's 400 "Requested
+provisioned throughput is too high for the provisioned iops" was diagnosed as
+a temporary provider failure, so anycloud retried it in the same zone until
+the Job's 20-minute timeout.
+
 ## Promotion criteria
 
 None. m8a's build gain is clear, but its spot capacity isn't there in these
@@ -497,7 +563,9 @@ which keeps pd-ssd) ahead of `n2` on GCP. For spot classes, `c4d` launched
 and held every time in us-east4, but `n2`'s cheap spot price keeps it cheaper
 per Job until
 [anycloud#41](https://github.com/anycloud-sh/anycloud/issues/41) cuts
-Hyperdisk's cost. On Azure, `Dasv7` isn't ahead of `Dadsv5` over a whole Job
+Hyperdisk's cost; [the A/Bs above](#c4ds-hyperdisk-settings) found no cheaper
+setting without a small slowdown in image extraction, so that trade-off is
+open. On Azure, `Dasv7` isn't ahead of `Dadsv5` over a whole Job
 until anycloud fixes
 [anycloud#39](https://github.com/anycloud-sh/anycloud/issues/39) and
 [anycloud#40](https://github.com/anycloud-sh/anycloud/issues/40).
