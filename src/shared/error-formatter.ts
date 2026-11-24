@@ -581,17 +581,13 @@ export function formatErrorForUser(
 export function archMismatchGuidance(
   text: string,
   image?: string,
+  architecture: ImageArchitecture = 'amd64',
 ): string | null {
   const isPlatformMismatch =
     /no matching manifest|does not match the specified platform|no match for platform/i.test(
       text,
     );
-  if (!isPlatformMismatch) return null;
-  // The platform the host asked for, not the one the image has.
-  const requested = /(?:manifest for |specified platform \()linux\/arm64/i.test(
-    text,
-  );
-  return archMismatchMessage(image, requested ? 'arm64' : 'amd64');
+  return isPlatformMismatch ? archMismatchMessage(image, architecture) : null;
 }
 
 /**

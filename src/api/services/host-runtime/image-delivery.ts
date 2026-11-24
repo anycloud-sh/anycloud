@@ -41,6 +41,8 @@ import { errorMessage } from '../../../shared/log-diagnostics.js';
 import { jobHostPrePull } from '../job-host.js';
 import { DeployError } from '../../../shared/errors.js';
 import { archMismatchGuidance } from '../../../shared/error-formatter.js';
+import { workloadArchitecture } from '../../../shared/cloud-config.js';
+import { HOST_PLATFORM_FLAG } from '../../runtime-artifacts.js';
 
 type CommandResult = { code: number; stdout: string; stderr: string };
 
@@ -516,7 +518,9 @@ async function pullImageRemote(
       unit: `ac-pull-${id.replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
       // Image passed via env so it needs no nested quoting and is not
       // re-evaluated by the SSH shell.
-      command: measuredPullCommand('docker pull "$AC_PULL_IMAGE"'),
+      command: measuredPullCommand(
+        `docker pull ${HOST_PLATFORM_FLAG} "$AC_PULL_IMAGE"`,
+      ),
       env: {
         AC_PULL_IMAGE: image,
         ...(dockerConfig && { DOCKER_CONFIG: dockerConfig }),
@@ -559,7 +563,11 @@ async function pullImageRemote(
       },
     );
     const fullDisk = rootDiskFullDetail(diskSpace, logTail);
-    const wrongPlatform = archMismatchGuidance(logTail, image);
+    const wrongPlatform = archMismatchGuidance(
+      logTail,
+      image,
+      workloadArchitecture(props),
+    );
     throw new PullError(
       `Failed to pull image '${image}' on ${docker.host}: ${fullDisk ? `${fullDisk} (${msg})` : (wrongPlatform ?? msg)}`,
       logTail,

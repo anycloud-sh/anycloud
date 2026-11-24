@@ -16,6 +16,9 @@ export const RCLONE_VERSION = '1.68.2';
 export const DOCKER_ARCH_COMMAND = '$(uname -m)';
 export const GO_ARCH_COMMAND = `$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')`;
 
+/** A pull's `--platform`: the host's own, so an image without it fails at once. */
+export const HOST_PLATFORM_FLAG = `--platform "linux/${GO_ARCH_COMMAND}"`;
+
 // Shell references to the variables the commands above assign. Callers that
 // emit multi-step scripts assign once and then reference.
 export const DOCKER_ARCH_REF = '${DOCKER_ARCH}';

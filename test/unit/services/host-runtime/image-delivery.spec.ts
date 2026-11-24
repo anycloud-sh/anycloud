@@ -620,7 +620,7 @@ describe('pullImage (detached on a remote VM)', () => {
     expect(launches[0]).toContain("--setenv=AC_CONTAINERD_NAMESPACE='moby'");
     expect(launches[0]).toContain("--setenv=AC_SNAPSHOTTER='overlayfs'");
     expect(launches[0]).toContain('docker image inspect');
-    expect(launches[0]).not.toContain('docker pull "$$AC_PULL_IMAGE"');
+    expect(launches[0]).not.toContain('docker pull');
   });
 
   it('records the bytes, time to last byte and unpack tail of a transfer', async () => {
@@ -660,7 +660,7 @@ describe('pullImage (detached on a remote VM)', () => {
     expect(launches).toHaveLength(2);
     expect(launches[0]).toContain('ac-transfer-test-workload');
     expect(launches[1]).toContain('ac-pull-test-workload');
-    expect(launches[1]).toContain('docker pull "$$AC_PULL_IMAGE"');
+    expect(launches[1]).toContain('docker pull --platform "linux/$$(uname -m');
   });
 
   it.each([
@@ -854,9 +854,13 @@ describe('pullImage (detached on a remote VM)', () => {
         'no matching manifest for linux/arm64/v8 in the manifest list entries',
     });
 
-    const error = await pullImage(newDocker(fn), mockStoredWorkload()).catch(
-      (cause: unknown) => cause,
-    );
+    const error = await pullImage(
+      newDocker(fn),
+      mockStoredWorkload({
+        cloudProvider: CloudType.AWS,
+        vmType: 'm8g.xlarge',
+      }),
+    ).catch((cause: unknown) => cause);
 
     expect((error as Error).message).toContain(
       "Failed to pull image 'nginx:latest' on vm.example.test: nginx:latest has no linux/arm64 build",

@@ -84,7 +84,10 @@ describe('generateJobHostUserData', () => {
       bootcmd.indexOf('systemctl mask'),
     );
     execFileSync('bash', ['-n'], { input: script });
-    expect(script).toContain(`docker pull '${IMAGE}'`);
+    // The host's own platform, so an image without it fails at once.
+    expect(script).toContain(
+      `docker pull --platform "linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" '${IMAGE}'`,
+    );
     expect(script).toContain('/dev/disk/cloud/azure_resource-part1');
     // iptables comes from the pinned debs, checked, not from apt's sources.
     expect(script).toContain('iptables_1.8.10-3ubuntu2_amd64.deb');
@@ -543,7 +546,9 @@ describe('the Job host preparation', () => {
     const { read, calls } = prepare(IMAGE, { ctr: 1 });
     expect(read('pull')).toBe('0');
     expect(read('method')).toBe('docker-fallback');
-    expect(calls).toContain(`docker pull ${IMAGE}`);
+    expect(calls).toMatch(
+      /docker pull --platform linux\/(amd64|arm64) ghcr\.io\/acme\/train:1/,
+    );
     expect(calls.indexOf('ctr ')).toBeLessThan(calls.indexOf('docker pull'));
   });
 

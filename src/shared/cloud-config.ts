@@ -28,6 +28,7 @@ import {
 } from './providers.js';
 import { assertNever } from './assert-never.js';
 import { type ImageArchitecture, ImageRuntime } from './image.js';
+import { toArray } from './utils.js';
 
 function requireCatalog(cloud: CloudType) {
   const catalog = readCatalog(cloud);
@@ -711,6 +712,17 @@ export function vmArchitecture(
 ): ImageArchitecture {
   return readCatalog(cloudProvider)?.arm64Types.includes(vmType.toLowerCase())
     ? 'arm64'
+    : 'amd64';
+}
+
+/** A workload's architecture: admission keeps its type list to one. */
+export function workloadArchitecture(workload: {
+  cloudProvider: CloudType | null;
+  vmType: string | string[] | null;
+}): ImageArchitecture {
+  const [vmType] = toArray(workload.vmType);
+  return workload.cloudProvider && vmType
+    ? vmArchitecture(workload.cloudProvider, vmType)
     : 'amd64';
 }
 

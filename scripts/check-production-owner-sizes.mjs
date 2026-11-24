@@ -52,7 +52,7 @@ export const ownerSizeCeilings = {
   'src/api/services/host-runtime/host-startup.ts': 349, // 316 + 10 (319 after an earlier split); +21: resolves Secrets with revisions and writes adopted containers' files; +2: passes a Job host to initializeVM
   // 624 + 10: an earlier transfer-credential Docker fallback and full-disk errors;
   // + 12: a per-pull Docker config, removed after every pull.
-  'src/api/services/host-runtime/image-delivery.ts': 655, // 646 + 6: passes both pulls through pull-timing.ts and records its fields; +1: qualifies the transfer's image reference for ctr; +2: fails a pull with no build for the host's architecture as invalid
+  'src/api/services/host-runtime/image-delivery.ts': 663, // 646 + 6: passes both pulls through pull-timing.ts and records its fields; +1: qualifies the transfer's image reference for ctr; +10: pulls with the host's --platform and fails a pull with no build for it as invalid, naming the workload's architecture
   'src/api/services/workload-workflows/persistent-vm-repair.ts': 236, // 224 + 10; +2: forgets a failed restart's backoff once the host answers
   'src/api/services/host-runtime/vm-container-repair.ts': 192, // 182 + 10
   'src/api/services/workload-workflows/workload-pipeline.ts': 509, // 494 + 10; 498 after the outcome port; +9: polls a Workload that names Secrets once its pipeline settles, so a Secret saved during its start reaches it

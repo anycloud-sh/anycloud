@@ -811,6 +811,7 @@ describe('archMismatchGuidance', () => {
     const out = archMismatchGuidance(
       'no matching manifest for linux/arm64/v8 in the manifest list entries',
       'ghcr.io/x/y:latest',
+      'arm64',
     );
     expect(out).toContain('has no linux/arm64 build');
     expect(out).toContain('--platform linux/arm64');

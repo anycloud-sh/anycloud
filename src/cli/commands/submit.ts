@@ -216,11 +216,12 @@ Bring your own image:
     gh auth refresh -s write:packages
     gh auth token | docker login ghcr.io -u "$(gh api user -q .login)" \\
       --password-stdin
-    docker buildx build --platform linux/amd64 \\
+    docker buildx build --platform linux/amd64,linux/arm64 \\
       -t ghcr.io/<owner>/<repo>:latest --push .
 
-  Use linux/amd64 for Mac/Apple Silicon and cloud GPU VMs. In GitHub
-  Actions, use the built-in GITHUB_TOKEN with 'packages: write'.
+  VMs run linux/amd64, or linux/arm64 on AWS Graviton types (m8g, c8g);
+  build both, even on a Mac. In GitHub Actions, use the built-in
+  GITHUB_TOKEN with 'packages: write'.
   Guide: https://anycloud.sh/platform/container-images
 
 Environment variables:

@@ -22,8 +22,7 @@ import type { User } from './entities.js';
 import { assertImageAccessible } from './image-manifest.js';
 import type { ImageInspection } from '../../shared/image-registry.js';
 import type { ImageArchitecture } from '../../shared/image.js';
-import { vmArchitecture } from '../../shared/cloud-config.js';
-import { toArray } from '../../shared/utils.js';
+import { workloadArchitecture } from '../../shared/cloud-config.js';
 import type { OwnershipScope } from './repositories/ownership-filter.js';
 import type { ServeUpdateRequest } from './serve/runtime.js';
 import { serveUrl } from './serve.js';
@@ -135,12 +134,7 @@ export function createServiceUpgradeDomain(
         await dependencies.prepareCheckpoint(found, 'upgrade');
         await dependencies.preflightSecrets(found.secretNames);
 
-        // Admission keeps a type list to one architecture.
-        const [vmType] = toArray(found.vmType);
-        const architecture =
-          found.cloudProvider && vmType
-            ? vmArchitecture(found.cloudProvider, vmType)
-            : 'amd64';
+        const architecture = workloadArchitecture(found);
         const inspection = await dependencies.inspectImage(
           input.image,
           actor.token,
