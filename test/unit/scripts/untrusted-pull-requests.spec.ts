@@ -286,7 +286,9 @@ describe('routing expressions', () => {
 
   it('keeps our own pull requests and pushes on the configured backend', () => {
     const push = { event_name: 'push', repository: REPOSITORY, event: {} };
-    expect(route(SAME_REPOSITORY, 'backmesh')).toBe('backmesh-ubuntu-2404-4vcpu');
+    expect(route(SAME_REPOSITORY, 'backmesh')).toBe(
+      'backmesh-ubuntu-2404-4vcpu',
+    );
     expect(route(SAME_REPOSITORY, '')).toBe('backmesh-ubuntu-2404-4vcpu');
     expect(route(push, '')).toBe('backmesh-ubuntu-2404-4vcpu');
     expect(route(SAME_REPOSITORY, 'hosted')).toBe('ubuntu-latest');
@@ -295,16 +297,21 @@ describe('routing expressions', () => {
 
   it('sends only runs that follow untrusted pull requests to GitHub-hosted runners', () => {
     const follow = (github: Value) =>
-      evaluate(`${UNTRUSTED_WORKFLOW_RUN} && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu'`, {
-        github,
-      });
+      evaluate(
+        `${UNTRUSTED_WORKFLOW_RUN} && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu'`,
+        {
+          github,
+        },
+      );
     expect(follow(followingRun('outsider/anycloud', 'outsider'))).toBe(
       'ubuntu-latest',
     );
     expect(follow(followingRun(REPOSITORY, 'dependabot[bot]'))).toBe(
       'ubuntu-latest',
     );
-    expect(follow(followingRun(REPOSITORY, 'depombo'))).toBe('backmesh-ubuntu-2404-2vcpu');
+    expect(follow(followingRun(REPOSITORY, 'depombo'))).toBe(
+      'backmesh-ubuntu-2404-2vcpu',
+    );
     expect(follow(SAME_REPOSITORY)).toBe('backmesh-ubuntu-2404-2vcpu');
   });
 
@@ -379,7 +386,9 @@ describe('untrusted pull requests and the runs they start', () => {
     ]);
     // The Local nuke runs on backmesh and is skipped on hosted runners.
     const nuke = 'local-smolvm-nuke > nuke.yml:nuke';
-    expect(reached.get(nuke)?.runsOn).toEqual(['backmesh-ubuntu-2404-kvm-16vcpu']);
+    expect(reached.get(nuke)?.runsOn).toEqual([
+      'backmesh-ubuntu-2404-kvm-16vcpu',
+    ]);
     expect(
       reachedJobs('integration.yml', SAME_REPOSITORY, 'hosted').map(
         (job) => job.id,

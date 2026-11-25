@@ -173,8 +173,13 @@ const BACKMESH_LABELS: Record<string, Record<string, string>> = {
   'actions-storage.yml': { cleanup: 'backmesh-ubuntu-2404-2vcpu' },
   'api-performance.yml': { compare: 'backmesh-ubuntu-2404-od-4vcpu' },
   'build-deps-base.yml': { build: 'backmesh-ubuntu-2404-8vcpu' },
-  'e2e-cluster-cloud.yml': { 'e2e-cluster-cloud': 'backmesh-ubuntu-2404-od-4vcpu' },
-  'e2e-gpu.yml': { ...POST_CLEANUP, 'service-native-audit': 'backmesh-ubuntu-2404-2vcpu' },
+  'e2e-cluster-cloud.yml': {
+    'e2e-cluster-cloud': 'backmesh-ubuntu-2404-od-4vcpu',
+  },
+  'e2e-gpu.yml': {
+    ...POST_CLEANUP,
+    'service-native-audit': 'backmesh-ubuntu-2404-2vcpu',
+  },
   'e2e-job.yml': POST_CLEANUP,
   'e2e-serve.yml': POST_CLEANUP,
   'e2e-vm.yml': POST_CLEANUP,
