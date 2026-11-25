@@ -40,6 +40,8 @@ const NETWORK = 'anycloud-jobs';
 const MAX_RUN_MIN = 40;
 const COST_CAP_USD = 20;
 const RUST_IMAGE = 'rust:1.83-bookworm';
+// Unique to this experiment: cleanup deletes every bucket it prefixes.
+const BUCKET_PREFIX = 'c4a-spike-builds-';
 
 const TYPES = [
   'c4a-standard-4',
@@ -326,12 +328,17 @@ async function preflight(c: Clients) {
   return out;
 }
 
-async function run(rounds: number, firstRound: number, maxVcpus: number) {
+async function run(
+  rounds: number,
+  firstRound: number,
+  maxVcpus: number,
+  maxC4aVcpus: number,
+) {
   const c = clients();
   const runId = randomBytes(3).toString('hex');
   const { images, quotas } = await preflight(c);
   console.log(JSON.stringify(quotas, null, 2));
-  const bucket = c.storage.bucket(`gcp-c4a-${runId}`);
+  const bucket = c.storage.bucket(`${BUCKET_PREFIX}${runId}`);
   await bucket.create({
     location: REGION.toUpperCase(),
     labels: { [LABEL.key]: LABEL.value },
@@ -362,7 +369,17 @@ async function run(rounds: number, firstRound: number, maxVcpus: number) {
     let zone = '';
     let insertAt = 0;
     let insertDoneAt = 0;
-    for (const candidate of ZONES) {
+    // A quota refusal is regional, and a VM just deleted can hold quota for
+    // a moment, so it waits and retries the same zone rather than moving on.
+    const attempts = ZONES.flatMap((z) => [z, z, z]);
+    for (let i = 0; i < attempts.length; i++) {
+      const candidate = attempts[i]!;
+      if (
+        candidate === attempts[i - 1] &&
+        !refusals.at(-1)?.includes('QUOTA_EXCEEDED')
+      )
+        continue;
+      if (candidate === attempts[i - 1]) await sleep(30_000);
       insertAt = Date.now() / 1000;
       try {
         await insert(c, {
@@ -465,16 +482,31 @@ async function run(rounds: number, firstRound: number, maxVcpus: number) {
   );
   mkdirSync(output, { recursive: true });
   let used = 0;
+  let usedC4a = 0;
   const running = new Set<Promise<void>>();
-  for (const next of queue) {
-    const vcpus = PRICES[next.type].vcpus;
-    while (used + vcpus > maxVcpus) await Promise.race(running);
+  const pending = [...queue];
+  while (pending.length) {
+    // The first VM in round order that fits both caps; GCP's C4A family
+    // quota (CPUS_PER_VM_FAMILY) is separate from the project's CPUs.
+    const index = pending.findIndex(
+      ({ type }) =>
+        used + PRICES[type].vcpus <= maxVcpus &&
+        (arch(type) === 'amd64' || usedC4a + PRICES[type].vcpus <= maxC4aVcpus),
+    );
+    if (index < 0) {
+      await Promise.race(running);
+      continue;
+    }
     const spent = results.reduce((sum, r) => sum + cost(r), 0);
     if (spent >= COST_CAP_USD) {
       console.warn(`Cost cap: $${spent.toFixed(2)} spent; no more VMs`);
       break;
     }
+    const next = pending.splice(index, 1)[0]!;
+    const vcpus = PRICES[next.type].vcpus;
+    const c4a = arch(next.type) === 'arm64' ? vcpus : 0;
     used += vcpus;
+    usedC4a += c4a;
     const task = job(next.type, next.market, next.round)
       .then((r) => void results.push(r))
       .catch((error) =>
@@ -484,6 +516,7 @@ async function run(rounds: number, firstRound: number, maxVcpus: number) {
       )
       .finally(() => {
         used -= vcpus;
+        usedC4a -= c4a;
         running.delete(task);
         save();
       });
@@ -589,12 +622,12 @@ async function cleanup() {
     }
     left[zone] = [...(await listInstances(zone)), ...(await listDisks(zone))];
   }
-  const [buckets] = await c.storage.getBuckets({ prefix: 'gcp-c4a-' });
+  const [buckets] = await c.storage.getBuckets({ prefix: BUCKET_PREFIX });
   for (const bucket of buckets) {
     await bucket.deleteFiles({ force: true });
     await bucket.delete();
   }
-  left.buckets = (await c.storage.getBuckets({ prefix: 'gcp-c4a-' }))[0].map(
+  left.buckets = (await c.storage.getBuckets({ prefix: BUCKET_PREFIX }))[0].map(
     (b) => b.name,
   );
   evidence('cleanup.json', left);
@@ -719,6 +752,7 @@ if (command === 'preflight') {
     Number(flag('rounds', '10')),
     Number(flag('first-round', '1')),
     Number(flag('max-vcpus', '32')),
+    Number(flag('max-c4a-vcpus', '24')),
   );
 } else if (command === 'spot') {
   await spot();
