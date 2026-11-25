@@ -5,7 +5,7 @@
  * and on spot; see README.md. anycloud's GCP catalog has no C4A rows, so a VM
  * Job can't target it; every arm launches here through the Compute API, alike.
  *
- * `preflight` records quotas, machine types, images and list prices.
+ * `preflight` records quotas, machine types and images.
  * `run [--rounds=10] [--first-round=1] [--max-vcpus=32]` runs the builds.
  * `spot` tries one spot launch of each type in every zone.
  * `cleanup` deletes everything labelled for the experiment and verifies it.
@@ -24,7 +24,6 @@ import {
   ZoneOperationsClient,
 } from '@google-cloud/compute';
 import { Storage } from '@google-cloud/storage';
-import { GoogleAuth } from 'google-auth-library';
 import {
   dockerArchiveUrl,
   JOB_HOST_DOCKER_VERSION,
@@ -282,109 +281,24 @@ function parseLog(log: string) {
   return { timings, lscpu, marks, kernelAt, done: log.includes('BENCH_DONE') };
 }
 
-interface Price {
-  vcpus: number;
-  memoryGib: number;
-  onDemand: number | null;
-  spot: number | null;
-}
-
 /**
- * List prices from the Cloud Billing Catalog API: each type's vCPUs and
- * memory times its family's per-vCPU and per-GiB SKUs in the region. Also
- * returns the region's disk SKUs, for the README. A failure is recorded,
- * not thrown: it is itself a finding about the price source.
+ * europe-west4 list prices, $/h, on 2026-11-25, from gcloud-compute.com,
+ * which publishes Google's Billing Catalog SKUs per type; spot prices move.
+ * The Billing Catalog API is disabled in CI's project. N2's and C4D's on-demand
+ * prices match anycloud's catalog (SkyPilot's); it has no C4A rows.
  */
-async function prices(c: Clients) {
-  const shapes = Object.fromEntries(
-    await Promise.all(
-      TYPES.map(async (type) => {
-        const [shape] = await c.machineTypes.get({
-          project: project(),
-          zone: ZONES[0],
-          machineType: type,
-        });
-        return [
-          type,
-          { vcpus: shape.guestCpus!, memoryGib: shape.memoryMb! / 1024 },
-        ] as const;
-      }),
-    ),
-  );
-  type Sku = {
-    description: string;
-    category: { usageType: string };
-    serviceRegions: string[];
-    pricingInfo: {
-      pricingExpression: {
-        usageUnit: string;
-        tieredRates: { unitPrice: { units?: string; nanos?: number } }[];
-      };
-    }[];
-  };
-  const skus: Sku[] = [];
-  try {
-    const client = await new GoogleAuth({
-      credentials: credentials(),
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    }).getClient();
-    let pageToken = '';
-    do {
-      const { data } = await client.request<{
-        skus: Sku[];
-        nextPageToken?: string;
-      }>({
-        // Compute Engine's service ID.
-        url: `https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus?currencyCode=USD&pageSize=5000&pageToken=${pageToken}`,
-      });
-      skus.push(...data.skus);
-      pageToken = data.nextPageToken ?? '';
-    } while (pageToken);
-  } catch (error) {
-    const byType: Record<string, Price> = {};
-    return { shapes, error: messageOf(error), byType, skus: [] };
-  }
-  const regional = skus.filter((s) => s.serviceRegions.includes(REGION));
-  const rate = (s: Sku) => {
-    const tiers = s.pricingInfo[0]!.pricingExpression.tieredRates;
-    const { units = '0', nanos = 0 } = tiers[tiers.length - 1]!.unitPrice;
-    return Number(units) + nanos / 1e9;
-  };
-  const sku = (family: string, unit: 'Core' | 'Ram', spot: boolean) =>
-    regional.find(
-      (s) =>
-        new RegExp(
-          `^${spot ? 'Spot Preemptible ' : ''}${family} (Arm |AMD )?Instance ${unit} running in`,
-        ).test(s.description) &&
-        s.category.usageType === (spot ? 'Preemptible' : 'OnDemand'),
-    );
-  const byType: Record<string, Price> = {};
-  for (const type of TYPES) {
-    const family = type.split('-')[0]!.toUpperCase();
-    const at = (spot: boolean) => {
-      const [core, ram] = [sku(family, 'Core', spot), sku(family, 'Ram', spot)];
-      return core && ram
-        ? shapes[type]!.vcpus * rate(core) + shapes[type]!.memoryGib * rate(ram)
-        : null;
-    };
-    byType[type] = { ...shapes[type]!, onDemand: at(false), spot: at(true) };
-  }
-  const used = regional.filter((s) =>
-    /^(Spot Preemptible )?(C4A|C4D|N2) (Arm |AMD )?Instance (Core|Ram) running in|Hyperdisk Balanced|Storage PD Capacity/.test(
-      s.description,
-    ),
-  );
-  return {
-    shapes,
-    byType,
-    skus: used.map((s) => ({
-      description: s.description,
-      usageType: s.category.usageType,
-      unit: s.pricingInfo[0]!.pricingExpression.usageUnit,
-      usd: rate(s),
-    })),
-  };
-}
+const PRICES: Record<
+  VmType,
+  { vcpus: number; onDemand: number; spot: number }
+> = {
+  'c4a-standard-4': { vcpus: 4, onDemand: 0.1886, spot: 0.0289 },
+  'c4a-standard-16': { vcpus: 16, onDemand: 0.7543, spot: 0.1156 },
+  'c4a-highmem-16': { vcpus: 16, onDemand: 0.9902, spot: 0.1517 },
+  'c4d-standard-4': { vcpus: 4, onDemand: 0.1965, spot: 0.0887 },
+  'n2-standard-4': { vcpus: 4, onDemand: 0.2138, spot: 0.0718 },
+};
+const hourly = (r: { type: VmType; market: Market }) =>
+  PRICES[r.type][r.market === 'spot' ? 'spot' : 'onDemand'];
 
 /** The region's CPU and disk quotas, and which zones offer each type. */
 async function preflight(c: Clients) {
@@ -407,8 +321,7 @@ async function preflight(c: Clients) {
     amd64: await ubuntu(c, 'amd64'),
     arm64: await ubuntu(c, 'arm64'),
   };
-  const price = await prices(c);
-  const out = { quotas, offered, images, price };
+  const out = { quotas, offered, images };
   evidence('preflight.json', out);
   return out;
 }
@@ -416,25 +329,19 @@ async function preflight(c: Clients) {
 async function run(rounds: number, firstRound: number, maxVcpus: number) {
   const c = clients();
   const runId = randomBytes(3).toString('hex');
-  const { images, price, quotas } = await preflight(c);
-  console.log(JSON.stringify({ quotas, price: price.byType }, null, 2));
+  const { images, quotas } = await preflight(c);
+  console.log(JSON.stringify(quotas, null, 2));
   const bucket = c.storage.bucket(`gcp-c4a-${runId}`);
   await bucket.create({
     location: REGION.toUpperCase(),
     labels: { [LABEL.key]: LABEL.value },
   });
   const results: Result[] = [];
-  const hourly = (r: { type: VmType; market: Market }) =>
-    (r.market === 'spot'
-      ? price.byType[r.type]?.spot
-      : price.byType[r.type]?.onDemand) ??
-    // Unknown price: a high $/vCPU-h bound, so the cap still holds.
-    0.07 * price.shapes[r.type]!.vcpus;
   const cost = (r: Result) =>
     ((r.marks['build-done'] ?? MAX_RUN_MIN * 60) / 3600) * hourly(r);
   const save = () => {
-    evidence('results.json', { region: REGION, price, results });
-    evidence('report.md', report(results, price.byType));
+    evidence('results.json', { region: REGION, prices: PRICES, results });
+    evidence('report.md', report(results));
   };
 
   const job = async (
@@ -560,7 +467,7 @@ async function run(rounds: number, firstRound: number, maxVcpus: number) {
   let used = 0;
   const running = new Set<Promise<void>>();
   for (const next of queue) {
-    const vcpus = price.shapes[next.type]!.vcpus;
+    const vcpus = PRICES[next.type].vcpus;
     while (used + vcpus > maxVcpus) await Promise.race(running);
     const spent = results.reduce((sum, r) => sum + cost(r), 0);
     if (spent >= COST_CAP_USD) {
@@ -585,7 +492,7 @@ async function run(rounds: number, firstRound: number, maxVcpus: number) {
   await Promise.all(running);
   save();
   await cleanup();
-  console.log(report(results, price.byType));
+  console.log(report(results));
   const failed = results.filter((r) => !r.ok);
   if (failed.length || results.length < queue.length) {
     throw new Error(
@@ -710,7 +617,7 @@ const median = (xs: number[]) => {
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 };
 
-function report(results: Result[], price: Record<string, Price>): string {
+function report(results: Result[]): string {
   const fmt = (x: number) => x.toFixed(1);
   const cell = (xs: number[]) =>
     xs.length
@@ -757,11 +664,11 @@ function report(results: Result[], price: Record<string, Price>): string {
     );
     const build = pick((r) => r.timings.build);
     const vm = pick((r) => r.marks['build-done']);
-    const rate = market === 'spot' ? price[type]?.spot : price[type]?.onDemand;
+    const rate = hourly({ type, market });
     const dollars = (xs: number[]) =>
-      rate && xs.length ? `$${((median(xs) / 3600) * rate).toFixed(4)}` : '';
+      xs.length ? `$${((median(xs) / 3600) * rate).toFixed(4)}` : '';
     lines.push(
-      `| ${type} ${market} | ${rs.length} of ${n} | ${cell(toKernel)} | ${cell(toContainer)} | ${cell(firstStep)} | ${cell(pull)} | ${cell(pick((r) => r.timings.fetch))} | ${cell(build)} | ${rate?.toFixed(4) ?? '?'} | ${dollars(build)} | ${dollars(vm)} |`,
+      `| ${type} ${market} | ${rs.length} of ${n} | ${cell(toKernel)} | ${cell(toContainer)} | ${cell(firstStep)} | ${cell(pull)} | ${cell(pick((r) => r.timings.fetch))} | ${cell(build)} | ${rate} | ${dollars(build)} | ${dollars(vm)} |`,
     );
   }
   const phases = [...new Set(results.flatMap((r) => Object.keys(r.marks)))];
@@ -820,16 +727,10 @@ if (command === 'preflight') {
   const saved = rest.map(
     (path) =>
       JSON.parse(readFileSync(path, 'utf8')) as {
-        price: { byType: Record<string, Price> };
         results: Result[];
       },
   );
-  console.log(
-    report(
-      saved.flatMap((s) => s.results),
-      saved[0]!.price.byType,
-    ),
-  );
+  console.log(report(saved.flatMap((s) => s.results)));
 } else {
   throw new Error(`Unknown command ${command}`);
 }
