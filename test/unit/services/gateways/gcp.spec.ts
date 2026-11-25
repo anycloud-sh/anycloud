@@ -1,13 +1,6 @@
 import { Readable, Writable } from 'node:stream';
 import { beforeEach, describe, it, expect, onTestFinished, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { completeCloudConfig } from '../../../../src/shared/cloud-config.js';
-import {
-  clearCatalogCache,
-  writeCatalog,
-} from '../../../../src/shared/catalog/index.js';
 import {
   GCP_PERMISSION_DENIED,
   GCP_UNAUTHENTICATED,
@@ -138,6 +131,16 @@ function filterCandidateRegions(
 beforeEach(() => {
   vi.clearAllMocks();
   resetGcpCandidatePreflightCache();
+});
+
+const { vmArchitecture } = vi.hoisted(() => ({ vmArchitecture: vi.fn() }));
+vi.mock('../../../../src/shared/cloud-config.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../../src/shared/cloud-config.js')
+    >();
+  vmArchitecture.mockImplementation(actual.vmArchitecture);
+  return { ...actual, vmArchitecture };
 });
 
 describe('sanitizeGCPLabel', () => {
@@ -1664,19 +1667,8 @@ describe('GCP GPU image selection by gpuRuntime', () => {
   );
 
   it("launches a C4A Job host on its catalog architecture's minimal image and Hyperdisk", async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'gcp-arm64-'));
-    vi.stubEnv('ANYCLOUD_DIR', dir);
-    clearCatalogCache();
-    writeCatalog(
-      CloudType.GCP,
-      'InstanceType,Region,AvailabilityZone,vCPUs,MemoryGiB,Price,SpotPrice,Arch\n' +
-        'c4a-standard-4,us-central1,us-central1-a,4,16,0.18,0.07,arm64\n',
-    );
-    onTestFinished(() => {
-      vi.unstubAllEnvs();
-      clearCatalogCache();
-      rmSync(dir, { recursive: true, force: true });
-    });
+    // The published catalog marks C4A arm64 once this fetcher publishes it.
+    vmArchitecture.mockReturnValueOnce('arm64');
     const gcp = new GCP(
       completeCloudConfig({
         ...mockConfig,
@@ -1704,6 +1696,10 @@ describe('GCP GPU image selection by gpuRuntime', () => {
 
     await gcp.compute().newVM({ ...newVMProps(null), jobHost: true });
 
+    expect(vmArchitecture).toHaveBeenCalledWith(
+      CloudType.GCP,
+      'c4a-standard-4',
+    );
     expect(getFromFamily).toHaveBeenCalledWith({
       family: 'ubuntu-minimal-2404-lts-arm64',
       project: 'ubuntu-os-cloud',
