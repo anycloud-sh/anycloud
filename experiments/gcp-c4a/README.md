@@ -11,7 +11,8 @@
   quotas, machine types and images and creates nothing. `["run"]` runs the
   builds: `--rounds=<n>` (default 10), `--first-round=<n>` and
   `--max-vcpus=<n>` (running vCPUs at once, default 32) and
-  `--max-c4a-vcpus=<n>` (running C4A vCPUs, default 24, the family quota). `["spot"]` runs the
+  `--max-c4a-vcpus=<n>` (running C4A vCPUs, default 24, the family quota)
+  and `--max-vms=<n>` (default 6, under the region's 8 external addresses). `["spot"]` runs the
   spot probe. `report <results.json...>` rewrites the build report without a
   cloud.
 

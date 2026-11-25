@@ -333,6 +333,7 @@ async function run(
   firstRound: number,
   maxVcpus: number,
   maxC4aVcpus: number,
+  maxVms: number,
 ) {
   const c = clients();
   const runId = randomBytes(3).toString('hex');
@@ -498,6 +499,7 @@ async function run(
     // quota (CPUS_PER_VM_FAMILY) is separate from the project's CPUs.
     const index = pending.findIndex(
       ({ type }) =>
+        running.size < maxVms &&
         used + PRICES[type].vcpus <= maxVcpus &&
         (arch(type) === 'amd64' || usedC4a + PRICES[type].vcpus <= maxC4aVcpus),
     );
@@ -562,27 +564,37 @@ async function spot() {
   for (const zone of ZONES) {
     for (const type of TYPES) {
       const name = `gcp-c4a-spot-${runId}-${type}-${zone.slice(-1)}`;
-      try {
-        await insert(c, {
-          type,
-          zone,
-          name,
-          image: images[arch(type)].link,
-          market: 'spot',
-          diskGb: 10,
-        });
-        attempts.push({ type, zone, result: 'launched' });
-        // A failed delete isn't a refusal; the cleanup deletes what's left.
-        await remove(c, zone, name).catch(() => {});
-      } catch (error) {
-        attempts.push({
-          type,
-          zone,
-          result: codeOf(error),
-          message: messageOf(error).slice(0, 300),
-        });
+      // A quota refusal isn't a zone's capacity: a VM just deleted can
+      // hold quota for a moment, so it waits and tries again.
+      for (let retry = 0; retry < 3; retry++) {
+        // The console keeps the quota refusal; the table, the last try.
+        if (retry) {
+          attempts.pop();
+          await sleep(30_000);
+        }
+        try {
+          await insert(c, {
+            type,
+            zone,
+            name,
+            image: images[arch(type)].link,
+            market: 'spot',
+            diskGb: 10,
+          });
+          attempts.push({ type, zone, result: 'launched' });
+          // A failed delete isn't a refusal; the cleanup deletes what's left.
+          await remove(c, zone, name).catch(() => {});
+        } catch (error) {
+          attempts.push({
+            type,
+            zone,
+            result: codeOf(error),
+            message: messageOf(error).slice(0, 300),
+          });
+        }
+        console.log(JSON.stringify(attempts.at(-1)));
+        if (attempts.at(-1)!.result !== 'QUOTA_EXCEEDED') break;
       }
-      console.log(JSON.stringify(attempts.at(-1)));
     }
   }
   evidence('spot-launches.json', { at: new Date().toISOString(), attempts });
@@ -769,6 +781,8 @@ if (command === 'preflight') {
     Number(flag('first-round', '1')),
     Number(flag('max-vcpus', '32')),
     Number(flag('max-c4a-vcpus', '24')),
+    // Each VM holds an external address: IN_USE_ADDRESSES is 8 here.
+    Number(flag('max-vms', '6')),
   );
 } else if (command === 'spot') {
   await spot();
