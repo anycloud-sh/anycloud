@@ -5,6 +5,24 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.84
+
+### Jobs run on GCP Axion
+
+Jobs can now run on GCP's Arm types, such as Axion's `c4a-standard-16` or `c4a-highmem-16`, spot or on-demand, with C4A prices in every region that offers it. The image needs a `linux/arm64` build.
+
+### Jobs run on AWS Graviton
+
+Jobs can now run on AWS Graviton (arm64) types such as `m8g.xlarge`, spot or on-demand. The image needs a `linux/arm64` build, and a `--vm-type` fallback list can't mix Graviton and x86-64 types.
+
+### GCP Jobs set their own Hyperdisk performance
+
+`--disk-iops` and `--disk-throughput` now set a GCP Job's Hyperdisk Balanced boot disk, not only AWS gp3, for example `--disk-iops 3000 --disk-throughput 750` on `c4d`. Persistent Disk fallback types keep their tier's disk.
+
+### Jobs leave the queue sooner
+
+A submitted Job now leaves the queue as soon as a provisioning slot is free, instead of at the scheduler's next 5-second tick, and a Job whose image is pulled over SSH starts sooner once the pull finishes.
+
 ## 0.1.83
 
 ### AWS launches skip a zone out of capacity at once
