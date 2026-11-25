@@ -140,9 +140,15 @@ async function seedCatalog() {
       `cp /etc/hosts /etc/hosts.gcp-c4a && echo "0.0.0.0 ${CATALOG_HOSTS.join(' ')}" >> /etc/hosts`,
     );
   }
+  // /etc/hosts is bind-mounted in a container runner: rewrite it in place. A
+  // failure must not stop the API's own exit handler.
   process.on('exit', () => {
-    if (existsSync('/etc/hosts.gcp-c4a'))
-      sudo('mv /etc/hosts.gcp-c4a /etc/hosts');
+    try {
+      if (existsSync('/etc/hosts.gcp-c4a'))
+        sudo('cat /etc/hosts.gcp-c4a > /etc/hosts && rm /etc/hosts.gcp-c4a');
+    } catch (error) {
+      console.error(error);
+    }
   });
   return {
     rows: entries.length,
