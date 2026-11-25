@@ -17,7 +17,7 @@ concurrency:
 jobs:
   style:
     timeout-minutes: 15
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

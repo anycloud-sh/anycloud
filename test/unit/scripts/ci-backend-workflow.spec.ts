@@ -158,55 +158,60 @@ const HOSTED_FALLBACKS: Record<string, Record<string, string>> = {
 };
 
 // Each job's backmesh label, used unless CI_BACKEND is `hosted`; unlisted
-// jobs run on backmesh-4. backmesh-2 takes the short notify and cleanup
-// jobs; backmesh-8 the deps base build.
+// jobs run on backmesh-ubuntu-2404-4vcpu. backmesh-ubuntu-2404-2vcpu takes the short notify and cleanup
+// jobs; backmesh-ubuntu-2404-8vcpu the deps base build.
 // On-demand labels take the K3s local clusters and the multi-hour dispatch
 // jobs, where a spot reclaim would cost more than on demand. The KVM
 // labels give Local SmolVM `/dev/kvm`.
 const POST_CLEANUP = {
-  'post-cleanup-aws': 'backmesh-2',
-  'post-cleanup-azure': 'backmesh-2',
-  'post-cleanup-gcp': 'backmesh-2',
-  'post-cleanup-lambda': 'backmesh-2',
+  'post-cleanup-aws': 'backmesh-ubuntu-2404-2vcpu',
+  'post-cleanup-azure': 'backmesh-ubuntu-2404-2vcpu',
+  'post-cleanup-gcp': 'backmesh-ubuntu-2404-2vcpu',
+  'post-cleanup-lambda': 'backmesh-ubuntu-2404-2vcpu',
 };
 const BACKMESH_LABELS: Record<string, Record<string, string>> = {
-  'actions-storage.yml': { cleanup: 'backmesh-2' },
-  'api-performance.yml': { compare: 'backmesh-od-4' },
-  'build-deps-base.yml': { build: 'backmesh-8' },
-  'e2e-cluster-cloud.yml': { 'e2e-cluster-cloud': 'backmesh-od-4' },
-  'e2e-gpu.yml': { ...POST_CLEANUP, 'service-native-audit': 'backmesh-2' },
+  'actions-storage.yml': { cleanup: 'backmesh-ubuntu-2404-2vcpu' },
+  'api-performance.yml': { compare: 'backmesh-ubuntu-2404-od-4vcpu' },
+  'build-deps-base.yml': { build: 'backmesh-ubuntu-2404-8vcpu' },
+  'e2e-cluster-cloud.yml': {
+    'e2e-cluster-cloud': 'backmesh-ubuntu-2404-od-4vcpu',
+  },
+  'e2e-gpu.yml': {
+    ...POST_CLEANUP,
+    'service-native-audit': 'backmesh-ubuntu-2404-2vcpu',
+  },
   'e2e-job.yml': POST_CLEANUP,
   'e2e-serve.yml': POST_CLEANUP,
   'e2e-vm.yml': POST_CLEANUP,
   'integration.yml': {
-    'e2e-cluster-local': 'backmesh-od-8',
-    'local-smolvm': 'backmesh-kvm-4',
+    'e2e-cluster-local': 'backmesh-ubuntu-2404-od-8vcpu',
+    'local-smolvm': 'backmesh-ubuntu-2404-kvm-4vcpu',
   },
   'lambda-boot-failover.yml': {
-    'forced-timeout': 'backmesh-od-4',
-    'cleanup-audit': 'backmesh-2',
+    'forced-timeout': 'backmesh-ubuntu-2404-od-4vcpu',
+    'cleanup-audit': 'backmesh-ubuntu-2404-2vcpu',
   },
   'managed-gpu-recovery.yml': {
-    recover: 'backmesh-od-4',
-    'azure-job-identity-readback': 'backmesh-2',
+    recover: 'backmesh-ubuntu-2404-od-4vcpu',
+    'azure-job-identity-readback': 'backmesh-ubuntu-2404-2vcpu',
   },
   'mutant-parity.yml': {
-    side: 'backmesh-od-4',
-    compare: 'backmesh-od-4',
-    score: 'backmesh-od-4',
+    side: 'backmesh-ubuntu-2404-od-4vcpu',
+    compare: 'backmesh-ubuntu-2404-od-4vcpu',
+    score: 'backmesh-ubuntu-2404-od-4vcpu',
   },
-  'mutant-survivors.yml': { comment: 'backmesh-2' },
-  'notify-slack.yml': { notify: 'backmesh-2' },
+  'mutant-survivors.yml': { comment: 'backmesh-ubuntu-2404-2vcpu' },
+  'notify-slack.yml': { notify: 'backmesh-ubuntu-2404-2vcpu' },
   // A local nuke boots SmolVM microVMs, 300 of them in 8 minutes on kvm-16;
   // the cloud ones run for hours.
   'nuke.yml': {
-    nuke: "(inputs.provider || 'azure') == 'local' && 'backmesh-kvm-16' || 'backmesh-od-4'",
+    nuke: "(inputs.provider || 'azure') == 'local' && 'backmesh-ubuntu-2404-kvm-16vcpu' || 'backmesh-ubuntu-2404-od-4vcpu'",
   },
 };
 
 /** The `||` branch that follows a job's hosted runner. */
 function backmeshBranches(file: string, job: string): string {
-  const label = BACKMESH_LABELS[file]?.[job] ?? 'backmesh-4';
+  const label = BACKMESH_LABELS[file]?.[job] ?? 'backmesh-ubuntu-2404-4vcpu';
   return /^[a-z0-9-]+$/.test(label) ? `'${label}'` : label;
 }
 

@@ -95,7 +95,7 @@ permissions:
 
 jobs:
   e2e-cluster-cloud:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     environment: cloud-e2e
     # The role checks wait out trust propagation and key overlap windows.
     timeout-minutes: ${{ inputs.live_checks != '' && 250 || (inputs.restore_stage || inputs.from_release) && 140 || inputs.hosted_stage && 95 || 75 }}

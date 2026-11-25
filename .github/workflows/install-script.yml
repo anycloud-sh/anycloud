@@ -27,7 +27,7 @@ jobs:
   deploy:
     # For the post-Release trigger, only deploy if the Release actually succeeded.
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloudflare-deploy
     steps:
       - uses: actions/checkout@v5

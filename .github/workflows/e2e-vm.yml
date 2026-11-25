@@ -38,7 +38,7 @@ permissions:
 jobs:
   e2e-vm-vitest:
     name: e2e-vm-vitest / ${{ matrix.test }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 180
     # Every cell blocks. Forced-cleanup dispatches fail every cell on purpose,
@@ -149,7 +149,7 @@ jobs:
           retention-days: 3
 
   post-cleanup-aws:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-vm-vitest]
     if: always() && !cancelled() && !inputs.lambda_only
@@ -182,7 +182,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/aws.ts
 
   post-cleanup-azure:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-vm-vitest]
     if: always() && !cancelled() && !inputs.lambda_only
@@ -216,7 +216,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/azure.ts
 
   post-cleanup-gcp:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-vm-vitest]
     if: always() && !cancelled() && !inputs.lambda_only
@@ -253,7 +253,7 @@ jobs:
         run: CIPHER_KEY=$(openssl rand -hex 32) npx tsx ci/cleanup/gcp.ts
 
   post-cleanup-lambda:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     environment: cloud-e2e
     needs: [e2e-vm-vitest]
     # Keep invalid selections blocking even when only advisory forced cells ran.

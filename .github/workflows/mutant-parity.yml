@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   plans:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: 5
     outputs:
       plans: ${{ steps.resolve.outputs.plans }}
@@ -71,7 +71,7 @@ jobs:
   side:
     needs: plans
     if: inputs.mode == 'parity'
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     # An earlier parity run's sides took 44 and 58 minutes in m7.
     timeout-minutes: 120
     strategy:
@@ -116,7 +116,7 @@ jobs:
     # Compares every plan, even if another plan failed; a plan missing a side
     # fails here.
     if: ${{ !cancelled() && inputs.mode == 'parity' && needs.plans.result == 'success' }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     # The rerun can cost up to a side run on each side.
     timeout-minutes: 120
     strategy:
@@ -153,7 +153,7 @@ jobs:
   score:
     needs: plans
     if: inputs.mode == 'score'
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-od-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -180,7 +180,7 @@ jobs:
     # Reports every planned file, even if a chunk failed; a file missing a
     # chunk is listed as not scored.
     if: ${{ !cancelled() && inputs.mode == 'score' && needs.plans.result == 'success' }}
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: 10
     steps:
       - *checkout

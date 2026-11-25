@@ -261,26 +261,26 @@ Every other `runs-on` has the same shape, with the job's hosted runner and
 backmesh label (Release's artifact cleanup also takes `inputs.hosted`):
 
 ```yaml
-runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
 ```
 
-backmesh runs one job per ephemeral runner. Jobs run on `backmesh-4` (4 vCPU,
+backmesh runs one job per ephemeral runner. Jobs run on `backmesh-ubuntu-2404-4vcpu` (4 vCPU,
 15.5 GiB) unless they need another size:
 
-- `backmesh-2`: Slack notifications, artifact cleanup, the E2E post-cleanups,
+- `backmesh-ubuntu-2404-2vcpu`: Slack notifications, artifact cleanup, the E2E post-cleanups,
   the GPU service-native audit, the Lambda boot failover's cleanup audit, the
   managed GPU recovery's Azure readback, Mutant Survivors' comment and the
   agent workflows' bookkeeping jobs.
-- `backmesh-8`: the claim burst and the deps base build.
-- `backmesh-od-4`, on demand: the multi-hour dispatch jobs (API Performance
+- `backmesh-ubuntu-2404-8vcpu`: the claim burst and the deps base build.
+- `backmesh-ubuntu-2404-od-4vcpu`, on demand: the multi-hour dispatch jobs (API Performance
   compare, Mutant Parity, E2E Cluster Tests, the Lambda boot failover trials,
   managed GPU recovery and cloud nukes), where a spot reclaim would cost more
   than on demand.
-- `backmesh-od-8`, on demand: the K3s local clusters, which run 46–54 minutes on
+- `backmesh-ubuntu-2404-od-8vcpu`, on demand: the K3s local clusters, which run 46–54 minutes on
   the release path.
-- `backmesh-kvm-4`, with `/dev/kvm`: Local SmolVM.
-- `backmesh-kvm-16`, with `/dev/kvm`: the local nuke, whose 300 microVMs ran in
-  8 minutes there and ran out of capacity on `backmesh-kvm-4`.
+- `backmesh-ubuntu-2404-kvm-4vcpu`, with `/dev/kvm`: Local SmolVM.
+- `backmesh-ubuntu-2404-kvm-16vcpu`, with `/dev/kvm`: the local nuke, whose 300 microVMs ran in
+  8 minutes there and ran out of capacity on `backmesh-ubuntu-2404-kvm-4vcpu`.
 
 `BACKMESH_LABELS` in `test/unit/scripts/ci-backend-workflow.spec.ts` pins each
 label. backmesh retries a run whose only failures were spot reclaims, on

@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && matrix.runner || 'backmesh-8' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && matrix.runner || 'backmesh-ubuntu-2404-8vcpu' }}
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +129,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@v5
 

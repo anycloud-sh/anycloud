@@ -47,7 +47,7 @@ concurrency:
 
 jobs:
   docs:
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -64,7 +64,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     # api-startup builds the API image and resolves the private prebuilt deps
     # bases from GHCR; keep the permission explicit so it does not depend on org
     # token defaults.
@@ -175,7 +175,7 @@ jobs:
 
   vitest-e2e:
     name: vitest-e2e / ${{ matrix.test }}
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
 
     strategy:
@@ -275,7 +275,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 35
 
@@ -369,7 +369,7 @@ jobs:
   azure-onboarding-runner-loss-create:
     name: azure-onboarding-runner-loss-create
     if: github.event_name == 'workflow_dispatch' && inputs.azure_runner_loss
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 25
     permissions:
@@ -400,7 +400,7 @@ jobs:
       inputs.azure_runner_loss &&
       needs.azure-onboarding-runner-loss-create.result != 'skipped'
     # Cleanup uses a fresh CLI profile; no creator state is handed to this job.
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 25
     permissions:
@@ -434,7 +434,7 @@ jobs:
       matrix:
         member: [e2e-cluster-local]
     # On demand: a spot reclaim on the release path costs a full rerun.
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-od-8' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-od-8vcpu' }}
     # Checkout to K3s cluster up ~2 min; the hosted-chart stage adds an API
     # image build and a Helm install plus upgrade (estimated ~12 min). 60 keeps
     # headroom over a loaded runner without hiding a hang for long.
@@ -516,7 +516,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     strategy:
       fail-fast: false
@@ -592,7 +592,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 30
     # Vitest E2E cells that exercise the full API/CLI path but never provision a
@@ -697,7 +697,7 @@ jobs:
 
   local-smolvm:
     name: local-smolvm / ${{ matrix.suite }}
-    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-kvm-4' }}
+    runs-on: ${{ (vars.CI_BACKEND == 'hosted' || github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-kvm-4vcpu' }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
     # Each runtime/surface gets a fresh runner. In particular, a Job failure
     # must not skip VM or Serve coverage by putting later tests behind it.

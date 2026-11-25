@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   preflight:
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     steps:
       # backmesh's image has no OpenSSH client.
       - name: Install ssh
@@ -29,7 +29,7 @@ jobs:
 
   refresh:
     needs: preflight
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-4' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-latest' || 'backmesh-ubuntu-2404-4vcpu' }}
     environment: cloud-e2e
     outputs:
       failed_clouds: ${{ steps.fetch.outputs.failed_clouds }}

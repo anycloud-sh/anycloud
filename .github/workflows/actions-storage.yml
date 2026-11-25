@@ -54,7 +54,7 @@ permissions:
 jobs:
   cleanup:
     # A fork's or Dependabot's run never starts a backmesh runner.
-    runs-on: ${{ (inputs.hosted || vars.CI_BACKEND == 'hosted' || github.event_name == 'workflow_run' && (github.event.workflow_run.head_repository.full_name != github.repository || github.event.workflow_run.actor.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-2' }}
+    runs-on: ${{ (inputs.hosted || vars.CI_BACKEND == 'hosted' || github.event_name == 'workflow_run' && (github.event.workflow_run.head_repository.full_name != github.repository || github.event.workflow_run.actor.login == 'dependabot[bot]')) && 'ubuntu-latest' || 'backmesh-ubuntu-2404-2vcpu' }}
     timeout-minutes: 10
     steps:
       # A workflow_run from a PR must never select executable cleanup code.
