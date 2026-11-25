@@ -925,7 +925,8 @@ describe('resolveProvisioningTarget — published GCP zone topology', () => {
 // the gateway from it runs completeCloudConfig → getRegionByVMType → throws,
 // which the old code never hit (it never built a compute gateway mid-resolution).
 describe('resolveProvisioningTarget — capability-probe gateway', () => {
-  const CATALOG_STALE_NEURON_VM = 'trn3.48xlarge';
+  // A recognized Neuron family no published catalog lists (AWS has no such size).
+  const CATALOG_STALE_NEURON_VM = 'trn1n.2xlarge';
 
   beforeAll(() => {
     config.cipherKey = randomBytes(32).toString('hex');

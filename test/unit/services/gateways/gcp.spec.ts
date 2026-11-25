@@ -133,6 +133,16 @@ beforeEach(() => {
   resetGcpCandidatePreflightCache();
 });
 
+const { vmArchitecture } = vi.hoisted(() => ({ vmArchitecture: vi.fn() }));
+vi.mock('../../../../src/shared/cloud-config.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../../src/shared/cloud-config.js')
+    >();
+  vmArchitecture.mockImplementation(actual.vmArchitecture);
+  return { ...actual, vmArchitecture };
+});
+
 describe('sanitizeGCPLabel', () => {
   describe('uppercase letters', () => {
     it('should convert uppercase to lowercase', () => {
@@ -1653,6 +1663,52 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       // A plain VM Job launches as before, so an organization policy that
       // forbids nested virtualization doesn't refuse it.
       expect(inserted.advancedMachineFeatures).toEqual(features);
+    },
+  );
+
+  it.each([
+    ['c4a-standard-4', 'hyperdisk-balanced'],
+    ['t2a-standard-4', 'pd-ssd'],
+  ])(
+    "launches an Arm %s Job host on its catalog architecture's minimal image and %s",
+    async (vmType, diskType) => {
+      // The published catalog marks GCP's Arm types arm64 once this fetcher
+      // publishes it.
+      vmArchitecture.mockReturnValueOnce('arm64');
+      const gcp = new GCP(
+        completeCloudConfig({ ...mockConfig, vmType, diskTier: DiskTier.High }),
+      );
+      const getFromFamily = vi
+        .fn()
+        .mockResolvedValue([{ selfLink: 'projects/ubuntu/images/arm64' }]);
+      gcp.imagesClient = fakeSdkClient({ getFromFamily });
+      const insert = vi.fn().mockResolvedValue([{ name: 'op' }]);
+      gcp.instancesClient = fakeSdkClient({
+        insert,
+        get: vi.fn().mockResolvedValue([
+          {
+            status: 'RUNNING',
+            networkInterfaces: [
+              { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
+            ],
+          },
+        ]),
+      });
+      gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
+
+      await gcp.compute().newVM({ ...newVMProps(null), jobHost: true });
+
+      expect(vmArchitecture).toHaveBeenCalledWith(CloudType.GCP, vmType);
+      expect(getFromFamily).toHaveBeenCalledWith({
+        family: 'ubuntu-minimal-2404-lts-arm64',
+        project: 'ubuntu-os-cloud',
+      });
+      expect(
+        insert.mock.calls[0]![0].instanceResource.disks[0].initializeParams,
+      ).toMatchObject({
+        sourceImage: 'projects/ubuntu/images/arm64',
+        diskType: `zones/us-central1-a/diskTypes/${diskType}`,
+      });
     },
   );
 

@@ -93,6 +93,7 @@ import {
   DEFAULT_DISK_TIER,
   getZonesForVMType,
   validateGCPZoneSuffixSyntax,
+  vmArchitecture,
 } from '../../../shared/cloud-config.js';
 import {
   memoizeAsyncTtl,
@@ -404,7 +405,12 @@ export function createGcpBaseImageResolver(
 ): CloudBaseImageResolver<ResolvedGcpBaseImage> {
   return createCloudBaseImageResolver({
     type: CloudType.GCP,
-    rawResolveBaseImage: async ({ gpuRuntime, vmType, minimal }) => {
+    rawResolveBaseImage: async ({
+      gpuRuntime,
+      vmType,
+      minimal,
+      architecture = 'amd64',
+    }) => {
       const gpuCapability =
         gpuRuntime === GpuRuntime.Cuda && vmType
           ? gcpGpuMachineCapability(vmType)
@@ -421,8 +427,8 @@ export function createGcpBaseImageResolver(
             ? gpuCapability.image.family
             : 'common-cu129-ubuntu-2404-nvidia-580'
           : minimal
-            ? 'ubuntu-minimal-2404-lts-amd64'
-            : 'ubuntu-2404-lts-amd64';
+            ? `ubuntu-minimal-2404-lts-${architecture}`
+            : `ubuntu-2404-lts-${architecture}`;
       const project =
         gpuRuntime === GpuRuntime.Cuda
           ? gpuCapability?.launchQualified === true
@@ -1346,6 +1352,7 @@ export class GCP {
       gpuRuntime,
       vmType: this.vmType,
       minimal: params.jobHost,
+      architecture: vmArchitecture(CloudType.GCP, this.vmType),
     });
 
     // Translate the effective tier only after the optimizer selects a target.
