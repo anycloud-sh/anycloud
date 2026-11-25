@@ -9,7 +9,10 @@ import {
   writeCatalog,
 } from '../../../../src/shared/catalog/index.js';
 import { getVMTypeDetails } from '../../../../src/shared/catalog/vm-details.js';
-import { nestedVirtualizationSupport } from '../../../../src/shared/cloud-config.js';
+import {
+  nestedVirtualizationSupport,
+  vmArchitecture,
+} from '../../../../src/shared/cloud-config.js';
 
 const dirs: string[] = [];
 function install(csv: string, cloud = CloudType.AWS) {
@@ -141,5 +144,23 @@ describe('VM catalog details', () => {
         },
       ],
     });
+  });
+
+  it("reads each type's architecture from the catalog's Arch column", () => {
+    install(
+      'InstanceType,Region,vCPUs,MemoryGiB,Price,SpotPrice,Arch\n' +
+        'm8g.xlarge,us-east-1,4,16,0.17952,0.0737,arm64\n' +
+        'm8a.xlarge,us-east-1,4,16,0.24,0.1,x86_64\n',
+    );
+    expect(vmArchitecture(CloudType.AWS, 'm8g.xlarge')).toBe('arm64');
+    expect(vmArchitecture(CloudType.AWS, 'M8G.XLARGE')).toBe('arm64');
+    expect(vmArchitecture(CloudType.AWS, 'm8a.xlarge')).toBe('amd64');
+    // No Arch column, or a type it doesn't list: amd64, as before.
+    expect(vmArchitecture(CloudType.AWS, 'unlisted.large')).toBe('amd64');
+    install(
+      'InstanceType,Region,vCPUs,MemoryGiB,Price\nn2-standard-4,us-central1,4,16,0.19\n',
+      CloudType.GCP,
+    );
+    expect(vmArchitecture(CloudType.GCP, 'n2-standard-4')).toBe('amd64');
   });
 });

@@ -45,15 +45,21 @@ COPY . .
 CMD ["python", "main.py"]
 ```
 
-Cloud workload VMs run Linux on x86-64. Specify `linux/amd64`, especially when
-building on Apple Silicon:
+<span id="architecture"></span>
+
+Cloud workload VMs run Linux on x86-64 (`linux/amd64`), except AWS Graviton
+types, such as `m8g`, which run `linux/arm64`. Build for the VM types you
+request, especially on Apple Silicon. A multi-platform image runs on either:
 
 ```bash
 docker buildx build \
-  --platform linux/amd64 \
+  --platform linux/amd64,linux/arm64 \
   -t ghcr.io/YOUR_GITHUB_USERNAME/my-app:latest \
   --push .
 ```
+
+Anycloud refuses an image without a build for the requested architecture
+before it starts a VM, and fails the Job if the pull on the VM finds none.
 
 To push to GHCR from your machine, log Docker in with the GitHub CLI. Its
 default login doesn't include `write:packages`, so add it first. `gh auth

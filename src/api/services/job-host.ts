@@ -12,6 +12,7 @@ import {
   CONTAINERD_STORE_DAEMON_CONFIG_COMMAND,
   DOCKER_SYSTEMD_UNIT,
   dockerArchiveUrl,
+  HOST_PLATFORM_FLAG,
   IPTABLES_DEBS,
   JOB_HOST_DOCKER_VERSION,
   PIGZ_DEBS,
@@ -423,7 +424,7 @@ wait "$pull"; rc=$?
 if [ "$rc" != 0 ] && [ "$rc" != 124 ]; then
   echo docker-fallback > "$dir/method"
   for attempt in 1 2 3; do
-    timeout ${PRE_PULL_ATTEMPT_SECONDS} docker pull ${shellEscape(prePullImage)} >> "$dir/pull.log" 2>&1 && sync && rc=0 && break
+    timeout ${PRE_PULL_ATTEMPT_SECONDS} docker pull ${HOST_PLATFORM_FLAG} ${shellEscape(prePullImage)} >> "$dir/pull.log" 2>&1 && sync && rc=0 && break
     rc=$?
     [ "$rc" = 124 ] && break
     [ "$attempt" = 3 ] || sleep $((attempt * 3))

@@ -281,6 +281,22 @@ describe('formatEvents', () => {
     );
   });
 
+  it("names the arm64 build a Graviton host's pull asked for", () => {
+    const events: WorkloadEvent[] = [
+      makeWorkloadEvent({
+        state: WorkloadState.Failed,
+        createdAt: new Date('2024-01-15T10:30:00Z').getTime(),
+        metadata: {
+          error:
+            'no matching manifest for linux/arm64/v8 in the manifest list entries',
+        },
+      }),
+    ];
+    const out = formatEvents(events, CloudType.AWS);
+    expect(out).toContain('has no linux/arm64 build');
+    expect(out).not.toContain('linux/amd64');
+  });
+
   it('should display error from metadata for errored state', () => {
     const events: WorkloadEvent[] = [
       makeWorkloadEvent({

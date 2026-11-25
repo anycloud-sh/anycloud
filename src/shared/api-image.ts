@@ -15,7 +15,7 @@ export async function resolveApiImage(
   reference: string,
 ): Promise<{ digest: string; chart: string }> {
   const inspection = await inspectImage(reference);
-  if (inspection.verdict !== 'ok' || !inspection.amd64Digest) {
+  if (inspection.verdict !== 'ok' || !inspection.digest) {
     throw new DeployError(
       `Could not resolve the API image ${reference} to an immutable digest (${inspection.verdict})`,
       400,
@@ -31,5 +31,5 @@ export async function resolveApiImage(
       400,
     );
   }
-  return { digest: inspection.amd64Digest, chart };
+  return { digest: inspection.digest, chart };
 }

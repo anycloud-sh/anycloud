@@ -40,6 +40,9 @@ import {
 import { errorMessage } from '../../../shared/log-diagnostics.js';
 import { jobHostPrePull } from '../job-host.js';
 import { DeployError } from '../../../shared/errors.js';
+import { archMismatchGuidance } from '../../../shared/error-formatter.js';
+import { workloadArchitecture } from '../../../shared/cloud-config.js';
+import { HOST_PLATFORM_FLAG } from '../../runtime-artifacts.js';
 
 type CommandResult = { code: number; stdout: string; stderr: string };
 
@@ -67,11 +70,11 @@ class PullError extends DeployError {
     public readonly pullStderr: string,
     public readonly diskSpace: string,
     public readonly imagePull: ImagePullTelemetry,
-    /** A full root disk is a user-sized fault (400): runStep ends the attempt
-     * Invalid instead of retrying on a VM that the Job's data fills again. */
-    rootDiskFull = false,
+    /** A full root disk or an image without the host's architecture is the
+     * user's (400): runStep ends the attempt Invalid instead of retrying. */
+    userFault = false,
   ) {
-    super(message, rootDiskFull ? 400 : 500);
+    super(message, userFault ? 400 : 500);
     this.name = 'PullError';
     this.elapsedMs = imagePull.elapsedMs;
   }
@@ -515,7 +518,9 @@ async function pullImageRemote(
       unit: `ac-pull-${id.replace(/[^a-zA-Z0-9_.-]/g, '_')}`,
       // Image passed via env so it needs no nested quoting and is not
       // re-evaluated by the SSH shell.
-      command: measuredPullCommand('docker pull "$AC_PULL_IMAGE"'),
+      command: measuredPullCommand(
+        `docker pull ${HOST_PLATFORM_FLAG} "$AC_PULL_IMAGE"`,
+      ),
       env: {
         AC_PULL_IMAGE: image,
         ...(dockerConfig && { DOCKER_CONFIG: dockerConfig }),
@@ -558,13 +563,18 @@ async function pullImageRemote(
       },
     );
     const fullDisk = rootDiskFullDetail(diskSpace, logTail);
+    const wrongPlatform = archMismatchGuidance(
+      logTail,
+      image,
+      workloadArchitecture(props),
+    );
     throw new PullError(
-      `Failed to pull image '${image}' on ${docker.host}: ${fullDisk ? `${fullDisk} (${msg})` : msg}`,
+      `Failed to pull image '${image}' on ${docker.host}: ${fullDisk ? `${fullDisk} (${msg})` : (wrongPlatform ?? msg)}`,
       logTail,
       '',
       diskSpace,
       imagePull,
-      fullDisk !== null,
+      fullDisk !== null || wrongPlatform !== null,
     );
   }
 }

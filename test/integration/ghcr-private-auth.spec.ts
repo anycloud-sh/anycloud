@@ -78,7 +78,7 @@ describe('private GHCR manifest auth', () => {
       }
       expect(result.verdict).toBe(ImageVerdict.Ok);
       expect(result.failureReason).toBeUndefined();
-      expect(result.amd64Digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
     },
     NET_TIMEOUT_MS,
@@ -106,7 +106,7 @@ describe('a token with exactly the login scopes (read:org read:packages)', () =>
     async () => {
       const result = await inspectImage(CI_PRIVATE_IMAGE, token());
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
 
       const { packages, warnings } = await listGitHubPackages(token());
       expect(warnings).toEqual([]);
@@ -129,7 +129,7 @@ describe('a token with no scopes', () => {
 
       const result = await inspectImage(CI_PRIVATE_IMAGE, token());
       expect(result.verdict).not.toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toBeNull();
+      expect(result.digest).toBeNull();
     },
     NET_TIMEOUT_MS,
   );

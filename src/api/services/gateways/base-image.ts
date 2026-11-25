@@ -1,4 +1,5 @@
 import type { CloudType, GpuRuntime } from '../../../shared/cloud.js';
+import type { ImageArchitecture } from '../../../shared/image.js';
 
 interface BaseImageResolutionRequest {
   readonly gpuRuntime?: GpuRuntime | null;
@@ -6,6 +7,8 @@ interface BaseImageResolutionRequest {
   readonly vmType?: string;
   /** A CPU VM Job host: Ubuntu minimal rather than server. */
   readonly minimal?: boolean;
+  /** The VM type's CPU architecture; amd64 when omitted. */
+  readonly architecture?: ImageArchitecture;
 }
 
 export interface ResolvedBaseImage {

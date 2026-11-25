@@ -54,6 +54,7 @@ import {
 import {
   CancelSpotInstanceRequestsCommand,
   CreateTagsCommand,
+  DescribeImagesCommand,
   DescribeInstancesCommand,
   DescribeSecurityGroupsCommand,
   DescribeSpotInstanceRequestsCommand,
@@ -3177,6 +3178,57 @@ describe('AWS GPU image support', () => {
       );
     });
 
+    it('selects the arm64 Ubuntu 24.04 minimal image for a Graviton Job host', async () => {
+      const aws = new AWS(completeCloudConfig(mockConfig));
+      const send = vi.fn().mockResolvedValue({
+        Images: [
+          {
+            ImageId: 'ami-amd64',
+            Name: 'ubuntu-minimal/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-minimal-20261029',
+            CreationDate: '2026-10-29T00:00:00.000Z',
+            ...amiRoot(),
+          },
+          {
+            ImageId: 'ami-arm64',
+            Name: 'ubuntu-minimal/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-minimal-20261028',
+            CreationDate: '2026-10-28T00:00:00.000Z',
+            ...amiRoot(),
+          },
+        ],
+      });
+      const client = { send };
+      aws.ec2client = client as any;
+
+      await expect(aws.resolveAmi(null, true, 'arm64')).resolves.toEqual(
+        resolvedAmi('ami-arm64'),
+      );
+      expect(vi.mocked(DescribeImagesCommand).mock.lastCall?.[0]).toMatchObject(
+        {
+          Filters: expect.arrayContaining([
+            {
+              Name: 'name',
+              Values: [
+                'ubuntu-minimal/images/hvm-ssd*/ubuntu-noble-24.04-arm64-minimal-*',
+              ],
+            },
+            { Name: 'architecture', Values: ['arm64'] },
+          ]),
+        },
+      );
+    });
+
+    it('refuses an arm64 GPU type before any AWS call', async () => {
+      const aws = new AWS(completeCloudConfig(mockConfig));
+      const send = vi.fn();
+      const client = { send };
+      aws.ec2client = client as any;
+
+      await expect(
+        aws.resolveAmi(GpuRuntime.Cuda, false, 'arm64'),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(send).not.toHaveBeenCalled();
+    });
+
     it('should select Ubuntu 24.04 LTS AMI when runtime is undefined', async () => {
       const aws = new AWS(completeCloudConfig(mockConfig));
 
@@ -3388,7 +3440,7 @@ describe('AWS GPU image support', () => {
         }),
       );
 
-      expect(resolveAmiSpy).toHaveBeenCalledWith('cuda', undefined);
+      expect(resolveAmiSpy).toHaveBeenCalledWith('cuda', undefined, 'amd64');
     });
 
     it('should pass gpuRuntime=null to resolveAmi', async () => {
@@ -3430,7 +3482,45 @@ describe('AWS GPU image support', () => {
         }),
       );
 
-      expect(resolveAmiSpy).toHaveBeenCalledWith(null, undefined);
+      expect(resolveAmiSpy).toHaveBeenCalledWith(null, undefined, 'amd64');
+    });
+
+    it("launches a Graviton type on its catalog architecture's image", async () => {
+      const aws = new AWS(
+        completeCloudConfig({ ...mockConfig, vmType: 'm8g.xlarge' }),
+      );
+      const resolveAmiSpy = vi
+        .spyOn(providerCalls(aws), 'resolveAmi')
+        .mockResolvedValue(resolvedAmi('ami-arm64'));
+      vi.spyOn(aws, 'ensureSharedSecurityGroup').mockResolvedValue('sg-123');
+      const mockEC2Client = {
+        send: vi
+          .fn()
+          .mockResolvedValueOnce({ Instances: [{ InstanceId: 'i-123' }] })
+          .mockResolvedValueOnce({
+            Reservations: [
+              {
+                Instances: [
+                  { InstanceId: 'i-123', PublicIpAddress: '1.2.3.4' },
+                ],
+              },
+            ],
+          }),
+      };
+      aws.ec2client = aws.ec2LaunchClient = mockEC2Client as any;
+
+      await aws.compute().newVM(
+        makeNewVMProps({
+          vmId: 'test-vm',
+          workloadId: 'test-workload',
+          ipWhitelist: [],
+          startupScript: '#!/bin/bash',
+          gpuRuntime: null,
+          jobHost: true,
+        }),
+      );
+
+      expect(resolveAmiSpy).toHaveBeenCalledWith(null, true, 'arm64');
     });
 
     it('should pass gpuRuntime=undefined to resolveAmi when not specified', async () => {
@@ -3472,7 +3562,7 @@ describe('AWS GPU image support', () => {
         }),
       );
 
-      expect(resolveAmiSpy).toHaveBeenCalledWith(undefined, undefined);
+      expect(resolveAmiSpy).toHaveBeenCalledWith(undefined, undefined, 'amd64');
     });
   });
 

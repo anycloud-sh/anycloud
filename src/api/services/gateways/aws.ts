@@ -68,8 +68,10 @@ import {
 } from '@aws-sdk/client-s3';
 import {
   nestedVirtualizationSupport,
+  vmArchitecture,
   type ResolvedCloudConfig,
 } from '../../../shared/cloud-config.js';
+import type { ImageArchitecture } from '../../../shared/image.js';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
 import {
@@ -375,7 +377,17 @@ export function createAwsBaseImageResolver(
 ): CloudBaseImageResolver<ResolvedAwsAmi> {
   return createCloudBaseImageResolver({
     type: CloudType.AWS,
-    rawResolveBaseImage: async ({ gpuRuntime, minimal }) => {
+    rawResolveBaseImage: async ({
+      gpuRuntime,
+      minimal,
+      architecture = 'amd64',
+    }) => {
+      if (architecture === 'arm64' && gpuRuntime) {
+        throw new DeployError(
+          'arm64 GPU instance types are not supported on AWS yet — anycloud has no arm64 GPU base image.',
+          400,
+        );
+      }
       // No NVIDIA base image fits AMD, Neuron, or an accelerator anycloud can't
       // yet image — fail clearly instead of silently booting the CUDA image.
       if (gpuRuntime === GpuRuntime.Rocm) {
@@ -428,9 +440,9 @@ export function createAwsBaseImageResolver(
       const [prefix, kind] = minimal
         ? ['ubuntu-minimal', 'minimal']
         : ['ubuntu', 'server'];
-      const amiType = `${prefix}/images/hvm-ssd*/ubuntu-noble-24.04-amd64-${kind}-*`;
+      const amiType = `${prefix}/images/hvm-ssd*/ubuntu-noble-24.04-${architecture}-${kind}-*`;
       const amiTypeRegex = new RegExp(
-        `${prefix}/images/hvm-ssd(-gp3)?/ubuntu-noble-24\\.04-amd64-${kind}-[0-9]{8}(\\.[0-9]+)?$`,
+        `${prefix}/images/hvm-ssd(-gp3)?/ubuntu-noble-24\\.04-${architecture}-${kind}-[0-9]{8}(\\.[0-9]+)?$`,
       );
       const output = await ec2client.send(
         new DescribeImagesCommand({
@@ -438,7 +450,10 @@ export function createAwsBaseImageResolver(
           Filters: [
             { Name: 'name', Values: [amiType] },
             { Name: 'state', Values: ['available'] },
-            { Name: 'architecture', Values: ['x86_64'] },
+            {
+              Name: 'architecture',
+              Values: [architecture === 'arm64' ? 'arm64' : 'x86_64'],
+            },
           ],
         }),
       );
@@ -1256,7 +1271,11 @@ export class AWS {
     const { startupScript, vmId, workloadId, gpuRuntime, version, userId } =
       params;
 
-    const resolvedAmi = await this.resolveAmi(gpuRuntime, params.jobHost);
+    const resolvedAmi = await this.resolveAmi(
+      gpuRuntime,
+      params.jobHost,
+      vmArchitecture(CloudType.AWS, this.vmType),
+    );
     const bootDisk = bootDiskFor(
       this.diskTier,
       this.diskSizeGb,
@@ -2858,11 +2877,12 @@ export class AWS {
   async resolveAmi(
     gpuRuntime?: GpuRuntime | null,
     minimal = false,
+    architecture: ImageArchitecture = 'amd64',
   ): Promise<ResolvedAwsAmi> {
     return createAwsBaseImageResolver(
       this.ec2client,
       this.region,
-    ).resolveBaseImage({ gpuRuntime, minimal });
+    ).resolveBaseImage({ gpuRuntime, minimal, architecture });
   }
 
   // Ensure the shared anycloud VM security group exists.

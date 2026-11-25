@@ -167,7 +167,7 @@ vi.mock('../../../src/shared/image-registry', async () => {
   return {
     inspectImage: vi.fn().mockResolvedValue({
       verdict: ImageVerdict.Ok,
-      amd64Digest:
+      digest:
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageRuntime: ImageRuntime.Unknown,
       compressedLayerBytes: null,
@@ -574,7 +574,7 @@ describe('/v1/workloads endpoint', () => {
     await ledger().updateDnsRecordId(testId, 'dns-record-test');
     vi.mocked(inspectImage).mockResolvedValueOnce({
       verdict: ImageVerdict.Ok,
-      amd64Digest:
+      digest:
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageRuntime: ImageRuntime.Unknown,
       compressedLayerBytes: null,
@@ -599,6 +599,7 @@ describe('/v1/workloads endpoint', () => {
       expect(inspectImage).toHaveBeenCalledWith(
         'nginx:v2',
         'mock-github-token',
+        'amd64',
       );
       expect(checkpointBucketExists).toHaveBeenCalledWith('service-state');
       expect(updateSpy).toHaveBeenCalledWith({
@@ -2348,8 +2349,8 @@ describe('/v1/workloads endpoint', () => {
 
     it('rejects an image with no linux/amd64 build before provisioning', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
-        verdict: ImageVerdict.NoAmd64,
-        amd64Digest: null,
+        verdict: ImageVerdict.NoPlatform,
+        digest: null,
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,
       });
@@ -2365,10 +2366,60 @@ describe('/v1/workloads endpoint', () => {
       expect(admissionChecks.validateCredentials).not.toHaveBeenCalled();
     });
 
+    it("inspects the image for a Graviton type's arm64 build", async () => {
+      vi.mocked(inspectImage).mockClear();
+
+      const response = await submit({
+        cloudConfig: { ...mockCloudConfig, vmType: 'm8g.xlarge' },
+      });
+
+      expect(response.status).toBe(202);
+      expect(inspectImage).toHaveBeenCalledWith(
+        'nginx:alpine',
+        expect.anything(),
+        'arm64',
+      );
+    });
+
+    it('names arm64 when the image has no build for a Graviton type', async () => {
+      vi.mocked(inspectImage).mockResolvedValueOnce({
+        verdict: ImageVerdict.NoPlatform,
+        digest: null,
+        imageRuntime: ImageRuntime.Unknown,
+        compressedLayerBytes: null,
+      });
+
+      const response = await submit({
+        cloudConfig: { ...mockCloudConfig, vmType: 'm8g.xlarge' },
+      });
+
+      expect(response.status).toBe(400);
+      const msg = await response.text();
+      expect(msg).toContain('has no linux/arm64 build');
+      expect(msg).toContain('--platform linux/arm64');
+    });
+
+    it('refuses a VM type list that mixes arm64 and amd64', async () => {
+      vi.mocked(inspectImage).mockClear();
+
+      const response = await submit({
+        cloudConfig: {
+          ...mockCloudConfig,
+          vmType: ['m8g.xlarge', 'm8a.xlarge'],
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain(
+        'mixes arm64 (m8g.xlarge) and amd64 (m8a.xlarge)',
+      );
+      expect(inspectImage).not.toHaveBeenCalled();
+    });
+
     it('rejects a not-found image with a clear error', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.NotFound,
-        amd64Digest: null,
+        digest: null,
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,
       });
@@ -2380,7 +2431,7 @@ describe('/v1/workloads endpoint', () => {
     it('rejects an inaccessible image with a clear error', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Unauthorized,
-        amd64Digest: null,
+        digest: null,
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,
       });
@@ -2392,7 +2443,7 @@ describe('/v1/workloads endpoint', () => {
     it('reports private GHCR token exchange failures clearly', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Unauthorized,
-        amd64Digest: null,
+        digest: null,
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,
         failureReason: ImageInspectionFailureReason.GhcrTokenExchangeFailed,
@@ -2411,7 +2462,7 @@ describe('/v1/workloads endpoint', () => {
     it('proceeds when the preflight is inconclusive (unknown)', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Unknown,
-        amd64Digest: null,
+        digest: null,
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,
       });
@@ -2421,7 +2472,7 @@ describe('/v1/workloads endpoint', () => {
     it('rejects when compressed image layers exceed the explicit disk size', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Ok,
-        amd64Digest:
+        digest:
           'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: 2_000_000_000,
@@ -2443,7 +2494,7 @@ describe('/v1/workloads endpoint', () => {
     it('rejects when compressed image layers exceed the catalog disk size', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Ok,
-        amd64Digest:
+        digest:
           'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: 131_000_000_000,
@@ -2467,7 +2518,7 @@ describe('/v1/workloads endpoint', () => {
     it('proceeds when compressed image layers fit the explicit disk size', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Ok,
-        amd64Digest:
+        digest:
           'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: 2_000_000_000,
@@ -2488,7 +2539,7 @@ describe('/v1/workloads endpoint', () => {
     it('proceeds when no disk limit is known', async () => {
       vi.mocked(inspectImage).mockResolvedValueOnce({
         verdict: ImageVerdict.Ok,
-        amd64Digest:
+        digest:
           'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: 2_000_000_000,
@@ -2565,7 +2616,7 @@ describe('/v1/workloads endpoint', () => {
       vi.mocked(inspectImage).mockClear();
       vi.mocked(inspectImage).mockResolvedValue({
         verdict: ImageVerdict.Ok,
-        amd64Digest:
+        digest:
           'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         imageRuntime: ImageRuntime.Unknown,
         compressedLayerBytes: null,

@@ -40,6 +40,8 @@ export interface CatalogIndexes {
    * absent. Lowercased.
    */
   unnamedAcceleratorTypes: string[];
+  /** Instance types the catalog's `Arch` column reports as arm64, lowercased. */
+  arm64Types: string[];
   /** Cheapest on-demand price per (instanceType, region) pair */
   pricePerTypeRegion: Record<string, Record<string, number>>;
   /** Cheapest spot price per (instanceType, region) pair */
@@ -166,6 +168,7 @@ export function parseCatalogCSV(csv: string, cloud: CloudType): CatalogIndexes {
   // accelerator exists; only its runtime is unknown, so these must not fall
   // through to cpuTypeSet.
   const unnamedAcceleratorTypeSet: Set<string> = new Set();
+  const arm64TypeSet: Set<string> = new Set();
   // Track cheapest price per (instanceType, region) — multiple AZs may have
   // different prices, we keep the minimum.
   const pricePerTypeRegion: Record<string, Record<string, number>> = {};
@@ -240,6 +243,8 @@ export function parseCatalogCSV(csv: string, cloud: CloudType): CatalogIndexes {
       if (raw === 'true') premiumStorageCapablePerType[typeKey] = true;
       else if (raw === 'false') premiumStorageCapablePerType[typeKey] = false;
     }
+
+    if (row['Arch'] === 'arm64') arm64TypeSet.add(typeKey);
 
     const nested = row['NestedVirtualizationSupported'];
     if (nested === 'true' || nested === 'false') {
@@ -375,6 +380,7 @@ export function parseCatalogCSV(csv: string, cloud: CloudType): CatalogIndexes {
     nestedVirtualizationPerTypeRegion,
     cpuTypes,
     unnamedAcceleratorTypes,
+    arm64Types: [...arm64TypeSet].sort(),
     pricePerTypeRegion,
     spotPricePerTypeRegion,
     typesPerAccelerator,

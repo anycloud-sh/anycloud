@@ -27,7 +27,8 @@ import {
   isComputeProvider,
 } from './providers.js';
 import { assertNever } from './assert-never.js';
-import { ImageRuntime } from './image.js';
+import { type ImageArchitecture, ImageRuntime } from './image.js';
+import { toArray } from './utils.js';
 
 function requireCatalog(cloud: CloudType) {
   const catalog = readCatalog(cloud);
@@ -702,6 +703,27 @@ export function nestedVirtualizationSupport(
     )
     .map(([, supported]) => supported);
   return known.includes(true) ? true : known.length > 0 ? false : null;
+}
+
+/** The CPU architecture of a VM type: arm64 when its catalog says so, else amd64. */
+export function vmArchitecture(
+  cloudProvider: CloudType,
+  vmType: string,
+): ImageArchitecture {
+  return readCatalog(cloudProvider)?.arm64Types.includes(vmType.toLowerCase())
+    ? 'arm64'
+    : 'amd64';
+}
+
+/** A workload's architecture: admission keeps its type list to one. */
+export function workloadArchitecture(workload: {
+  cloudProvider: CloudType | null;
+  vmType: string | string[] | null;
+}): ImageArchitecture {
+  const [vmType] = toArray(workload.vmType);
+  return workload.cloudProvider && vmType
+    ? vmArchitecture(workload.cloudProvider, vmType)
+    : 'amd64';
 }
 
 /**

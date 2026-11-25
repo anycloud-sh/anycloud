@@ -1,5 +1,5 @@
 # arm64-only test fixture. Built + pushed as an arm64-only OCI image so the
-# server-side image preflight (inspectImage) returns 'no_amd64' and a submit is
+# server-side image preflight (inspectImage) returns 'no_platform' and a submit is
 # rejected before provisioning. Used by test/integration/e2e/specs/image-preflight-invalid.spec.ts.
 #
 # Maintainer one-time build/push (then make the GHCR package PUBLIC):

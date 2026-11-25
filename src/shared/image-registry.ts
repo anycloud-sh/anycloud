@@ -4,6 +4,7 @@ import { parseFamiliarName } from '@swimlane/docker-reference';
 import { singleFlight, withRetry } from './utils.js';
 import {
   GHCR_TOKEN_USERNAME,
+  type ImageArchitecture,
   ImageInspectionFailureReason,
   ImageRuntime,
   ImageVerdict,
@@ -14,8 +15,9 @@ import {
  * server-side (no docker binary, no daemon) so it covers the CLI, the Python SDK,
  * and CI uniformly, before provisioning a VM.
  *
- *   'ok'           — manifest definitively contains a linux/amd64 entry
- *   'no_amd64'     — manifest definitively lacks one (VM workloads require x86_64)
+ *   'ok'           — manifest definitively contains a linux build for the VM's
+ *                    architecture (amd64 unless the VM type is arm64)
+ *   'no_platform'  — manifest definitively lacks one
  *   'not_found'    — registry returned a definitive 404 for the reference
  *   'unauthorized' — definitive 401/403 (private/inaccessible, even after auth)
  *   'unknown'      — couldn't determine (network/timeout/unsupported shape) →
@@ -25,20 +27,20 @@ import {
  */
 export interface ImageInspection {
   verdict: ImageVerdict;
-  // The linux/amd64 manifest digest (sha256:...) when the verdict is 'ok' and
+  // The linux manifest digest (sha256:...) for the inspected architecture when the verdict is 'ok' and
   // the registry exposed it. Persisted as server-owned immutable image identity;
   // null when the registry cannot provide it.
-  amd64Digest: string | null;
-  // GPU runtime the image's amd64 base expects. Always one of the three literals
+  digest: string | null;
+  // GPU runtime the image's base expects. Always one of the three literals
   // (never undefined): 'unknown' whenever it can't be determined or the verdict
   // isn't 'ok'. Persisted at submit so the optimizer can drop incompatible
   // accelerators at VM-host startup (it can't re-inspect the image there).
   imageRuntime: ImageRuntime;
-  // Sum of compressed layer sizes from the selected linux/amd64 manifest when
+  // Sum of compressed layer sizes from the selected platform manifest when
   // the registry exposes them. This is a lower bound on VM disk usage; null when
   // unknown.
   compressedLayerBytes: number | null;
-  // The linux/amd64 config's `Env` ("KEY=VALUE"), only when that manifest and
+  // The platform config's `Env` ("KEY=VALUE"), only when that manifest and
   // its config blob matched their digests, so a pinned image binds it. An API
   // image names its chart here.
   env?: string[];
@@ -70,7 +72,7 @@ function noDigest(
 ): ImageInspection {
   return {
     verdict,
-    amd64Digest: null,
+    digest: null,
     imageRuntime: ImageRuntime.Unknown,
     compressedLayerBytes: null,
     ...(failureReason ? { failureReason } : {}),
@@ -146,8 +148,11 @@ const ACCEPT_CONFIG_BLOB =
   'application/vnd.docker.container.image.v1+json, ' +
   'application/json';
 
-function isLinuxAmd64Platform(platform: any): boolean {
-  return platform?.os === 'linux' && platform?.architecture === 'amd64';
+function isLinuxPlatform(
+  platform: any,
+  architecture: ImageArchitecture,
+): boolean {
+  return platform?.os === 'linux' && platform?.architecture === architecture;
 }
 
 function validDigest(value: unknown): value is string {
@@ -494,8 +499,8 @@ async function configFromPlatformManifest(
   }
 }
 
-// Verdict + amd64 manifest digest from a parsed index/list manifest. The amd64
-// path also fetches the platform manifest so it can read compressed layer sizes
+// Verdict + platform manifest digest from a parsed index/list manifest. The
+// platform path also fetches the platform manifest so it can read compressed layer sizes
 // and inspect the config blob for GPU runtime. Those extra probes never
 // downgrade the verdict; failures keep the verdict 'ok' with unknown metadata.
 async function classifyIndexManifest(
@@ -503,6 +508,7 @@ async function classifyIndexManifest(
   host: string,
   repository: string,
   fetchResource: RegistryFetcher,
+  architecture: ImageArchitecture,
 ): Promise<ImageInspection> {
   const entries: any[] = Array.isArray(index?.manifests) ? index.manifests : [];
   // Skip attestation/SBOM entries (platform os/architecture === 'unknown').
@@ -510,9 +516,11 @@ async function classifyIndexManifest(
     (m: any) => m?.platform?.os && m.platform.os !== 'unknown',
   );
   if (real.length === 0) return noDigest(ImageVerdict.Unknown);
-  const amd64 = real.find((m: any) => isLinuxAmd64Platform(m.platform));
-  if (!amd64) return noDigest(ImageVerdict.NoAmd64);
-  const digest = validDigest(amd64.digest) ? amd64.digest : null;
+  const platform = real.find((m: any) =>
+    isLinuxPlatform(m.platform, architecture),
+  );
+  if (!platform) return noDigest(ImageVerdict.NoPlatform);
+  const digest = validDigest(platform.digest) ? platform.digest : null;
   let child: { json: any; verified: boolean } | null = null;
   if (digest) {
     try {
@@ -536,7 +544,7 @@ async function classifyIndexManifest(
     : null;
   return {
     verdict: ImageVerdict.Ok,
-    amd64Digest: digest,
+    digest,
     imageRuntime: runtimeFromConfigBlob(config?.json),
     compressedLayerBytes: sumLayerSizes(childManifest),
     ...envFromConfig(verified && child?.verified === true, config),
@@ -549,6 +557,7 @@ async function classifySingleManifest(
   host: string,
   repository: string,
   fetchResource: RegistryFetcher,
+  architecture: ImageArchitecture,
 ): Promise<ImageInspection> {
   const configDigest = manifest?.config?.digest;
   if (!validDigest(configDigest)) return noDigest(ImageVerdict.Unknown);
@@ -562,11 +571,10 @@ async function classifySingleManifest(
   const config = fetched?.json;
   if (!config) return noDigest(ImageVerdict.Unknown);
 
-  if (config.os === 'linux' && config.architecture === 'amd64') {
-    const amd64Digest = validDigest(manifestDigest) ? manifestDigest : null;
+  if (isLinuxPlatform(config, architecture)) {
     return {
       verdict: ImageVerdict.Ok,
-      amd64Digest,
+      digest: validDigest(manifestDigest) ? manifestDigest : null,
       imageRuntime: runtimeFromConfigBlob(config),
       compressedLayerBytes: sumLayerSizes(manifest),
       ...envFromConfig(verified, fetched),
@@ -574,21 +582,23 @@ async function classifySingleManifest(
   }
 
   if (config.os && config.architecture) {
-    return noDigest(ImageVerdict.NoAmd64);
+    return noDigest(ImageVerdict.NoPlatform);
   }
 
   return noDigest(ImageVerdict.Unknown);
 }
 
+/** Inspect `image` for the linux build a VM of `architecture` pulls. */
 export function inspectImage(
   image: string,
   githubToken?: string | null,
+  architecture: ImageArchitecture = 'amd64',
 ): Promise<ImageInspection> {
   const token = githubToken ?? undefined;
   return singleFlight(
     inFlightInspections,
-    inspectionCacheKey(image, token),
-    () => inspectImageUncached(image, token),
+    `${inspectionCacheKey(image, token)}\0${architecture}`,
+    () => inspectImageUncached(image, architecture, token),
   );
 }
 
@@ -611,6 +621,7 @@ export function clearImageInspectionCache(): void {
 
 async function inspectImageUncached(
   image: string,
+  architecture: ImageArchitecture,
   githubToken?: string,
 ): Promise<ImageInspection> {
   let ref;
@@ -678,7 +689,13 @@ async function inspectImageUncached(
       const content = await readContent(res, manifestDigest);
       const manifest = content.json;
       if (Array.isArray(manifest?.manifests)) {
-        return classifyIndexManifest(content, host, repository, fetchResource);
+        return classifyIndexManifest(
+          content,
+          host,
+          repository,
+          fetchResource,
+          architecture,
+        );
       }
 
       return classifySingleManifest(
@@ -687,6 +704,7 @@ async function inspectImageUncached(
         host,
         repository,
         fetchResource,
+        architecture,
       );
     }
     if (res.status === 404) return noDigest(ImageVerdict.NotFound);

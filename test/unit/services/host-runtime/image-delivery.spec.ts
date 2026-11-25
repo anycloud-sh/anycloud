@@ -620,7 +620,7 @@ describe('pullImage (detached on a remote VM)', () => {
     expect(launches[0]).toContain("--setenv=AC_CONTAINERD_NAMESPACE='moby'");
     expect(launches[0]).toContain("--setenv=AC_SNAPSHOTTER='overlayfs'");
     expect(launches[0]).toContain('docker image inspect');
-    expect(launches[0]).not.toContain('docker pull "$$AC_PULL_IMAGE"');
+    expect(launches[0]).not.toContain('docker pull');
   });
 
   it('records the bytes, time to last byte and unpack tail of a transfer', async () => {
@@ -660,7 +660,7 @@ describe('pullImage (detached on a remote VM)', () => {
     expect(launches).toHaveLength(2);
     expect(launches[0]).toContain('ac-transfer-test-workload');
     expect(launches[1]).toContain('ac-pull-test-workload');
-    expect(launches[1]).toContain('docker pull "$$AC_PULL_IMAGE"');
+    expect(launches[1]).toContain('docker pull --platform "linux/$$(uname -m');
   });
 
   it.each([
@@ -843,6 +843,26 @@ describe('pullImage (detached on a remote VM)', () => {
 
     expect((error as Error).message).toBe(
       "Failed to pull image 'nginx:latest' on vm.example.test: the VM's root disk is full; increase `--disk-size` (exited with code 1)",
+    );
+    expect(isUserError(error)).toBe(true);
+  });
+
+  it("fails a pull of an image without the host's architecture as invalid", async () => {
+    const { fn } = makeExec(['DONE 1'], {
+      df: '',
+      logTail: 'no match for platform in manifest: not found',
+    });
+
+    const error = await pullImage(
+      newDocker(fn),
+      mockStoredWorkload({
+        cloudProvider: CloudType.AWS,
+        vmType: 'm8g.xlarge',
+      }),
+    ).catch((cause: unknown) => cause);
+
+    expect((error as Error).message).toContain(
+      "Failed to pull image 'nginx:latest' on vm.example.test: nginx:latest has no linux/arm64 build",
     );
     expect(isUserError(error)).toBe(true);
   });

@@ -33,10 +33,10 @@ const expectPositiveCompressedLayerBytes = (value: number | null) => {
 
 describe('inspectImage (real registries)', () => {
   it(
-    'public ghcr arm64-only image → no_amd64, with no token AND with a dummy token',
+    'public ghcr arm64-only image → no_platform, with no token AND with a dummy token',
     async () => {
       expect((await inspectImage(`${ARM64_ONLY_REPO}:latest`)).verdict).toBe(
-        ImageVerdict.NoAmd64,
+        ImageVerdict.NoPlatform,
       );
       // The reported bug: a dummy/no-access token must not flip a public image
       // to 'unauthorized'.
@@ -47,7 +47,7 @@ describe('inspectImage (real registries)', () => {
             'dummy-token-for-test',
           )
         ).verdict,
-      ).toBe(ImageVerdict.NoAmd64);
+      ).toBe(ImageVerdict.NoPlatform);
     },
     NET_TIMEOUT_MS,
   );
@@ -57,7 +57,7 @@ describe('inspectImage (real registries)', () => {
     async () => {
       const result = await inspectImage(SINGLE_AMD64_IMAGE);
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
       expectPositiveCompressedLayerBytes(result.compressedLayerBytes);
     },
@@ -71,7 +71,7 @@ describe('inspectImage (real registries)', () => {
         `quay.io/quay/busybox@${SINGLE_AMD64_DIGEST}`,
       );
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toBe(SINGLE_AMD64_DIGEST);
+      expect(result.digest).toBe(SINGLE_AMD64_DIGEST);
       expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
       expectPositiveCompressedLayerBytes(result.compressedLayerBytes);
     },
@@ -79,21 +79,21 @@ describe('inspectImage (real registries)', () => {
   );
 
   it(
-    'public digest-pinned single-manifest arm64 image → no_amd64',
+    'public digest-pinned single-manifest arm64 image → no_platform',
     async () => {
       expect((await inspectImage(SINGLE_ARM64_DIGEST_REF)).verdict).toBe(
-        ImageVerdict.NoAmd64,
+        ImageVerdict.NoPlatform,
       );
     },
     NET_TIMEOUT_MS,
   );
 
   it(
-    'public digest-pinned single-manifest windows/amd64 image → no_amd64',
+    'public digest-pinned single-manifest windows/amd64 image → no_platform',
     async () => {
       expect(
         (await inspectImage(SINGLE_WINDOWS_AMD64_DIGEST_REF)).verdict,
-      ).toBe(ImageVerdict.NoAmd64);
+      ).toBe(ImageVerdict.NoPlatform);
     },
     NET_TIMEOUT_MS,
   );
@@ -103,7 +103,7 @@ describe('inspectImage (real registries)', () => {
     async () => {
       const result = await inspectImage('mirror.gcr.io/library/alpine:latest');
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.imageRuntime).toBe(ImageRuntime.Unknown);
       expectPositiveCompressedLayerBytes(result.compressedLayerBytes);
     },
@@ -115,7 +115,7 @@ describe('inspectImage (real registries)', () => {
     async () => {
       const result = await inspectImage(CUDA_RUNTIME_DIGEST_REF);
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toBe(CUDA_RUNTIME_DIGEST_REF.split('@')[1]);
+      expect(result.digest).toBe(CUDA_RUNTIME_DIGEST_REF.split('@')[1]);
       expect(result.imageRuntime).toBe(ImageRuntime.Cuda);
       expectPositiveCompressedLayerBytes(result.compressedLayerBytes);
     },
@@ -127,7 +127,7 @@ describe('inspectImage (real registries)', () => {
     async () => {
       const result = await inspectImage(ROCM_RUNTIME_DIGEST_REF);
       expect(result.verdict).toBe(ImageVerdict.Ok);
-      expect(result.amd64Digest).toBe(ROCM_RUNTIME_DIGEST_REF.split('@')[1]);
+      expect(result.digest).toBe(ROCM_RUNTIME_DIGEST_REF.split('@')[1]);
       expect(result.imageRuntime).toBe(ImageRuntime.Rocm);
       expectPositiveCompressedLayerBytes(result.compressedLayerBytes);
     },

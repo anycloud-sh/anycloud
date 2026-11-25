@@ -1,18 +1,22 @@
 import { archMismatchMessage } from '../../shared/error-formatter.js';
 import { InvalidAnycloudConfigError } from '../../shared/errors.js';
 import {
+  type ImageArchitecture,
   ImageInspectionFailureReason,
   ImageVerdict,
 } from '../../shared/image.js';
 import type { ImageInspection } from '../../shared/image-registry.js';
 
-/** Refuse an image the registry definitively reports missing, private or not amd64. */
+/** Refuse an image the registry definitively reports missing, private or without the VM's build. */
 export function assertImageAccessible(
   image: string,
   { verdict, failureReason }: ImageInspection,
+  architecture: ImageArchitecture,
 ): void {
-  if (verdict === ImageVerdict.NoAmd64) {
-    throw new InvalidAnycloudConfigError(archMismatchMessage(image));
+  if (verdict === ImageVerdict.NoPlatform) {
+    throw new InvalidAnycloudConfigError(
+      archMismatchMessage(image, architecture),
+    );
   }
   if (verdict === ImageVerdict.NotFound) {
     throw new InvalidAnycloudConfigError(
