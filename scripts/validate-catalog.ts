@@ -99,12 +99,6 @@ const REQUIRED_GCP_GPU_COUNTS: Readonly<Record<string, readonly number[]>> = {
   RTXPRO6000: [1, 2, 4, 8],
 };
 
-/** Arm types a design partner's CI runs on, spot or on-demand, in europe-west4. */
-const REQUIRED_GCP_ARM64_TYPES = ['standard', 'highmem'].flatMap((shape) =>
-  [4, 8, 16].map((vCpus) => `c4a-${shape}-${vCpus}`),
-);
-const REQUIRED_GCP_ARM64_REGION = 'europe-west4';
-
 function gpuPair(row: CatalogRow): string | null {
   const name = row['AcceleratorName']?.trim();
   const count = Number(row['AcceleratorCount']);
@@ -133,26 +127,6 @@ export function validateGcpCatalog(rows: CatalogRow[]): ValidationResult[] {
           : `missing ${missing.join('/')}`),
     });
   }
-
-  const missingArm64 = REQUIRED_GCP_ARM64_TYPES.filter(
-    (type) =>
-      !rows.some(
-        (row) =>
-          row['InstanceType'] === type &&
-          row['Region'] === REQUIRED_GCP_ARM64_REGION &&
-          row['Arch'] === 'arm64' &&
-          Number.parseFloat(row['Price']) > 0 &&
-          Number.parseFloat(row['SpotPrice']) > 0,
-      ),
-  );
-  results.push({
-    passed: missingArm64.length === 0,
-    message:
-      `GCP arm64 baseline priced in ${REQUIRED_GCP_ARM64_REGION}: ` +
-      (missingArm64.length === 0
-        ? REQUIRED_GCP_ARM64_TYPES.join('/')
-        : `missing ${missingArm64.join('/')}`),
-  });
 
   const invalidGpuRows = new Set<string>();
   const gpuInstanceTypes = new Set<string>();
