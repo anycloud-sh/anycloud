@@ -18,6 +18,7 @@ const normalizeEntries = (
 const HEADER =
   'InstanceType,vCPUs,MemoryGiB,AcceleratorName,AcceleratorCount,GpuInfo,Region,AvailabilityZone,Price,SpotPrice';
 const ZONE = 'us-central1-a';
+const noSkus = { request: vi.fn().mockResolvedValue({ data: {} }) };
 
 const UPSTREAM = `${HEADER}
 n2-standard-4,4,16,,,,us-central1,${ZONE},0.19,0.05
@@ -300,7 +301,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       clientEmail: 'catalog@example.com',
       privateKey: 'private-key',
       machineTypesClient: machineTypesClient as never,
-      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
+      billing: noSkus as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response(csv)),
     });
 
@@ -326,7 +327,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       clientEmail: 'catalog@example.com',
       privateKey: 'private-key',
       machineTypesClient: machineTypesClient as never,
-      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
+      billing: noSkus as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response(UPSTREAM)),
     });
 
@@ -533,7 +534,7 @@ t2a-standard-1,1,4,,,,us-central1,${ZONE},0.04,0.01`;
       clientEmail: 'catalog@example.com',
       privateKey: 'private-key',
       machineTypesClient: machineTypesClient as never,
-      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
+      billing: noSkus as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response(HEADER)),
     });
 
