@@ -336,6 +336,8 @@ async function run(
 ) {
   const c = clients();
   const runId = randomBytes(3).toString('hex');
+  // A lost runner skips its cleanup step; this one recovers its results.
+  await cleanup();
   const { images, quotas } = await preflight(c);
   console.log(JSON.stringify(quotas, null, 2));
   const bucket = c.storage.bucket(`${BUCKET_PREFIX}${runId}`);
@@ -346,9 +348,15 @@ async function run(
   const results: Result[] = [];
   const cost = (r: Result) =>
     ((r.marks['build-done'] ?? MAX_RUN_MIN * 60) / 3600) * hourly(r);
+  // Also to the bucket, which outlives a lost runner until a cleanup.
   const save = () => {
-    evidence('results.json', { region: REGION, prices: PRICES, results });
+    const saved = { region: REGION, prices: PRICES, results };
+    evidence('results.json', saved);
     evidence('report.md', report(results));
+    void bucket
+      .file('results.json')
+      .save(JSON.stringify(saved))
+      .catch((error) => console.warn(`results upload: ${messageOf(error)}`));
   };
 
   const job = async (
@@ -624,6 +632,14 @@ async function cleanup() {
   }
   const [buckets] = await c.storage.getBuckets({ prefix: BUCKET_PREFIX });
   for (const bucket of buckets) {
+    // A run whose runner was lost left its results here.
+    const results = bucket.file('results.json');
+    if ((await results.exists())[0]) {
+      evidence(
+        `recovered-${bucket.name}.json`,
+        (await results.download())[0].toString(),
+      );
+    }
     await bucket.deleteFiles({ force: true });
     await bucket.delete();
   }
