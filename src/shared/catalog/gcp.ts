@@ -37,6 +37,11 @@ const BILLING_PRICED_SERIES: Readonly<Record<string, string>> = {
   c4a: 'C4A Arm Instance',
 };
 const SKU_DESCRIPTION = /^(?:Spot Preemptible )?(.+) (Core|Ram) running in /;
+/** The unit each SKU kind must be billed in for the hourly price to hold. */
+const SKU_USAGE_UNIT: Readonly<Record<string, string>> = {
+  Core: 'h',
+  Ram: 'GiBy.h',
+};
 
 const INTENTIONALLY_EXCLUDED_ACCELERATORS = new Set([
   'T4',
@@ -90,6 +95,7 @@ interface BillingSku {
   serviceRegions?: string[];
   pricingInfo?: {
     pricingExpression?: {
+      usageUnit?: string;
       tieredRates?: { unitPrice?: { units?: string; nanos?: number } }[];
     };
   }[];
@@ -511,9 +517,14 @@ function skuRates(skus: readonly BillingSku[]): Map<string, number> {
     const match = SKU_DESCRIPTION.exec(sku.description ?? '');
     const series = match && seriesByStem.get(match[1]);
     const usage = sku.category?.usageType;
-    const rate =
-      sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.at(-1)?.unitPrice;
-    if (!series || (usage !== 'OnDemand' && usage !== 'Preemptible') || !rate)
+    const expression = sku.pricingInfo?.[0]?.pricingExpression;
+    const rate = expression?.tieredRates?.at(-1)?.unitPrice;
+    if (
+      !series ||
+      (usage !== 'OnDemand' && usage !== 'Preemptible') ||
+      expression?.usageUnit !== SKU_USAGE_UNIT[match[2]] ||
+      !rate
+    )
       continue;
     const price = Number(rate.units ?? 0) + (rate.nanos ?? 0) / 1e9;
     for (const region of sku.serviceRegions ?? []) {

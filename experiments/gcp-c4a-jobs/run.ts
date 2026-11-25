@@ -4,7 +4,7 @@
  * catalog with the branch's fetcher (SkyPilot rows plus C4A priced from Cloud
  * Billing), seeds the branch's API and CLI with it, and runs a spot
  * `c4a-highmem-16` Job and an on-demand `c4a-standard-4` Job of a multi-arch
- * public image in europe-west4. Each must print `aarch64` and pin the image's
+ * public image in europe-west4, and a spot `t2a-standard-4` Job in us-central1. Each must print `aarch64` and pin the image's
  * arm64 digest. An amd64-only image and a mixed arm64/amd64 type list must be
  * refused before any VM starts.
  *
@@ -44,8 +44,20 @@ const IMAGE = 'alpine:3.20';
 const AMD64_ONLY_IMAGE = 'amd64/alpine:3.20';
 const REGION = 'europe-west4';
 const JOBS = [
-  { key: 'spot', vmTypes: ['c4a-highmem-16'], spot: true },
-  { key: 'on-demand', vmTypes: ['c4a-standard-4'], spot: false },
+  { key: 'spot', vmTypes: ['c4a-highmem-16'], spot: true, region: REGION },
+  {
+    key: 'on-demand',
+    vmTypes: ['c4a-standard-4'],
+    spot: false,
+    region: REGION,
+  },
+  // Tau T2A: an Arm series SkyPilot prices, marked arm64 by the same API.
+  {
+    key: 't2a-spot',
+    vmTypes: ['t2a-standard-4'],
+    spot: true,
+    region: 'us-central1',
+  },
 ];
 const CATALOG_HOSTS = ['raw.githubusercontent.com', 'api.github.com'];
 
@@ -253,7 +265,11 @@ function refusal(name: string, args: string[], expected: string) {
 /** Submit a Job, follow it to completion, and read what it ran. */
 async function job(
   id: string,
-  { vmTypes, spot }: { vmTypes: string[]; spot: boolean },
+  {
+    vmTypes,
+    spot,
+    region,
+  }: { vmTypes: string[]; spot: boolean; region: string },
   expectedDigest: string | null,
 ) {
   console.log(`Submitting ${id}`);
@@ -266,7 +282,7 @@ async function job(
     '--credentials',
     'gcp-spike',
     '--regions',
-    REGION,
+    region,
     ...vmTypes.flatMap((vmType) => ['--vm-type', vmType]),
     ...(spot ? ['--spot'] : []),
     '--no-checkpoint',

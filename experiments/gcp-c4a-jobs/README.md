@@ -24,11 +24,13 @@ It then starts the branch's API with CI's GCP key and uses its CLI:
 | --------------------------- | --------------------------------- | ------------------------------------------- |
 | `alpine:3.20`, spot         | `c4a-highmem-16`                  | completes, prints `aarch64`                 |
 | `alpine:3.20`, on-demand    | `c4a-standard-4`                  | completes, prints `aarch64`                 |
+| `alpine:3.20`, spot         | `t2a-standard-4` (us-central1)    | completes, prints `aarch64`                 |
 | `amd64/alpine:3.20`, spot   | `c4a-standard-4`                  | refused: `has no linux/arm64 build`, no VM  |
 | `alpine:3.20`, a mixed list | `c4a-standard-4`, `n2-standard-4` | refused: `mixes arm64 ... and amd64`, no VM |
 
-The Jobs run in europe-west4 with no checkpoint bucket. The run passes when
-both Jobs complete, print `arch=aarch64` and pin the digest of the image's
+The C4A Jobs run in europe-west4 and the T2A Job, an Arm series SkyPilot
+prices and the Machine Types API marks arm64, in us-central1, with no
+checkpoint bucket. The run passes when every Job completes, prints `arch=aarch64` and pins the digest of the image's
 `linux/arm64` build (read from the registry), and both refusals happen with no
 VM row. `catalog.json` records the catalog's C4A rows in europe-west4 and the
 regions it prices C4A in; `summary.json` records each result, the Jobs' VM
@@ -36,8 +38,8 @@ rows, log tails and times from submission to completion.
 
 ## Cost
 
-One spot `c4a-highmem-16` and one on-demand `c4a-standard-4` for a few minutes
-each: under $0.10.
+One spot `c4a-highmem-16`, one on-demand `c4a-standard-4` and one spot
+`t2a-standard-4` for a few minutes each: under $0.10.
 
 ## Cleanup
 
@@ -45,7 +47,7 @@ The API's database, the inventory and the API log live in
 `$RUNNER_TEMP/gcp-c4a-jobs`. `run` terminates each Job and waits until the API
 has ended its VMs. `cleanup` restarts the API from the same state and does the
 same. If the runner is lost with its state, the Jobs' IDs (`c4a-spot-<run>`,
-`c4a-on-demand-<run>`) are in the run log: delete their instances by the
+`c4a-on-demand-<run>`, `c4a-t2a-spot-<run>`) are in the run log: delete their instances by the
 `anycloud_deployment` labels that name them.
 
 ## Promotion criteria

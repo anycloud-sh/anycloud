@@ -377,6 +377,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       region: string,
       units: string,
       nanos: number,
+      usageUnit = description.includes(' Core ') ? 'h' : 'GiBy.h',
     ) => ({
       description,
       category: { usageType },
@@ -384,6 +385,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       pricingInfo: [
         {
           pricingExpression: {
+            usageUnit,
             tieredRates: [{ unitPrice: { units, nanos } }],
           },
         },
@@ -438,6 +440,14 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
             'us-central1',
             '1',
             0,
+          ),
+          sku(
+            'C4A Arm Instance Ram running in Americas',
+            'OnDemand',
+            'us-central1',
+            '0',
+            5_000_000,
+            'GiBy.mo',
           ),
         ],
       },
@@ -494,7 +504,7 @@ t2a-standard-1,1,4,,,,us-central1,${ZONE},0.04,0.01`;
         spotPrice: 0.072,
         arch: 'arm64',
       },
-      // us-central1 has a core price but no RAM price: no complete price.
+      // us-central1's RAM SKU is billed per month, not hour: no complete price.
     ]);
     expect(
       entries.find((entry) => entry.instanceType === 'c4a-standard-4'),
