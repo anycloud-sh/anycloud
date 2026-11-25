@@ -87,6 +87,8 @@ interface ObjectStorageJobProfile {
     /** The listener's own gp3 root performance. */
     readonly gp3?: { readonly iops: number; readonly throughputMibps: number };
   };
+  /** A spot Job of a multi-arch image on an arm64 type. */
+  readonly arm64?: { readonly vmType: string; readonly region: string };
   readonly maceFullPull?: {
     readonly vmType: string;
     readonly region?: string;
@@ -179,6 +181,7 @@ export const JOB_TARGET_PROFILES: Readonly<
         },
       ],
     },
+    arm64: { vmType: 'm8g.large', region: 'us-east-1' },
     maceFullPull: { vmType: 'g6e.xlarge', diskSizeGb: 100, diskTier: 'high' },
     gpuProbeRerun: { vmType: 'g4dn.xlarge' },
     invalidAdmission: {
@@ -304,6 +307,7 @@ export const JOB_TARGET_PROFILES: Readonly<
       region: 'us-central1',
       peer: true,
     },
+    arm64: { vmType: 'c4a-standard-4', region: 'europe-west4' },
     diskTier: {
       hyperdiskVmType: {
         variable: 'GCP_DISK_TIER_HYPERDISK_VM_TYPE',

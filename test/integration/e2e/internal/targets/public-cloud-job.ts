@@ -60,6 +60,7 @@ export class PublicCloudJobAdapter {
         'host-docker',
         'mace-full-pull',
         'ghcr-probe',
+        'arm64',
       ].includes(profile.member.kind)
     )
       throw new Error('Cloud Job adapter received an unsupported member');
@@ -167,6 +168,9 @@ if not resumed:
       passthrough.push('sleep', '7200');
     }
     if (kind === 'ghcr-probe') passthrough.push('sleep', '7200');
+    // Long enough for 5 s status reads to see it Running.
+    if (kind === 'arm64')
+      passthrough.push('sh', '-c', 'echo "arch=$(uname -m)"; sleep 30');
     // Running long enough for the family to read each baseline, then exit 0.
     if (kind === 'restricted-credential')
       passthrough.push(

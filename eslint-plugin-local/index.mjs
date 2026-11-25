@@ -2859,6 +2859,10 @@ function contractSpecMetadata(context) {
         `${target}-host-docker.spec.ts`,
         { kind: 'host-docker', target },
       ]),
+      ...['aws', 'gcp'].map((target) => [
+        `${target}-arm64.spec.ts`,
+        { kind: 'arm64', target },
+      ]),
       [
         'aws-job-host-unreachable.spec.ts',
         { kind: 'host-recovery', target: 'aws' },

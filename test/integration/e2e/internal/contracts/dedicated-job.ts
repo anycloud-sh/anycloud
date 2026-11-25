@@ -35,6 +35,7 @@ import {
 } from '../wait.js';
 import type { VmLedgerProbe } from '../vm-ledger.js';
 import {
+  ARM64_MANIFEST_DIGEST,
   FAKE_VM_TYPE,
   jobMemberProfile,
   jobStageBudget,
@@ -155,6 +156,8 @@ export class DedicatedJobContract {
       return this.#ghcrMember(profile, budget, forced === '1');
     if (profile.member.kind === 'host-docker')
       return this.#hostDockerMember(profile, budget, forced === '1');
+    if (profile.member.kind === 'arm64')
+      return this.#arm64Member(profile, budget, forced === '1');
     if (profile.member.kind === 'mace-full-pull')
       return this.#maceMember(profile, budget, forced === '1');
     if (profile.member.kind === 'disk-tier')
@@ -1300,6 +1303,70 @@ export class DedicatedJobContract {
         ...(prober && probe
           ? [child(1, prober, probe.progress, probe.status)]
           : []),
+      ],
+      budget.cleanupMs,
+    );
+  }
+
+  /**
+   * A spot Job of a multi-arch image on an arm64 type pins the image's
+   * linux/arm64 manifest and its container prints `aarch64`.
+   */
+  async #arm64Member(
+    profile: JobMemberProfile,
+    budget: JobStageBudget,
+    forced: boolean,
+  ): Promise<JobContractResult> {
+    const { names, kernel, artifacts } = this.#dependencies;
+    const target = this.#cloud();
+    const [fixture] = await target.prepare(
+      [names.workload('j-arm64')],
+      profile,
+      budget,
+    );
+    const run = this.#records.begin(fixture.ref, profile, 1);
+    await target.submit(fixture);
+    const { progress } = await this.#cloudProgress(
+      fixture,
+      run,
+      budget.runningMs,
+    );
+    if (forced)
+      throw new Error(
+        'E2E_JOB_FORCED_CLEANUP: arm64 after an active baseline, before completion',
+      );
+    const terminalStatus = await kernel.waitForState(
+      fixture.ref,
+      WorkloadState.Completed,
+      budget.completionMs,
+    );
+    this.#assertExit(terminalStatus, 0);
+    const logs = terminalStatus.events.findLast(
+      (event) => typeof event.metadata?.logs === 'string',
+    )?.metadata?.logs;
+    const { imageDigest } = terminalStatus.workload;
+    await artifacts.json(`job-${fixture.ref.id}-arm64`, {
+      member: profile.member,
+      imageDigest,
+      logs: logs ?? null,
+    });
+    jobInvariant(
+      imageDigest === ARM64_MANIFEST_DIGEST,
+      `the Job pinned ${imageDigest}, not the image's linux/arm64 manifest`,
+    );
+    jobInvariant(
+      typeof logs === 'string' && logs.includes('arch=aarch64'),
+      `the container did not print arch=aarch64: ${String(logs)}`,
+    );
+    return this.#finalize(
+      [
+        {
+          fixture,
+          run,
+          progress,
+          extensions: [this.#records.extension(run, progress, 'arm64')],
+          terminalStatus,
+        },
       ],
       budget.cleanupMs,
     );

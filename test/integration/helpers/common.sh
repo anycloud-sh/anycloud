@@ -1076,7 +1076,7 @@ mark_e2e_cleanup_workload_done() {
         vitest:aws-invalid|vitest:azure-invalid|vitest:gcp-invalid|\
         vitest:aws-job-host-unreachable|vitest:azure-job-host-unreachable|vitest:gcp-job-host-unreachable|\
         vitest:aws-input-hydration-recovery|vitest:aws-spot-request-cleanup|vitest:aws-runtime-secrets|vitest:azure-runtime-secrets|vitest:gcp-runtime-secrets|vitest:lambda-runtime-secrets|vitest:aws-restricted-credential|vitest:azure-restricted-credential|\
-        vitest:aws-host-docker|vitest:azure-host-docker|vitest:gcp-host-docker|\
+        vitest:aws-host-docker|vitest:azure-host-docker|vitest:gcp-host-docker|vitest:aws-arm64|vitest:gcp-arm64|\
         vitest:aws-spot-eviction|vitest:azure-spot-eviction|vitest:gcp-spot-eviction|vitest:azure-gpu-spot-eviction|\
         vitest:aws-gpu-probe-rerun|vitest:azure-gpu-probe-rerun|vitest:gcp-gpu-probe-rerun|vitest:lambda-gpu-probe-rerun|\
         vitest:aws-mace-full-pull|vitest:azure-mace-full-pull|vitest:gcp-mace-full-pull|vitest:lambda-mace-full-pull|\

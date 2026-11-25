@@ -69,6 +69,8 @@ const VITEST_ONLY = [
   'aws-host-docker',
   'azure-host-docker',
   'gcp-host-docker',
+  'aws-arm64',
+  'gcp-arm64',
   'azure-runtime-secrets',
   'gcp-runtime-secrets',
   'lambda-runtime-secrets',
