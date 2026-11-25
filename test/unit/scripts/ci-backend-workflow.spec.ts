@@ -207,6 +207,7 @@ const BACKMESH_LABELS: Record<string, Record<string, string>> = {
   'nuke.yml': {
     nuke: "(inputs.provider || 'azure') == 'local' && 'backmesh-ubuntu-2404-kvm-16vcpu' || 'backmesh-ubuntu-2404-od-4vcpu'",
   },
+  'spike.yml': { experiment: 'backmesh-ubuntu-2404-od-4vcpu' },
 };
 
 /** The `||` branch that follows a job's hosted runner. */
