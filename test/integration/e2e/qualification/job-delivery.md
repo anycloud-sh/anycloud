@@ -7,27 +7,27 @@ configuration, recovery, and six provider/image members. Specs select a closed m
 through `e2e.contracts.dedicatedJob({ kind, target })` and assert completion.
 The family owns lifecycle decisions, waits, evidence and finalization.
 
-| Kind                       | Targets                   | Isolated command                                                       |
-| -------------------------- | ------------------------- | ---------------------------------------------------------------------- |
-| `local-held`               | `local-smolvm`            | `bash test/integration/e2e.sh local-held-job --vitest`                 |
-| `local-completed`          | `local-smolvm`            | `bash test/integration/e2e.sh local-completed-job --vitest`            |
-| `local-resubmitted`        | `local-smolvm`            | `bash test/integration/e2e.sh local-resubmitted-job --vitest`          |
-| `bucket-sync`              | AWS, Azure, GCP, Lambda   | `bash test/integration/e2e.sh <target>-bucket-sync --vitest`           |
-| `concurrent-output`        | AWS, Azure, GCP           | `bash test/integration/e2e.sh <target>-concurrent-output --vitest`     |
-| `host-recovery`            | AWS, Azure, GCP           | `bash test/integration/e2e.sh <target>-job-host-unreachable --vitest`  |
-| `input-hydration-recovery` | AWS                       | `bash test/integration/e2e.sh aws-input-hydration-recovery --vitest`   |
-| `spot-request-cleanup`     | AWS                       | `bash test/integration/e2e.sh aws-spot-request-cleanup --vitest`       |
-| `spot-eviction`            | AWS, Azure, GCP           | `bash test/integration/e2e.sh <target>-spot-eviction --vitest`         |
-| `gpu-spot-eviction`        | Azure                     | `bash test/integration/e2e.sh azure-gpu-spot-eviction --vitest`        |
-| `gpu-probe-rerun`          | AWS, Azure, GCP, Lambda   | `bash test/integration/e2e.sh <target>-gpu-probe-rerun --vitest`       |
-| `runtime-secrets`          | AWS, Azure, GCP, Lambda   | `bash test/integration/e2e.sh <target>-runtime-secrets --vitest`       |
-| `restricted-credential`    | AWS, Azure                | `bash test/integration/e2e.sh <target>-restricted-credential --vitest` |
-| `host-docker`              | AWS, Azure, GCP           | `bash test/integration/e2e.sh <target>-host-docker --vitest`           |
-| `invalid-admission`        | AWS, Azure, GCP           | `bash test/integration/e2e.sh <target>-invalid --vitest`               |
-| `disk-tier`                | GCP                       | `bash test/integration/e2e.sh gcp-disk-tier --vitest`                  |
-| `mace-full-pull`           | AWS, Azure, GCP, Lambda   | `bash test/integration/e2e.sh <target>-mace-full-pull --vitest`        |
-| `ghcr-probe`               | Azure                     | `bash test/integration/e2e.sh azure-ghcr-probe --vitest`               |
-| `arm64`                    | AWS, GCP (Azure has none) | `bash test/integration/e2e.sh <target>-arm64 --vitest`                 |
+| Kind                       | Targets                 | Isolated command                                                       |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| `local-held`               | `local-smolvm`          | `bash test/integration/e2e.sh local-held-job --vitest`                 |
+| `local-completed`          | `local-smolvm`          | `bash test/integration/e2e.sh local-completed-job --vitest`            |
+| `local-resubmitted`        | `local-smolvm`          | `bash test/integration/e2e.sh local-resubmitted-job --vitest`          |
+| `bucket-sync`              | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-bucket-sync --vitest`           |
+| `concurrent-output`        | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-concurrent-output --vitest`     |
+| `host-recovery`            | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-job-host-unreachable --vitest`  |
+| `input-hydration-recovery` | AWS                     | `bash test/integration/e2e.sh aws-input-hydration-recovery --vitest`   |
+| `spot-request-cleanup`     | AWS                     | `bash test/integration/e2e.sh aws-spot-request-cleanup --vitest`       |
+| `spot-eviction`            | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-spot-eviction --vitest`         |
+| `gpu-spot-eviction`        | Azure                   | `bash test/integration/e2e.sh azure-gpu-spot-eviction --vitest`        |
+| `gpu-probe-rerun`          | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-gpu-probe-rerun --vitest`       |
+| `runtime-secrets`          | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-runtime-secrets --vitest`       |
+| `restricted-credential`    | AWS, Azure              | `bash test/integration/e2e.sh <target>-restricted-credential --vitest` |
+| `host-docker`              | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-host-docker --vitest`           |
+| `invalid-admission`        | AWS, Azure, GCP         | `bash test/integration/e2e.sh <target>-invalid --vitest`               |
+| `disk-tier`                | GCP                     | `bash test/integration/e2e.sh gcp-disk-tier --vitest`                  |
+| `mace-full-pull`           | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-mace-full-pull --vitest`        |
+| `ghcr-probe`               | Azure                   | `bash test/integration/e2e.sh azure-ghcr-probe --vitest`               |
+| `arm64`                    | AWS, GCP (Azure: none)  | `bash test/integration/e2e.sh <target>-arm64 --vitest`                 |
 
 Each delivered member has an assertion map under `assertion-maps/`; its
 retirement state is a row in [`../RETIREMENT.md`](../RETIREMENT.md). The
