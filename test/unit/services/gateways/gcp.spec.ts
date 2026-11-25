@@ -1666,51 +1666,51 @@ describe('GCP GPU image selection by gpuRuntime', () => {
     },
   );
 
-  it("launches a C4A Job host on its catalog architecture's minimal image and Hyperdisk", async () => {
-    // The published catalog marks C4A arm64 once this fetcher publishes it.
-    vmArchitecture.mockReturnValueOnce('arm64');
-    const gcp = new GCP(
-      completeCloudConfig({
-        ...mockConfig,
-        vmType: 'c4a-standard-4',
-        diskTier: DiskTier.Medium,
-      }),
-    );
-    const getFromFamily = vi
-      .fn()
-      .mockResolvedValue([{ selfLink: 'projects/ubuntu/images/arm64' }]);
-    gcp.imagesClient = fakeSdkClient({ getFromFamily });
-    const insert = vi.fn().mockResolvedValue([{ name: 'op' }]);
-    gcp.instancesClient = fakeSdkClient({
-      insert,
-      get: vi.fn().mockResolvedValue([
-        {
-          status: 'RUNNING',
-          networkInterfaces: [
-            { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
-          ],
-        },
-      ]),
-    });
-    gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
+  it.each([
+    ['c4a-standard-4', 'hyperdisk-balanced'],
+    ['t2a-standard-4', 'pd-ssd'],
+  ])(
+    "launches an Arm %s Job host on its catalog architecture's minimal image and %s",
+    async (vmType, diskType) => {
+      // The published catalog marks GCP's Arm types arm64 once this fetcher
+      // publishes it.
+      vmArchitecture.mockReturnValueOnce('arm64');
+      const gcp = new GCP(
+        completeCloudConfig({ ...mockConfig, vmType, diskTier: DiskTier.High }),
+      );
+      const getFromFamily = vi
+        .fn()
+        .mockResolvedValue([{ selfLink: 'projects/ubuntu/images/arm64' }]);
+      gcp.imagesClient = fakeSdkClient({ getFromFamily });
+      const insert = vi.fn().mockResolvedValue([{ name: 'op' }]);
+      gcp.instancesClient = fakeSdkClient({
+        insert,
+        get: vi.fn().mockResolvedValue([
+          {
+            status: 'RUNNING',
+            networkInterfaces: [
+              { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
+            ],
+          },
+        ]),
+      });
+      gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
 
-    await gcp.compute().newVM({ ...newVMProps(null), jobHost: true });
+      await gcp.compute().newVM({ ...newVMProps(null), jobHost: true });
 
-    expect(vmArchitecture).toHaveBeenCalledWith(
-      CloudType.GCP,
-      'c4a-standard-4',
-    );
-    expect(getFromFamily).toHaveBeenCalledWith({
-      family: 'ubuntu-minimal-2404-lts-arm64',
-      project: 'ubuntu-os-cloud',
-    });
-    expect(
-      insert.mock.calls[0]![0].instanceResource.disks[0].initializeParams,
-    ).toMatchObject({
-      sourceImage: 'projects/ubuntu/images/arm64',
-      diskType: 'zones/us-central1-a/diskTypes/hyperdisk-balanced',
-    });
-  });
+      expect(vmArchitecture).toHaveBeenCalledWith(CloudType.GCP, vmType);
+      expect(getFromFamily).toHaveBeenCalledWith({
+        family: 'ubuntu-minimal-2404-lts-arm64',
+        project: 'ubuntu-os-cloud',
+      });
+      expect(
+        insert.mock.calls[0]![0].instanceResource.disks[0].initializeParams,
+      ).toMatchObject({
+        sourceImage: 'projects/ubuntu/images/arm64',
+        diskType: `zones/us-central1-a/diskTypes/${diskType}`,
+      });
+    },
+  );
 
   it.each([
     ['n1-standard-4', DiskTier.High, 'pd-ssd', 25],
