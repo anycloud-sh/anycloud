@@ -913,10 +913,10 @@ describe('entriesToCSV', () => {
     const lines = csv.trim().split('\n');
 
     expect(lines[0]).toBe(
-      'InstanceType,AcceleratorName,AcceleratorCount,vCPUs,MemoryGiB,GpuInfo,Price,SpotPrice,Region,AvailabilityZone,Generation,QuotaGroup,PremiumStorageCapable,NestedVirtualizationSupported',
+      'InstanceType,AcceleratorName,AcceleratorCount,vCPUs,MemoryGiB,GpuInfo,Price,SpotPrice,Region,AvailabilityZone,Generation,QuotaGroup,PremiumStorageCapable,NestedVirtualizationSupported,Arch',
     );
     expect(lines[1]).toBe(
-      'Standard_D4s_v5,,,4,16,,0.192,0.038,eastus,,V2,standarddsv5family,,',
+      'Standard_D4s_v5,,,4,16,,0.192,0.038,eastus,,V2,standarddsv5family,,,',
     );
   });
 

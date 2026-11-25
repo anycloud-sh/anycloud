@@ -1,6 +1,13 @@
 import { Readable, Writable } from 'node:stream';
 import { beforeEach, describe, it, expect, onTestFinished, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { completeCloudConfig } from '../../../../src/shared/cloud-config.js';
+import {
+  clearCatalogCache,
+  writeCatalog,
+} from '../../../../src/shared/catalog/index.js';
 import {
   GCP_PERMISSION_DENIED,
   GCP_UNAUTHENTICATED,
@@ -1655,6 +1662,59 @@ describe('GCP GPU image selection by gpuRuntime', () => {
       expect(inserted.advancedMachineFeatures).toEqual(features);
     },
   );
+
+  it("launches a C4A Job host on its catalog architecture's minimal image and Hyperdisk", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gcp-arm64-'));
+    vi.stubEnv('ANYCLOUD_DIR', dir);
+    clearCatalogCache();
+    writeCatalog(
+      CloudType.GCP,
+      'InstanceType,Region,AvailabilityZone,vCPUs,MemoryGiB,Price,SpotPrice,Arch\n' +
+        'c4a-standard-4,us-central1,us-central1-a,4,16,0.18,0.07,arm64\n',
+    );
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      clearCatalogCache();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const gcp = new GCP(
+      completeCloudConfig({
+        ...mockConfig,
+        vmType: 'c4a-standard-4',
+        diskTier: DiskTier.Medium,
+      }),
+    );
+    const getFromFamily = vi
+      .fn()
+      .mockResolvedValue([{ selfLink: 'projects/ubuntu/images/arm64' }]);
+    gcp.imagesClient = fakeSdkClient({ getFromFamily });
+    const insert = vi.fn().mockResolvedValue([{ name: 'op' }]);
+    gcp.instancesClient = fakeSdkClient({
+      insert,
+      get: vi.fn().mockResolvedValue([
+        {
+          status: 'RUNNING',
+          networkInterfaces: [
+            { networkIP: '10.0.0.2', accessConfigs: [{ natIP: '1.2.3.4' }] },
+          ],
+        },
+      ]),
+    });
+    gcp.waitForOperation = vi.fn().mockResolvedValue(undefined);
+
+    await gcp.compute().newVM({ ...newVMProps(null), jobHost: true });
+
+    expect(getFromFamily).toHaveBeenCalledWith({
+      family: 'ubuntu-minimal-2404-lts-arm64',
+      project: 'ubuntu-os-cloud',
+    });
+    expect(
+      insert.mock.calls[0]![0].instanceResource.disks[0].initializeParams,
+    ).toMatchObject({
+      sourceImage: 'projects/ubuntu/images/arm64',
+      diskType: 'zones/us-central1-a/diskTypes/hyperdisk-balanced',
+    });
+  });
 
   it.each([
     ['n1-standard-4', DiskTier.High, 'pd-ssd', 25],

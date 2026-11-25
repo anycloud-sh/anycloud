@@ -25,6 +25,8 @@ export interface VMCatalogEntry {
   premiumStorageCapable?: boolean;
   /** Provider-reported support; absent means unknown. */
   nestedVirtualizationSupported?: boolean;
+  /** Provider-reported CPU architecture (GCP); absent means unknown. */
+  arch?: 'arm64' | 'x86_64' | null;
 }
 
 export interface CloudCatalogFetcher {
@@ -46,6 +48,7 @@ const CSV_COLUMNS: (keyof VMCatalogEntry)[] = [
   'quotaGroup',
   'premiumStorageCapable',
   'nestedVirtualizationSupported',
+  'arch',
 ];
 
 // Header names for the catalog CSV schema
@@ -64,6 +67,7 @@ const CSV_HEADERS = [
   'QuotaGroup',
   'PremiumStorageCapable',
   'NestedVirtualizationSupported',
+  'Arch',
 ];
 
 function formatValue(

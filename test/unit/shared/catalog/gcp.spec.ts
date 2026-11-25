@@ -300,6 +300,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       clientEmail: 'catalog@example.com',
       privateKey: 'private-key',
       machineTypesClient: machineTypesClient as never,
+      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response(csv)),
     });
 
@@ -325,6 +326,7 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
       clientEmail: 'catalog@example.com',
       privateKey: 'private-key',
       machineTypesClient: machineTypesClient as never,
+      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response(UPSTREAM)),
     });
 
@@ -334,5 +336,209 @@ g4-standard-48,48,180,,,,us-central1,us-central1-b,3.4,1.2
     } finally {
       random.mockRestore();
     }
+  });
+
+  it('prices C4A from Cloud Billing SKUs and marks each type with its architecture', async () => {
+    const machine = (name: string, zone: string, architecture: string) => ({
+      name,
+      zone: `zones/${zone}`,
+      guestCpus: Number(name.split('-')[2]),
+      memoryMb: Number(name.split('-')[2]) * 4096,
+      architecture,
+    });
+    const machineTypesClient = {
+      async *aggregatedListAsync() {
+        yield [
+          'zones/europe-west4-a',
+          {
+            machineTypes: [
+              machine('c4a-standard-4', 'europe-west4-a', 'ARM64'),
+              // Its local SSD has its own SKU, which isn't priced here.
+              machine('c4a-standard-4-lssd', 'europe-west4-a', 'ARM64'),
+              machine('n2-standard-4', 'europe-west4-a', 'X86_64'),
+            ],
+          },
+        ] as const;
+        yield [
+          `zones/${ZONE}`,
+          {
+            machineTypes: [
+              machine('c4a-standard-4', ZONE, 'ARM64'),
+              machine('t2a-standard-1', ZONE, 'ARM64'),
+            ],
+          },
+        ] as const;
+      },
+    };
+    const sku = (
+      description: string,
+      usageType: string,
+      region: string,
+      units: string,
+      nanos: number,
+    ) => ({
+      description,
+      category: { usageType },
+      serviceRegions: [region],
+      pricingInfo: [
+        {
+          pricingExpression: {
+            tieredRates: [{ unitPrice: { units, nanos } }],
+          },
+        },
+      ],
+    });
+    const pages = [
+      {
+        skus: [
+          sku(
+            'C4A Arm Instance Core running in Netherlands',
+            'OnDemand',
+            'europe-west4',
+            '0',
+            40_000_000,
+          ),
+          sku(
+            'C4A Arm Instance Ram running in Netherlands',
+            'OnDemand',
+            'europe-west4',
+            '0',
+            5_000_000,
+          ),
+          sku(
+            'Commitment v1: C4A Arm Cpu in Netherlands for 1 Year',
+            'Commit1Yr',
+            'europe-west4',
+            '0',
+            1_000_000,
+          ),
+        ],
+        nextPageToken: 'page-2',
+      },
+      {
+        skus: [
+          sku(
+            'Spot Preemptible C4A Arm Instance Core running in Netherlands',
+            'Preemptible',
+            'europe-west4',
+            '0',
+            10_000_000,
+          ),
+          sku(
+            'Spot Preemptible C4A Arm Instance Ram running in Netherlands',
+            'Preemptible',
+            'europe-west4',
+            '0',
+            2_000_000,
+          ),
+          sku(
+            'C4A Arm Instance Core running in Americas',
+            'OnDemand',
+            'us-central1',
+            '1',
+            0,
+          ),
+        ],
+      },
+    ];
+    const billing = {
+      request: vi.fn(async ({ url }: { url: string }) => ({
+        data: url.includes('pageToken=page-2') ? pages[1] : pages[0],
+      })),
+    };
+    const csv = `${HEADER}
+n2-standard-4,4,16,,,,europe-west4,europe-west4-a,0.19,0.05
+t2a-standard-1,1,4,,,,us-central1,${ZONE},0.04,0.01`;
+    const fetcher = new GcpCatalogFetcher({
+      projectId: 'project',
+      clientEmail: 'catalog@example.com',
+      privateKey: 'private-key',
+      machineTypesClient: machineTypesClient as never,
+      billing: billing as never,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(csv)),
+    });
+
+    const entries = await fetcher.fetchAll();
+    expect(billing.request).toHaveBeenCalledTimes(2);
+    expect(
+      entries.map(
+        ({ instanceType, availabilityZone, price, spotPrice, arch }) => ({
+          instanceType,
+          availabilityZone,
+          price,
+          spotPrice,
+          arch,
+        }),
+      ),
+    ).toEqual([
+      {
+        instanceType: 'n2-standard-4',
+        availabilityZone: 'europe-west4-a',
+        price: 0.19,
+        spotPrice: 0.05,
+        arch: 'x86_64',
+      },
+      {
+        instanceType: 't2a-standard-1',
+        availabilityZone: ZONE,
+        price: 0.04,
+        spotPrice: 0.01,
+        arch: 'arm64',
+      },
+      // 4 vCPUs and 16 GiB at the SKUs' hourly rates.
+      {
+        instanceType: 'c4a-standard-4',
+        availabilityZone: 'europe-west4-a',
+        price: 0.24,
+        spotPrice: 0.072,
+        arch: 'arm64',
+      },
+      // us-central1 has a core price but no RAM price: no complete price.
+    ]);
+    expect(
+      entries.find((entry) => entry.instanceType === 'c4a-standard-4'),
+    ).toMatchObject({
+      region: 'europe-west4',
+      vCPUs: 4,
+      memoryGiB: 16,
+      acceleratorName: null,
+      nestedVirtualizationSupported: false,
+    });
+    expect(
+      parseCatalogCSV(entriesToCSV(entries), CloudType.GCP).arm64Types,
+    ).toEqual(['c4a-standard-4', 't2a-standard-1']);
+  });
+
+  it('fails when Cloud Billing has no price for a Billing-priced series', async () => {
+    const machineTypesClient = {
+      async *aggregatedListAsync() {
+        yield [
+          `zones/${ZONE}`,
+          {
+            machineTypes: [
+              {
+                name: 'c4a-standard-4',
+                zone: `zones/${ZONE}`,
+                guestCpus: 4,
+                memoryMb: 16_384,
+                architecture: 'ARM64',
+              },
+            ],
+          },
+        ] as const;
+      },
+    };
+    const fetcher = new GcpCatalogFetcher({
+      projectId: 'project',
+      clientEmail: 'catalog@example.com',
+      privateKey: 'private-key',
+      machineTypesClient: machineTypesClient as never,
+      billing: { request: vi.fn().mockResolvedValue({ data: {} }) } as never,
+      fetchImpl: vi.fn().mockResolvedValue(new Response(HEADER)),
+    });
+
+    await expect(fetcher.fetchAll()).rejects.toThrow(
+      'Cloud Billing has no complete price for c4a',
+    );
   });
 });

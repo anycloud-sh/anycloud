@@ -7,9 +7,14 @@
  * GPU-to-representative-VM map. New accelerator-optimized families are
  * discovered automatically, but publication remains gated by the runtime
  * capability registry.
+ *
+ * SkyPilot has no rows for some series (C4A). Those come from the same API's
+ * machine types, priced from Cloud Billing's per-vCPU and per-GiB SKUs. The
+ * API also gives each type's CPU architecture.
  */
 
 import { MachineTypesClient, protos } from '@google-cloud/compute';
+import { JWT } from 'google-auth-library';
 import { parse } from 'csv-parse/sync';
 import { gcpGpuMachineCapability } from '../gcp-machine-capabilities.js';
 import { withRetry } from '../utils.js';
@@ -19,6 +24,19 @@ import { gcpNestedVirtualization } from './nested-virtualization.js';
 
 const DEFAULT_UPSTREAM =
   'https://raw.githubusercontent.com/skypilot-org/skypilot-catalog/master/catalogs/v8/gcp/vms.csv';
+
+/** Compute Engine's service in the Cloud Billing Catalog API. */
+const COMPUTE_SKUS_URL =
+  'https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus';
+
+/**
+ * Series SkyPilot doesn't publish, by the stem of their core and RAM SKUs'
+ * descriptions, e.g. "Spot Preemptible C4A Arm Instance Core running in ...".
+ */
+const BILLING_PRICED_SERIES: Readonly<Record<string, string>> = {
+  c4a: 'C4A Arm Instance',
+};
+const SKU_DESCRIPTION = /^(?:Spot Preemptible )?(.+) (Core|Ram) running in /;
 
 const INTENTIONALLY_EXCLUDED_ACCELERATORS = new Set([
   'T4',
@@ -50,12 +68,40 @@ export interface GcpMachineTypeMetadata {
   acceleratorCount: number;
 }
 
+/** A machine type in a zone, for a series priced from Cloud Billing. */
+interface GcpBillingPricedMachine {
+  readonly series: string;
+  readonly instanceType: string;
+  readonly zone: string;
+  readonly guestCpus: number;
+  readonly memoryMb: number;
+}
+
+interface GcpMachineTypes {
+  readonly gpu: GcpMachineTypeMetadata[];
+  readonly billingPriced: GcpBillingPricedMachine[];
+  /** Each type's architecture, by lowercased name. */
+  readonly architectures: Map<string, 'arm64' | 'x86_64'>;
+}
+
+interface BillingSku {
+  description?: string;
+  category?: { usageType?: string };
+  serviceRegions?: string[];
+  pricingInfo?: {
+    pricingExpression?: {
+      tieredRates?: { unitPrice?: { units?: string; nanos?: number } }[];
+    };
+  }[];
+}
+
 export interface GcpCatalogFetcherOptions {
   projectId: string;
   clientEmail: string;
   privateKey: string;
   upstreamUrl?: string;
   machineTypesClient?: Pick<MachineTypesClient, 'aggregatedListAsync'>;
+  billing?: Pick<JWT, 'request'>;
   fetchImpl?: typeof fetch;
 }
 
@@ -452,6 +498,83 @@ export function normalizeGcpCatalogWithDiagnostics(
   };
 }
 
+/** Hourly on-demand or spot price per vCPU or GiB, by series, region and kind. */
+function skuRates(skus: readonly BillingSku[]): Map<string, number> {
+  const seriesByStem = new Map(
+    Object.entries(BILLING_PRICED_SERIES).map(([series, stem]) => [
+      stem,
+      series,
+    ]),
+  );
+  const rates = new Map<string, number>();
+  for (const sku of skus) {
+    const match = SKU_DESCRIPTION.exec(sku.description ?? '');
+    const series = match && seriesByStem.get(match[1]);
+    const usage = sku.category?.usageType;
+    const rate =
+      sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.at(-1)?.unitPrice;
+    if (!series || (usage !== 'OnDemand' && usage !== 'Preemptible') || !rate)
+      continue;
+    const price = Number(rate.units ?? 0) + (rate.nanos ?? 0) / 1e9;
+    for (const region of sku.serviceRegions ?? []) {
+      rates.set(`${series}|${region}|${usage}|${match[2]}`, price);
+    }
+  }
+  return rates;
+}
+
+/** Catalog rows for Billing-priced series' machine types SkyPilot lacks. */
+function billingPricedEntries(
+  machines: readonly GcpBillingPricedMachine[],
+  skus: readonly BillingSku[],
+  publishedTypes: ReadonlySet<string>,
+): VMCatalogEntry[] {
+  const rates = skuRates(skus);
+  const priced = new Set<string>();
+  const out: VMCatalogEntry[] = [];
+  for (const machine of machines) {
+    if (publishedTypes.has(machine.instanceType.toLowerCase())) continue;
+    const region = regionFromZone(machine.zone);
+    const memoryGiB = machine.memoryMb / 1024;
+    const price = (usage: string) => {
+      const core = rates.get(`${machine.series}|${region}|${usage}|Core`);
+      const ram = rates.get(`${machine.series}|${region}|${usage}|Ram`);
+      return core === undefined || ram === undefined
+        ? null
+        : Number((core * machine.guestCpus + ram * memoryGiB).toFixed(10));
+    };
+    const onDemand = price('OnDemand');
+    const spot = price('Preemptible');
+    if (!region || (onDemand === null && spot === null)) continue;
+    priced.add(machine.series);
+    out.push({
+      instanceType: machine.instanceType,
+      region,
+      availabilityZone: machine.zone,
+      price: onDemand,
+      spotPrice: spot,
+      vCPUs: machine.guestCpus,
+      memoryGiB,
+      acceleratorName: null,
+      acceleratorCount: null,
+      gpuInfo: null,
+      generation: null,
+      nestedVirtualizationSupported: gcpNestedVirtualization(
+        machine.instanceType,
+      ),
+    });
+  }
+  const unpriced = new Set(
+    machines.map(({ series }) => series).filter((s) => !priced.has(s)),
+  );
+  if (unpriced.size > 0) {
+    throw new Error(
+      `Cloud Billing has no complete price for ${summarize(unpriced)}`,
+    );
+  }
+  return out;
+}
+
 export class GcpCatalogFetcher implements CloudCatalogFetcher {
   private readonly upstreamUrl: string;
   private readonly machineTypesClient: Pick<
@@ -459,10 +582,18 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
     'aggregatedListAsync'
   >;
   private readonly fetchImpl: typeof fetch;
+  private readonly billing: Pick<JWT, 'request'>;
 
   constructor(private readonly options: GcpCatalogFetcherOptions) {
     this.upstreamUrl = options.upstreamUrl ?? DEFAULT_UPSTREAM;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.billing =
+      options.billing ??
+      new JWT({
+        email: options.clientEmail,
+        key: options.privateKey,
+        scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      });
     this.machineTypesClient =
       options.machineTypesClient ??
       new MachineTypesClient({
@@ -475,11 +606,15 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
   }
 
   async fetchAll(): Promise<VMCatalogEntry[]> {
-    const [csv, machineTypes] = await Promise.all([
+    const [csv, machineTypes, skus] = await Promise.all([
       this.fetchUpstream(),
       this.fetchMachineTypes(),
+      this.fetchSkus(),
     ]);
-    const normalized = normalizeGcpCatalogWithDiagnostics(csv, machineTypes);
+    const normalized = normalizeGcpCatalogWithDiagnostics(
+      csv,
+      machineTypes.gpu,
+    );
     const diagnostics = Object.entries(normalized.diagnostics).filter(
       ([, values]) => values.length > 0,
     );
@@ -494,7 +629,41 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
             .join('\n'),
       );
     }
-    return normalized.entries;
+    const entries = [
+      ...normalized.entries,
+      ...billingPricedEntries(
+        machineTypes.billingPriced,
+        skus,
+        new Set(normalized.entries.map((e) => e.instanceType.toLowerCase())),
+      ),
+    ];
+    return entries.map((entry) => ({
+      ...entry,
+      arch:
+        machineTypes.architectures.get(entry.instanceType.toLowerCase()) ??
+        null,
+    }));
+  }
+
+  private fetchSkus(): Promise<BillingSku[]> {
+    return withRetry(
+      async () => {
+        const skus: BillingSku[] = [];
+        let pageToken = '';
+        do {
+          const url = `${COMPUTE_SKUS_URL}?currencyCode=USD&pageSize=5000${pageToken && `&pageToken=${encodeURIComponent(pageToken)}`}`;
+          const { data } = await this.billing.request<{
+            skus?: BillingSku[];
+            nextPageToken?: string;
+          }>({ url, timeout: 60_000 });
+          skus.push(...(data.skus ?? []));
+          pageToken = data.nextPageToken ?? '';
+        } while (pageToken);
+        return skus;
+      },
+      'Fetch Compute Engine SKUs from Cloud Billing',
+      { maxAttempts: 3, waitMs: 5_000 },
+    );
   }
 
   private fetchUpstream(): Promise<string> {
@@ -511,10 +680,13 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
     );
   }
 
-  private fetchMachineTypes(): Promise<GcpMachineTypeMetadata[]> {
+  private fetchMachineTypes(): Promise<GcpMachineTypes> {
     return withRetry(
       async () => {
         const machineTypes: GcpMachineTypeMetadata[] = [];
+        const billingPriced: GcpBillingPricedMachine[] = [];
+        const architectures = new Map<string, 'arm64' | 'x86_64'>();
+        let listed = 0;
         const request: protos.google.cloud.compute.v1.IAggregatedListMachineTypesRequest =
           {
             project: this.options.projectId,
@@ -528,6 +700,30 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
         ] of this.machineTypesClient.aggregatedListAsync(request)) {
           const scopeZone = resourceName(scope);
           for (const machineType of scopedList.machineTypes ?? []) {
+            listed++;
+            const name = machineType.name ?? '';
+            const zone = resourceName(machineType.zone ?? '') || scopeZone;
+            const architecture = machineType.architecture;
+            if (architecture === 'ARM64' || architecture === 'X86_64') {
+              architectures.set(
+                name.toLowerCase(),
+                architecture === 'ARM64' ? 'arm64' : 'x86_64',
+              );
+            }
+            // Local SSD and bare-metal variants have SKUs of their own.
+            const [series] = name.split('-');
+            if (
+              BILLING_PRICED_SERIES[series] &&
+              new RegExp(`^${series}-[a-z]+-\\d+$`).test(name)
+            ) {
+              billingPriced.push({
+                series,
+                instanceType: name,
+                zone,
+                guestCpus: machineType.guestCpus ?? 0,
+                memoryMb: machineType.memoryMb ?? 0,
+              });
+            }
             const accelerators = machineType.accelerators ?? [];
             if (accelerators.length === 0) continue;
             if (accelerators.length !== 1) {
@@ -537,8 +733,8 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
             }
             const accelerator = accelerators[0];
             machineTypes.push({
-              instanceType: machineType.name ?? '',
-              zone: resourceName(machineType.zone ?? '') || scopeZone,
+              instanceType: name,
+              zone,
               guestCpus: machineType.guestCpus ?? 0,
               memoryMb: machineType.memoryMb ?? 0,
               acceleratorType: resourceName(
@@ -549,12 +745,12 @@ export class GcpCatalogFetcher implements CloudCatalogFetcher {
           }
         }
 
-        if (machineTypes.length === 0) {
+        if (listed === 0) {
           throw new Error(
-            'Compute Engine Machine Types API returned no GPU machines',
+            'Compute Engine Machine Types API returned no machine types',
           );
         }
-        return machineTypes;
+        return { gpu: machineTypes, billingPriced, architectures };
       },
       'Fetch GCP machine type metadata',
       { maxAttempts: 3, waitMs: 5_000 },

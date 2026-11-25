@@ -248,7 +248,22 @@ const GCP_BASELINE: Record<string, number[]> = {
   RTXPRO6000: [1, 2, 4, 8],
 };
 
+const GCP_ARM64_BASELINE = ['standard', 'highmem'].flatMap((shape) =>
+  [4, 8, 16].map((vCpus) => ({
+    InstanceType: `c4a-${shape}-${vCpus}`,
+    Arch: 'arm64',
+    Price: '0.2',
+    SpotPrice: '0.08',
+    Region: 'europe-west4',
+    AvailabilityZone: 'europe-west4-a',
+  })),
+);
+
 function validGcpRows(): Row[] {
+  return [...GCP_ARM64_BASELINE, ...gpuRows()];
+}
+
+function gpuRows(): Row[] {
   return Object.entries(GCP_BASELINE).flatMap(([name, counts]) =>
     counts.map((count) => ({
       InstanceType:
@@ -293,6 +308,20 @@ describe('validateGcpCatalog', () => {
     );
     expect(gcpResult(rows, 'RTXPRO6000')).toMatchObject({
       passed: false,
+    });
+  });
+
+  it('fails when a C4A type lacks a spot price or its arm64 mark', () => {
+    const rows = validGcpRows().map((entry) =>
+      entry.InstanceType === 'c4a-highmem-16'
+        ? { ...entry, SpotPrice: '' }
+        : entry.InstanceType === 'c4a-standard-4'
+          ? { ...entry, Arch: '' }
+          : entry,
+    );
+    expect(gcpResult(rows, 'arm64 baseline')).toMatchObject({
+      passed: false,
+      message: expect.stringContaining('missing c4a-standard-4/c4a-highmem-16'),
     });
   });
 
