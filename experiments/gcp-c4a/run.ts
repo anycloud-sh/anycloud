@@ -541,6 +541,7 @@ async function spot() {
           message: messageOf(error).slice(0, 300),
         });
       }
+      console.log(JSON.stringify(attempts.at(-1)));
     }
   }
   evidence('spot-launches.json', { at: new Date().toISOString(), attempts });
