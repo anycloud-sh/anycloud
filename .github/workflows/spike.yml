@@ -32,7 +32,7 @@ concurrency:
 jobs:
   experiment:
     name: 'Spike: ${{ inputs.experiment }}'
-    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-4vcpu' }}
+    runs-on: ${{ vars.CI_BACKEND == 'hosted' && 'ubuntu-24.04' || 'backmesh-ubuntu-2404-od-4vcpu' }}
     environment: cloud-e2e
     timeout-minutes: 120
     steps:
