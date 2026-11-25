@@ -165,14 +165,17 @@ async function seedCatalog() {
   };
 }
 
-async function startApi(): Promise<void> {
+async function startApi(seed = true): Promise<void> {
   if (!existsSync(join(root, 'dist/api/server.js'))) {
     const build = spawnSync('yarn', ['build'], { cwd: root, stdio: 'inherit' });
     if (build.status !== 0) throw new Error('yarn build failed');
   }
-  const catalog = await seedCatalog();
-  evidence('catalog.json', catalog);
-  console.log(JSON.stringify(catalog, null, 2));
+  // Cleanup only terminates: it needs no C4A rows.
+  if (seed) {
+    const catalog = await seedCatalog();
+    evidence('catalog.json', catalog);
+    console.log(JSON.stringify(catalog, null, 2));
+  }
   const token = randomBytes(32).toString('hex');
   writeLocalApiToken(state, token);
   writeLocalApiToken(join(state, 'cli'), token);
@@ -347,7 +350,7 @@ async function cleanup() {
   const { ids } = JSON.parse(readFileSync(inventoryPath, 'utf8')) as {
     ids: string[];
   };
-  await startApi();
+  await startApi(false);
   const jobs = [];
   for (const id of ids) jobs.push(await terminateAndAwaitCleanup(id));
   evidence('cleanup.json', { jobs });
