@@ -5,7 +5,11 @@ import { join } from 'node:path';
 import { CLOUDFLARE_IPV4_RANGES } from '../../shared/cloudflare-ips.js';
 import { CloudType } from '../../shared/cloud.js';
 import { getZoneSuffixes } from '../../shared/cloud-config.js';
-import { gcpBootsFromHyperdisk } from '../../shared/gcp-boot-disks.js';
+import {
+  GCP_HYPERDISK_MEDIUM_SERIES,
+  isHyperdiskOnlyMetalVariant,
+  matchesGcpSeries,
+} from '../../shared/gcp-boot-disks.js';
 import { discoverAccount, missingRights } from './accounts.js';
 import {
   CloudCliError,
@@ -438,7 +442,8 @@ export function createGcpSeed(
               // as on AWS's 16 GB. Persistent Disk machines would default to
               // pd-standard, whose speed shrinks with its size.
               '--boot-disk-size=20GB',
-              ...(gcpBootsFromHyperdisk(params.vmType)
+              ...(isHyperdiskOnlyMetalVariant(params.vmType) ||
+              matchesGcpSeries(params.vmType, GCP_HYPERDISK_MEDIUM_SERIES)
                 ? []
                 : ['--boot-disk-type=pd-balanced']),
               `--service-account=${email}`,

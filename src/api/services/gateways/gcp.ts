@@ -110,8 +110,9 @@ import {
 } from '../../../shared/disk-performance.js';
 import {
   GCP_BALANCED_PD_MEDIUM_SERIES,
+  GCP_HYPERDISK_MEDIUM_SERIES,
   gcpBootsFromFastHyperdisk,
-  gcpBootsFromHyperdisk,
+  isHyperdiskOnlyMetalVariant,
   matchesGcpSeries,
 } from '../../../shared/gcp-boot-disks.js';
 import { gcpGpuMachineCapability } from '../../../shared/gcp-machine-capabilities.js';
@@ -219,6 +220,7 @@ function bootDiskFor(
 ): GcpBootDisk {
   const sizeGb = requestedSizeGb ?? minimumDefaultSizeGb;
   const diskSize = sizeGb === undefined ? {} : { diskSizeGb: sizeGb };
+  const metal = isHyperdiskOnlyMetalVariant(vmType);
   const fastHyperdisk = gcpBootsFromFastHyperdisk(vmType);
   // A Job's own IOPS and MiB/s set Hyperdisk Balanced; a type booting from
   // Persistent Disk keeps its tier's disk, so a Job's fallback types may.
@@ -227,7 +229,7 @@ function bootDiskFor(
     (own.diskIops !== undefined || own.diskThroughputMibps !== undefined);
 
   if (tier === DiskTier.Medium && !ownPerformance) {
-    if (gcpBootsFromHyperdisk(vmType)) {
+    if (metal || matchesGcpSeries(vmType, GCP_HYPERDISK_MEDIUM_SERIES)) {
       return { diskType: 'hyperdisk-balanced', ...diskSize };
     }
     return {

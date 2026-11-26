@@ -3,7 +3,7 @@
  * GCP does not expose machine-to-disk compatibility through its APIs, so this
  * keeps only the exceptions to the common Persistent Disk path.
  */
-const GCP_HYPERDISK_MEDIUM_SERIES = [
+export const GCP_HYPERDISK_MEDIUM_SERIES = [
   'a3-ultragpu',
   'a4-highgpu',
   'a4x-highgpu',
@@ -45,19 +45,11 @@ export function matchesGcpSeries(
   );
 }
 
-function isHyperdiskOnlyMetalVariant(vmType: string): boolean {
+export function isHyperdiskOnlyMetalVariant(vmType: string): boolean {
   const normalized = vmType.trim().toLowerCase();
   return (
     normalized.endsWith('-metal') &&
     (normalized.startsWith('c3-') || normalized.startsWith('z3-'))
-  );
-}
-
-/** Whether `vmType` boots from Hyperdisk at every tier. */
-export function gcpBootsFromHyperdisk(vmType: string): boolean {
-  return (
-    isHyperdiskOnlyMetalVariant(vmType) ||
-    matchesGcpSeries(vmType, GCP_HYPERDISK_MEDIUM_SERIES)
   );
 }
 
