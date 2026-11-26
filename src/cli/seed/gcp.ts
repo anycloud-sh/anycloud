@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { CLOUDFLARE_IPV4_RANGES } from '../../shared/cloudflare-ips.js';
 import { CloudType } from '../../shared/cloud.js';
 import { getZoneSuffixes } from '../../shared/cloud-config.js';
+import {
+  GCP_HYPERDISK_MEDIUM_SERIES,
+  isHyperdiskOnlyMetalVariant,
+  matchesGcpSeries,
+} from '../../shared/gcp-boot-disks.js';
 import { discoverAccount, missingRights } from './accounts.js';
 import {
   CloudCliError,
@@ -433,7 +438,14 @@ export function createGcpSeed(
               `--machine-type=${params.vmType}`,
               '--image-family=ubuntu-2404-lts-amd64',
               '--image-project=ubuntu-os-cloud',
-              '--boot-disk-size=100GB',
+              // K3s, its images, the API's and its SQLite fit with headroom,
+              // as on AWS's 16 GB. Persistent Disk machines would default to
+              // pd-standard, whose speed shrinks with its size.
+              '--boot-disk-size=20GB',
+              ...(isHyperdiskOnlyMetalVariant(params.vmType) ||
+              matchesGcpSeries(params.vmType, GCP_HYPERDISK_MEDIUM_SERIES)
+                ? []
+                : ['--boot-disk-type=pd-balanced']),
               `--service-account=${email}`,
               '--scopes=cloud-platform',
               // The DNS Worker matches the caller's IPv4 against the A record.
