@@ -131,7 +131,7 @@ const deployCalls = (bucketCalls: string[]) => [
   `compute firewall-rules create ${VM}-api ${P} --network=default --direction=INGRESS ${apiShape} --quiet`,
   ...bucketCalls,
   `storage buckets add-iam-policy-binding gs://acme-checkpoints ${MEMBER} --role=roles/storage.objectUser --quiet`,
-  `compute instances create ${VM} ${P} --zone=${ZONE} --machine-type=e2-standard-4 --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud --boot-disk-size=100GB --service-account=${EMAIL} --scopes=cloud-platform --stack-type=IPV4_ONLY --tags=${VM} ${LABELS} --metadata=anycloud-bucket=acme-checkpoints --metadata-from-file=startup-script=<${SCRIPT}> --quiet`,
+  `compute instances create ${VM} ${P} --zone=${ZONE} --machine-type=e2-standard-4 --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud --boot-disk-size=20GB --boot-disk-type=pd-balanced --service-account=${EMAIL} --scopes=cloud-platform --stack-type=IPV4_ONLY --tags=${VM} ${LABELS} --metadata=anycloud-bucket=acme-checkpoints --metadata-from-file=startup-script=<${SCRIPT}> --quiet`,
   `compute instances describe ${VM} ${P} --zone=${ZONE} --format=json --quiet`,
 ];
 
