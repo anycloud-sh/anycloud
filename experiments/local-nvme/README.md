@@ -79,8 +79,8 @@ isolates the disk from the CPU.
 ### `variant-nvme.patch`
 
 On AWS and GCP the Job host's user-data preparation finds the local NVMe disk
-(model `Amazon EC2 NVMe Instance Storage`, or GCP's `nvme_card` or
-`google-local-nvme-ssd-0`), formats it as ext4 with lazy inode-table and
+(model `Amazon EC2 NVMe Instance Storage`, or GCP's
+`google-local-nvme-ssd-0`; `c4`'s local SSD reports model `nvme_card0`), formats it as ext4 with lazy inode-table and
 journal initialization and no discard, mounts it at `/mnt/local`, and binds
 `/var/lib/docker`, `/var/lib/containerd` and `/workspace` onto it with the
 unit anycloud uses for Azure's resource disk, before containerd first

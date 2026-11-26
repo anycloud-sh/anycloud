@@ -8,7 +8,8 @@
 # step prints `BENCH <build> <command> <ms>`. A failed build prints
 # `BENCH_FAIL <build>` and the next build still runs.
 set -eu
-apk add --no-cache -q git >/dev/null
+# coreutils' date, for nanoseconds.
+apk add --no-cache -q coreutils git >/dev/null
 
 # `DISK <path> <source> <fstype>`, from the host's mount namespace.
 docker run --rm --privileged --pid=host alpine:3.20 nsenter -t 1 -m -- sh -c '

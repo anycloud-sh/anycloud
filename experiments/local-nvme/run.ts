@@ -213,10 +213,11 @@ const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
         : []),
     ];
   });
-/** A Job ID's arm part: m8id-xlarge-nvme, c4-4-lssd, d4ads-v5. */
+/** A Job ID's arm part, for IDs of at most 28 characters: m8id-xl-nvme, c4-4-lssd, d4ads-v5. */
 const shortArm = (arm: Arm) =>
   arm
     .replace('Standard_', '')
+    .replace('xlarge', 'xl')
     .replace('-standard-', '-')
     .replace(/[._@]/g, '-')
     .toLowerCase();
