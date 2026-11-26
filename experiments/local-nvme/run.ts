@@ -4,12 +4,13 @@
  * and Azure: three of backmesh's benchmark builds in anycloud VM Jobs; see
  * README.md.
  *
- * `run [--cloud=aws] [--rounds=10] [--parallel=3] [--region=<the cloud's>]
- * [--on-demand] [--arms=<arm,...>]` starts the branch's API, and the
- * variant's built from `variant-nvme.patch`, and runs rounds of one Job per
- * arm, `--parallel` rounds at a time. `cleanup` restarts the APIs from the
- * run's state directory, terminates the inventory's Jobs and checks the
- * cloud for anything left. `report <results.json...>` rewrites the report
+ * `run [--cloud=aws,gcp,azure] [--rounds=10] [--parallel=3]
+ * [--arms=<arm,...>]` starts each cloud's API from the branch, and one built
+ * from `variant-nvme.patch`, then runs each cloud's rounds at once: one Job
+ * per arm a round, `--parallel` rounds at a time. `cleanup [--cloud=...]`
+ * restarts the APIs from the run's state directory, terminates the
+ * inventories' Jobs and checks the clouds for anything left.
+ * `report <results.json...>` rewrites the report
  * from saved results without a cloud.
  */
 import { execFile, spawn, spawnSync } from 'node:child_process';
@@ -38,8 +39,8 @@ import { writeLocalApiToken } from '../../test/integration/helpers/local-api-tok
 
 const root = join(import.meta.dirname, '..', '..');
 const output = process.env.SPIKE_OUTPUT_DIR ?? 'spike-evidence';
-const state = join(process.env.RUNNER_TEMP ?? tmpdir(), 'local-nvme');
-const inventoryPath = join(state, 'inventory.json');
+const base = join(process.env.RUNNER_TEMP ?? tmpdir(), 'local-nvme');
+const inventoryPath = (cloud: Cloud) => join(base, cloud, 'inventory.json');
 const PORT = 18_442;
 const JOB_TIMEOUT_MS = 25 * 60_000;
 // No round starts after this, so the last ones end, and the run cleans up,
@@ -61,21 +62,23 @@ const VARIANT = 'nvme';
 
 /** A build of the API and CLI, with its own state, database and port. */
 interface Api {
+  cloud: Cloud;
   variant: string;
   root: string;
   state: string;
   port: number;
 }
-const apiOf = (variant: string): Api =>
-  variant === 'head'
-    ? { variant, root, state, port: PORT }
-    : {
-        variant,
-        root: join(state, `src-${variant}`),
-        state: join(state, variant),
-        port: PORT + 1,
-      };
-const HEAD = apiOf('head');
+/** Each cloud's API of a variant; the variant's build is shared. */
+const apiOf = (cloud: Cloud, variant: string): Api => ({
+  cloud,
+  variant,
+  root: variant === 'head' ? root : join(base, `src-${variant}`),
+  state: join(base, cloud, variant),
+  port:
+    PORT +
+    2 * Object.keys(CLOUDS).indexOf(cloud) +
+    (variant === 'head' ? 0 : 1),
+});
 
 // Disks' list prices per hour, a month being 730 hours. AWS gp3 (us-east-2):
 // $0.08/GB, $0.005/IOPS over 3,000 and $0.04/MiB/s over 125, a month. GCP
@@ -141,6 +144,7 @@ const diskOf = (cloud: Cloud, arm: Arm) =>
 
 interface CloudSpec {
   region: string;
+  spot: boolean;
   /** Today's runner type first; every other arm is compared with it. */
   arms: Arm[];
   env: () => object;
@@ -154,6 +158,7 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
   aws: {
     // m8id is m8i's Xeon 6 with a 237 GB instance store; there's no m8ad.
     region: 'us-east-2',
+    spot: true,
     arms: ['m8a.xlarge', 'm8id.xlarge', `m8id.xlarge@${VARIANT}`],
     env: () => ({
       AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID'),
@@ -164,6 +169,7 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
     // c4d's smallest -lssd type has 8 vCPUs; c4 (Xeon) has one at 4, with a
     // 375 GiB local SSD. us-east4 is backmesh's GCP anchor region.
     region: 'us-east4',
+    spot: true,
     arms: [
       'c4d-standard-4',
       'c4-standard-4-lssd',
@@ -177,6 +183,8 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
   },
   azure: {
     region: 'eastus',
+    // CI's subscription has 3 spot vCPUs a region.
+    spot: false,
     arms: ['Standard_D4ads_v5', `Standard_D4ads_v5@${VARIANT}`],
     env: () => ({
       AZURE_APPLICATION_ID: required('AZURE_CLIENT_ID'),
@@ -193,17 +201,18 @@ const cloudOf = (arm: Arm): Cloud =>
  * Each arm against today's, and the variant also against its own type on
  * the runners' disk.
  */
-const pairsOf = (arms: Arm[]): [Arm, Arm][] => {
-  const today = CLOUDS[cloudOf(arms[0]!)].arms[0]!;
-  return arms.flatMap((arm): [Arm, Arm][] => [
-    ...(arm !== today && arms.includes(today)
-      ? [[arm, today] as [Arm, Arm]]
-      : []),
-    ...(arm.includes('@') && vmOf(arm) !== today && arms.includes(vmOf(arm))
-      ? [[arm, vmOf(arm)] as [Arm, Arm]]
-      : []),
-  ]);
-};
+const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
+  arms.flatMap((arm): [Arm, Arm][] => {
+    const today = CLOUDS[cloudOf(arm)].arms[0]!;
+    return [
+      ...(arm !== today && arms.includes(today)
+        ? [[arm, today] as [Arm, Arm]]
+        : []),
+      ...(arm.includes('@') && vmOf(arm) !== today && arms.includes(vmOf(arm))
+        ? [[arm, vmOf(arm)] as [Arm, Arm]]
+        : []),
+    ];
+  });
 /** A Job ID's arm part: m8id-xlarge-nvme, c4-4-lssd, d4ads-v5. */
 const shortArm = (arm: Arm) =>
   arm
@@ -258,9 +267,9 @@ const execFileAsync = promisify(execFile);
 const apiUrl = (api: Api) => `http://127.0.0.1:${api.port}`;
 async function cli(
   args: string[],
+  api: Api,
   env: object = {},
   timeoutMs = 300_000,
-  api = HEAD,
 ) {
   const { stdout } = await execFileAsync(
     process.execPath,
@@ -292,9 +301,9 @@ async function cli(
   return stdout;
 }
 
-async function query<T>(sql: string, api = HEAD): Promise<T[]> {
+async function query<T>(sql: string, api: Api): Promise<T[]> {
   return (
-    JSON.parse(await cli(['db', 'query', '--json', sql], {}, 300_000, api)) as {
+    JSON.parse(await cli(['db', 'query', '--json', sql], api)) as {
       rows: T[];
     }
   ).rows;
@@ -353,7 +362,7 @@ async function startApi(api: Api): Promise<void> {
   process.on('exit', () => {
     server.kill('SIGTERM');
     evidence(
-      api.variant === 'head' ? 'api.log' : `api-${api.variant}.log`,
+      `api-${api.cloud}-${api.variant}.log`,
       readFileSync(logPath, 'utf8'),
     );
   });
@@ -365,7 +374,8 @@ async function startApi(api: Api): Promise<void> {
   throw new Error(`The ${api.variant} API never became healthy; see its log`);
 }
 
-const apisOf = (variants: string[]) => variants.map(apiOf);
+const apisOf = ({ cloud, variants }: Inventory) =>
+  variants.map((v) => apiOf(cloud, v));
 
 /** Parses the guest's `BENCH`, `DISK` and `LSCPU` lines. */
 function parseLog(log: string) {
@@ -394,13 +404,13 @@ async function runJob(
   inventory: Inventory,
   arm: Arm,
   round: number,
-  spot: boolean,
 ): Promise<JobResult> {
   const id = `ln-${inventory.runId}-r${round}-${shortArm(arm)}`;
   const variant = variantOf(arm);
-  const api = apiOf(variant);
+  const api = apiOf(inventory.cloud, variant);
+  const { spot } = CLOUDS[inventory.cloud];
   inventory.jobs.push({ id, variant });
-  writeFileSync(inventoryPath, JSON.stringify(inventory));
+  writeFileSync(inventoryPath(inventory.cloud), JSON.stringify(inventory));
   const guest = readFileSync(join(import.meta.dirname, 'guest.sh'));
   await cli(
     [
@@ -425,24 +435,22 @@ async function runJob(
       '-c',
       `echo ${guest.toString('base64')} | base64 -d | sh`,
     ],
-    {},
-    300_000,
     api,
   );
   console.log(`round ${round}: submitted ${id}`);
   // The VM is deleted when the Job ends, so its log is followed from the start.
   const log = await cli(
     ['logs', id, '--follow'],
+    api,
     {},
     JOB_TIMEOUT_MS,
-    api,
   ).catch(
     (error: Error & { output?: string }) => `${error.output}\n${error.message}`,
   );
   writeFileSync(join(output, `${id}.log`), log);
   const parsed = parseLog(log);
   // The API ends the VM after the Job; wait for that, so its lifetime is final.
-  await cli(['terminate', id], {}, 300_000, api).catch(() => undefined);
+  await cli(['terminate', id], api).catch(() => undefined);
   // Every VM the Job had, failed attempts too, newest first.
   const vms = await until(`${id}'s VMs to end`, 10 * 60_000, async () => {
     const rows = await query<{
@@ -534,51 +542,48 @@ const costOf = (r: JobResult) =>
   ((r.vmSeconds ?? 0) / 3600) *
   ((r.pricePerHour ?? 0) + diskOf(cloudOf(r.arm), r.arm).perHour);
 
-/** Records an empty inventory, then starts each API with CI's credentials. */
+/**
+ * Records an empty inventory for the cloud's arms, then starts each of its
+ * APIs with CI's credentials.
+ */
 async function setUp(
   cloud: Cloud,
+  arms: Arm[],
   regions: string[],
-  variants: string[],
 ): Promise<Inventory> {
-  mkdirSync(state, { recursive: true });
+  mkdirSync(join(base, cloud), { recursive: true });
   mkdirSync(output, { recursive: true });
   const inventory: Inventory = {
     runId: randomBytes(3).toString('hex'),
     cloud,
     regions,
-    variants,
+    variants: ['head', ...new Set(arms.flatMap((a) => a.split('@').slice(1)))],
     jobs: [],
   };
-  writeFileSync(inventoryPath, JSON.stringify(inventory));
-  for (const api of apisOf(variants)) {
+  writeFileSync(inventoryPath(cloud), JSON.stringify(inventory));
+  for (const api of apisOf(inventory)) {
     await startApi(api);
     await cli(
       ['credentials', 'new', `${cloud}-spike`, '--provider', cloud],
-      CLOUDS[cloud].env(),
-      300_000,
       api,
+      CLOUDS[cloud].env(),
     );
   }
   return inventory;
 }
 
+/** Runs the cloud's rounds, then checks that nothing is left. */
 async function run(
-  cloud: Cloud,
+  inventory: Inventory,
   arms: Arm[],
   rounds: number,
   parallel: number,
-  region: string,
-  spot: boolean,
-) {
-  const variants = [
-    'head',
-    ...new Set(arms.flatMap((a) => a.split('@').slice(1))),
-  ];
-  const inventory = await setUp(cloud, region.split(','), variants);
+): Promise<JobResult[]> {
+  const { cloud, regions } = inventory;
   const results: JobResult[] = [];
   const save = () => {
-    evidence('results.json', { region, results });
-    evidence('report.md', report(results));
+    evidence(`results-${cloud}.json`, { regions, results });
+    evidence(`report-${cloud}.md`, report(results));
   };
   // Each round starts one Job per arm at once, in a random order, so drift
   // over the run and a slow minute hit every arm alike.
@@ -588,39 +593,43 @@ async function run(
     while (next <= rounds && Date.now() < lastStart) {
       const spent = results.reduce((sum, r) => sum + costOf(r), 0);
       if (spent >= COST_CAP_USD) {
-        console.warn(`Cost cap: $${spent.toFixed(2)} spent; no more rounds`);
+        console.warn(
+          `${cloud} cost cap: $${spent.toFixed(2)} spent; no more rounds`,
+        );
         return;
       }
       const round = next++;
       const settled = await Promise.allSettled(
-        shuffle(arms).map((arm) => runJob(inventory, arm, round, spot)),
+        shuffle(arms).map((arm) => runJob(inventory, arm, round)),
       );
       for (const outcome of settled) {
         if (outcome.status === 'fulfilled') results.push(outcome.value);
-        else console.error(`round ${round}: ${String(outcome.reason)}`);
+        else
+          console.error(`${cloud} round ${round}: ${String(outcome.reason)}`);
       }
       save();
     }
   };
   await Promise.all(Array.from({ length: parallel }, worker));
   await verifyClean(inventory);
-  const failed = results.filter((r) => !r.ok);
   console.log(report(results));
+  const failed = results.filter((r) => !r.ok);
   if (failed.length || results.length < rounds * arms.length) {
     throw new Error(
-      `${failed.length} Jobs failed; ${results.length} of ${rounds * arms.length} reported`,
+      `${cloud}: ${failed.length} Jobs failed; ${results.length} of ${rounds * arms.length} reported`,
     );
   }
+  return results;
 }
 
 /** Terminates the Jobs, waits for each API's cleanup, then asks the cloud. */
 async function verifyClean(inventory: Inventory) {
-  for (const api of apisOf(inventory.variants)) {
+  for (const api of apisOf(inventory)) {
     const ids = inventory.jobs
       .filter((job) => job.variant === api.variant)
       .map((job) => job.id);
     if (!ids.length) continue;
-    await cli(['terminate', ...ids], {}, 300_000, api).catch((error: unknown) =>
+    await cli(['terminate', ...ids], api).catch((error: unknown) =>
       console.warn(String(error)),
     );
     const list = ids.map((id) => `'${id}'`).join(',');
@@ -637,7 +646,10 @@ async function verifyClean(inventory: Inventory) {
     );
   }
   const left = inventory.jobs.length ? await leftovers(inventory) : [];
-  evidence('cleanup.json', { jobs: inventory.jobs.length, left });
+  evidence(`cleanup-${inventory.cloud}.json`, {
+    jobs: inventory.jobs.length,
+    left,
+  });
   if (left.length) {
     throw new Error(`Cloud resources remain: ${JSON.stringify(left)}`);
   }
@@ -711,16 +723,23 @@ async function leftovers({ cloud, regions, jobs: inventoryJobs }: Inventory) {
   return left;
 }
 
-async function cleanup() {
-  if (!existsSync(inventoryPath)) {
-    evidence('cleanup.json', { note: 'no inventory: run created nothing' });
-    return;
-  }
-  const inventory = JSON.parse(
-    readFileSync(inventoryPath, 'utf8'),
-  ) as Inventory;
-  for (const api of apisOf(inventory.variants)) await startApi(api);
-  await verifyClean(inventory);
+/** Each cloud the run recorded an inventory for, checked in parallel. */
+async function cleanup(clouds: Cloud[]) {
+  const inventories = clouds
+    .filter((c) => existsSync(inventoryPath(c)))
+    .map(
+      (c) => JSON.parse(readFileSync(inventoryPath(c), 'utf8')) as Inventory,
+    );
+  for (const api of inventories.flatMap(apisOf)) await startApi(api);
+  await settle(inventories.map(verifyClean));
+}
+
+/** Waits for every promise, then throws the first failure. */
+async function settle<T>(promises: Promise<T>[]): Promise<T[]> {
+  const settled = await Promise.allSettled(promises);
+  const failed = settled.find((o) => o.status === 'rejected');
+  if (failed) throw failed.reason;
+  return settled.map((o) => (o as PromiseFulfilledResult<T>).value);
 }
 
 const quantile = (xs: number[], q: number) => {
@@ -850,23 +869,31 @@ function report(results: JobResult[]): string {
 const [command = 'run', ...rest] = process.argv.slice(2);
 const flag = (name: string, fallback: string) =>
   rest.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
-const cloud = flag('cloud', 'aws') as Cloud;
-if (!(cloud in CLOUDS)) throw new Error(`Unknown cloud ${cloud}`);
+const clouds = flag('cloud', 'aws,gcp,azure').split(',') as Cloud[];
+for (const c of clouds)
+  if (!(c in CLOUDS)) throw new Error(`Unknown cloud ${c}`);
 const only = flag('arms', '').split(',').filter(Boolean);
-const arms = CLOUDS[cloud].arms.filter(
-  (arm) => !only.length || only.includes(arm),
-);
+const armsOf = (c: Cloud) =>
+  CLOUDS[c].arms.filter((arm) => !only.length || only.includes(arm));
 if (command === 'run') {
-  await run(
-    cloud,
-    arms,
-    Number(flag('rounds', '10')),
-    Number(flag('parallel', '3')),
-    flag('region', CLOUDS[cloud].region),
-    !rest.includes('--on-demand'),
+  // The APIs start one at a time, since they share the variant's build; the
+  // clouds' rounds then run at once.
+  const inventories: Inventory[] = [];
+  for (const c of clouds)
+    inventories.push(await setUp(c, armsOf(c), CLOUDS[c].region.split(',')));
+  const results = await settle(
+    inventories.map((inventory) =>
+      run(
+        inventory,
+        armsOf(inventory.cloud),
+        Number(flag('rounds', '10')),
+        Number(flag('parallel', '3')),
+      ),
+    ),
   );
+  evidence('report.md', report(results.flat()));
 } else if (command === 'cleanup') {
-  await cleanup();
+  await cleanup(clouds);
 } else if (command === 'report') {
   console.log(
     report(

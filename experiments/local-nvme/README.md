@@ -8,13 +8,13 @@
   cloud's builds get significantly faster without costing more.
 - Run: `experiments/local-nvme/run.ts` through the
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments`
-  `["run", "--cloud=<aws|gcp|azure>"]` and `cleanup_arguments`
-  `["cleanup"]`, one cloud per dispatch. Jobs run on spot VMs; Azure needs
-  `--on-demand`, since CI's subscription has 3 spot vCPUs a region.
-  `--rounds=<n>` (default 10), `--parallel=<n>` (rounds at a time, default
-  3), `--region=<region>` and `--arms=<arm,...>` change the run.
-  `report <results.json...>` rewrites the report from saved results without
-  a cloud.
+  `["run"]` and `cleanup_arguments` `["cleanup"]`. One dispatch runs all
+  three clouds at once, each with its own APIs; `--cloud=<aws,gcp,azure>`
+  picks some. AWS and GCP Jobs run on spot VMs, Azure's on demand, since
+  CI's subscription has 3 spot vCPUs a region. `--rounds=<n>` (default 10),
+  `--parallel=<n>` (rounds at a time per cloud, default 3) and
+  `--arms=<arm,...>` change the run. `report <results.json...>` rewrites the
+  report from saved results without a cloud.
 - Promotion: none. A design for a cloud that gains would move the stores and
   `/workspace` onto the local disk in anycloud's Job host preparation
   (`src/api/services/job-host.ts`), and have backmesh pick the NVMe types
@@ -100,20 +100,22 @@ against its type on the runners' disk):
 - the cost per Job: its VM time at the price the API recorded for the VM
   (spot or on demand), plus its OS disk's list price (constants in `run.ts`).
 
-Every Job's log and the raw `results.json` are in the evidence.
+`report.md` covers every cloud; `report-<cloud>.md` and
+`results-<cloud>.json` are each cloud's, and every Job's log is in the
+evidence too.
 
 ## Cost
 
 Within the $25 the owner approved. A Job takes about 6–10 minutes; 10 rounds
 of three spot arms cost under $1 on AWS and GCP, and 10 rounds of Azure's two
-on-demand arms about $0.70. Each run stops starting rounds once its VMs' and
-disks' cost reaches $8.
+on-demand arms about $0.70. Each cloud stops starting rounds once its VMs'
+and disks' cost reaches $8, so a run can't exceed $24.
 
 ## Cleanup and ownership
 
 Jobs are named `ln-<run>-r<round>-<arm>` and run with `--max-retries 0` and
-`--no-checkpoint`, so they create no bucket. The APIs' databases, the
-inventory and the API logs live in `$RUNNER_TEMP/local-nvme`. `run` ends each
+`--no-checkpoint`, so they create no bucket. The APIs' databases, each
+cloud's inventory and the API logs live in `$RUNNER_TEMP/local-nvme/<cloud>`. `run` ends each
 Job's VM when its log ends. At the end it terminates every Job, waits until
 each API has cleaned them up, then asks the cloud for anything tagged
 (labelled, on GCP) `anycloud_deployment` with the run's Job IDs, and fails if
