@@ -357,7 +357,7 @@ coverage for every discovered test. The shell qualification check rejects
 exit-77 skips, disabled test blocks, and optional execution switches. The common
 runner preserves every nonzero exit through evidence capture and cleanup.
 
-`ci/install-runner-tools.sh` supplies the cloud CLI toolchain, checked by
+The runner supplies the cloud CLI toolchain, checked by
 `ci/check-cloud-tools.sh` before tests create resources; test matrices do not
 select CLI installation. Provider fixtures own identity observations,
 credentials, and concrete target configuration. Keep common recovery assertions

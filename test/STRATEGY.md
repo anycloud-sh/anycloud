@@ -290,13 +290,12 @@ Jobs that read a repository secret other than `GITHUB_TOKEN`, or whose token
 can write, run on backmesh like the rest: each job gets its own VM, so no other
 job shares its runner (owner, 2026-11-08).
 
-backmesh's image has Docker and the Actions runner, but no Yarn or cloud CLIs.
+backmesh's image has Docker, the Actions runner, kubectl and GitHub's apt
+toolset; it installs the AWS, Azure and Google Cloud CLIs on first use.
 `scripts/ci-install-dependencies.sh` enables Yarn through setup-node's Corepack
-and installs the OpenSSH client and Python pip and venv.
-`ci/install-runner-tools.sh` installs the AWS, Azure and Google Cloud CLIs,
-kubectl, Ruby and the smaller tools for the jobs that use them. Both do nothing
-where the tools are present. There's no Yarn or Buildx cache on backmesh, and
-each job starts with an empty `actions/setup-*` tool cache.
+and installs the OpenSSH client and Python pip and venv where they are missing.
+There's no Yarn or Buildx cache on backmesh, and each job starts with an empty
+`actions/setup-*` tool cache.
 
 Fork and Dependabot pull requests never reach backmesh: their jobs are skipped,
 and Style runs them on GitHub-hosted runners.

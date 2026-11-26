@@ -1368,7 +1368,7 @@ cleanup_anycloud_dir() {
 # Usage: kill_port <port>
 kill_port() {
     local port=$1
-    local pids=$(lsof -t -i ":$port" 2>/dev/null)
+    local pids=$(ss -Htlnp "sport = :$port" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u)
     if [ -n "$pids" ]; then
         echo "$pids" | xargs kill -9 2>/dev/null || true
         print_info "Killed processes on port $port"

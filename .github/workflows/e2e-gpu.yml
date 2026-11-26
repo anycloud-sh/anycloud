@@ -148,8 +148,6 @@ jobs:
       RESULTS_DIR: /tmp/e2e-results-${{ matrix.provider }}-gpu-serve-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: ./.github/actions/serve-e2e-setup
         with:
           backend: ${{ vars.CI_BACKEND }}
@@ -235,8 +233,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
 
       - name: Validate Azure probe-only selection
         env:
@@ -344,8 +340,6 @@ jobs:
       RESULTS_DIR: /tmp/e2e-results-${{ matrix.provider }}-mace-full-pull-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: ./.github/actions/serve-e2e-setup
         with:
           backend: ${{ vars.CI_BACKEND }}
@@ -421,8 +415,6 @@ jobs:
       RESULTS_DIR: /tmp/e2e-results-gcp-disk-tier-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: ./.github/actions/serve-e2e-setup
         with:
           backend: ${{ vars.CI_BACKEND }}
@@ -482,8 +474,6 @@ jobs:
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -507,8 +497,6 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -538,8 +526,6 @@ jobs:
       GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -567,8 +553,6 @@ jobs:
       LAMBDA_API_KEY: ${{ secrets.LAMBDA_API_KEY }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -609,8 +593,6 @@ jobs:
       - name: Bind CI's GCP account to its roles
         if: env.GCP_PRIVATE_KEY != ''
         run: npx tsx ci/gcp-roles.ts
-      - name: Install runner tools
-        run: bash ci/install-runner-tools.sh
       - run: bash ci/check-cloud-tools.sh
       - name: Observe only the declared original native and DNS identities
         env:

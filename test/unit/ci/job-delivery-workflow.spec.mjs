@@ -355,13 +355,11 @@ describe('Job delivery workflow', () => {
     expect(readback['continue-on-error']).toBeUndefined();
     const commands = readback.steps.filter((step) => step.run);
     expect(commands.map((step) => step.run)).toEqual([
-      'bash ci/install-runner-tools.sh',
       'bash scripts/ci-install-dependencies.sh',
       'yarn inspect:azure-job-identity',
     ]);
     expect(commands[0]['timeout-minutes']).toBe(5);
-    expect(commands[1]['timeout-minutes']).toBe(5);
-    expect(commands[2]['timeout-minutes']).toBe(3);
+    expect(commands[1]['timeout-minutes']).toBe(3);
     for (const step of commands) {
       expect(step.if).toBeUndefined();
       expect(step['continue-on-error']).toBeUndefined();
@@ -369,13 +367,13 @@ describe('Job delivery workflow', () => {
     const comparisonReadback = workflow.jobs['post-cleanup-azure'].steps.find(
       (step) => step.run === 'yarn inspect:azure-job-identity',
     );
-    expect(commands[2].env).toEqual({
+    expect(commands[1].env).toEqual({
       ...workflow.jobs['post-cleanup-azure'].env,
       ...comparisonReadback.env,
       ORIGINAL_RUN_ID: '${{ inputs.original_run_id }}',
       ORIGINAL_RUN_ATTEMPT: '${{ inputs.original_run_attempt }}',
     });
-    expect(readback.steps.filter((step) => step.env)).toEqual([commands[2]]);
+    expect(readback.steps.filter((step) => step.env)).toEqual([commands[1]]);
     const upload = readback.steps.find((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
     );
