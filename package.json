@@ -1,8 +1,8 @@
 {
   "name": "anycloud",
   "private": true,
-  "version": "0.1.83",
-  "previousVersion": "0.1.82",
+  "version": "0.1.84",
+  "previousVersion": "0.1.83",
   "description": "Deploy containerized jobs to any cloud provider",
   "apiImage": "ghcr.io/anycloud-sh/api",
   "type": "module",
