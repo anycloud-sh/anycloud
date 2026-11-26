@@ -15,9 +15,9 @@
   under the region's 8 external addresses). `["spot"]` runs the spot probe. `report <results.json...>` rewrites the build report without a
   cloud.
 
-anycloud can't run a VM Job on C4A yet: its GCP catalog is SkyPilot's
-`gcp/vms.csv`, which has no C4A rows and no `Arch` column. So every arm
-launches here through the Compute API, alike. This harness is not
+When this ran, anycloud couldn't run a VM Job on C4A: its GCP catalog was
+SkyPilot's `gcp/vms.csv`, which has no C4A rows and no `Arch` column. So
+every arm launches here through the Compute API, alike. This harness is not
 anycloud's Job host: compare arms within this experiment only.
 
 ## Builds
@@ -199,18 +199,19 @@ The CI project's europe-west4 quotas, from `preflight` and the refusals:
 
 ### For anycloud
 
-anycloud's GCP catalog has no C4A: SkyPilot's `gcp/vms.csv` lacks it and
-has no `Arch` column. Running VM Jobs on C4A needs a GCP price source
-(Cloud Billing's per-vCPU and per-GiB SKUs times the Machine Types API's
-shapes, as gcloud-compute.com does) and an architecture column. The arm64
-image (`ubuntu-minimal-2404-lts-arm64`), anycloud's static Docker for
-`aarch64` and Hyperdisk Balanced all worked here unchanged.
+SkyPilot's `gcp/vms.csv` has no C4A and no `Arch` column, so VM Jobs on C4A
+needed a GCP price source and an architecture column first.
+[#50](https://github.com/anycloud-sh/anycloud/pull/50), which merged while
+this ran, adds both, from the Machine Types API and Cloud Billing's
+per-vCPU and per-GiB SKUs. The arm64 image
+(`ubuntu-minimal-2404-lts-arm64`), anycloud's static Docker for `aarch64`
+and Hyperdisk Balanced all worked here unchanged.
 
 ## Promotion criteria
 
-None as an experiment. A go justifies GCP arm64 VM Jobs in anycloud (a GCP
-price and architecture source for the catalog first) and EU, high-memory
-and spot-fallback runner labels in backmesh, each a separate change.
+None as an experiment. A go supports GCP arm64 VM Jobs in anycloud and EU,
+high-memory and spot-fallback runner labels in backmesh, each a separate
+change.
 
 ## Deletion criteria
 
