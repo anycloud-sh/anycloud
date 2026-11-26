@@ -1717,6 +1717,8 @@ ruleTester.run(
         ['host-docker', 'aws'],
         ['host-docker', 'azure'],
         ['host-docker', 'gcp'],
+        ['arm64', 'aws'],
+        ['arm64', 'gcp'],
       ].map(([kind, target]) => ({
         filename: `/repo/test/integration/e2e/specs/contracts/dedicated-job/${target}-${kind}.spec.ts`,
         code: `import { test, expect } from "../../../fixture.js"; test("Cloud Job", async ({ e2e }) => { const result = await e2e.contracts.dedicatedJob({ kind: "${kind}", target: "${target}" }); expect(result).toEqual({ contract: "dedicated-job", member: { kind: "${kind}", target: "${target}" }, target: "${target}", qualification: "conclusive", satisfied: true }); });`,

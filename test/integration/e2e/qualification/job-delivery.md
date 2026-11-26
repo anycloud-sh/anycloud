@@ -27,6 +27,7 @@ The family owns lifecycle decisions, waits, evidence and finalization.
 | `disk-tier`                | GCP                     | `bash test/integration/e2e.sh gcp-disk-tier --vitest`                  |
 | `mace-full-pull`           | AWS, Azure, GCP, Lambda | `bash test/integration/e2e.sh <target>-mace-full-pull --vitest`        |
 | `ghcr-probe`               | Azure                   | `bash test/integration/e2e.sh azure-ghcr-probe --vitest`               |
+| `arm64`                    | AWS, GCP (Azure: none)  | `bash test/integration/e2e.sh <target>-arm64 --vitest`                 |
 
 Each delivered member has an assertion map under `assertion-maps/`; its
 retirement state is a row in [`../RETIREMENT.md`](../RETIREMENT.md). The

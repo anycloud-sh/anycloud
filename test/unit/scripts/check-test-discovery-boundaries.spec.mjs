@@ -50,6 +50,8 @@ const specFiles = [
   'test/integration/e2e/specs/contracts/dedicated-job/aws-host-docker.spec.ts',
   'test/integration/e2e/specs/contracts/dedicated-job/azure-host-docker.spec.ts',
   'test/integration/e2e/specs/contracts/dedicated-job/gcp-host-docker.spec.ts',
+  'test/integration/e2e/specs/contracts/dedicated-job/aws-arm64.spec.ts',
+  'test/integration/e2e/specs/contracts/dedicated-job/gcp-arm64.spec.ts',
   'test/integration/e2e/specs/contracts/dedicated-job/aws-invalid.spec.ts',
   'test/integration/e2e/specs/contracts/dedicated-job/azure-invalid.spec.ts',
   'test/integration/e2e/specs/contracts/dedicated-job/gcp-invalid.spec.ts',

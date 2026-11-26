@@ -1025,6 +1025,7 @@ test.each([
   ['spot-eviction', 'aws', 1, undefined],
   ['concurrent-output', 'gcp', 0, false],
   ['host-docker', 'aws', 0, undefined],
+  ['arm64', 'gcp', 0, undefined],
 ] as const)(
   "this week's %s %s child (index %i) submits its feature flags through real CLI parsing",
   async (kind, target, concurrentIndex, armed) => {
@@ -1068,6 +1069,19 @@ test.each([
     if (kind === 'host-docker')
       // The listener's own gp3 performance.
       expect(options).toMatchObject({ diskIops: 4000, diskThroughput: 500 });
+    if (kind === 'arm64') {
+      expect(options).toMatchObject({
+        vmType: ['c4a-standard-4'],
+        region: 'europe-west4',
+        spot: true,
+      });
+      expect(command.args).toEqual([
+        selected.image,
+        'sh',
+        '-c',
+        'echo "arch=$(uname -m)"; sleep 30',
+      ]);
+    }
   },
 );
 

@@ -17,6 +17,12 @@ import type {
 export const CHECK_IMAGE =
   'mirror.gcr.io/library/python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f';
 
+/** alpine:3.20's multi-arch index, and the linux/arm64 manifest under it. */
+export const ARM64_IMAGE =
+  'alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc';
+export const ARM64_MANIFEST_DIGEST =
+  'sha256:45e09956dc667c5eff3583c9d94830261fb1ca0be10a0a7db36266edf5de9e1d';
+
 const BUCKET_IMAGE =
   'ghcr.io/anycloud-sh/mace@sha256:c60574d120937bd1db9c0c579d427f2b48d307f44c552888952354bf77c2d19d';
 export const FAKE_VM_TYPE = 'totally_fake_nonexistent_vm';
@@ -40,6 +46,8 @@ export const JOB_MEMBERS: Readonly<Record<string, readonly string[]>> = {
   'disk-tier': ['gcp'],
   'host-docker': ['aws', 'azure', 'gcp'],
   'ghcr-probe': ['azure'],
+  // Azure has no arm64 Jobs.
+  arm64: ['aws', 'gcp'],
   'mace-full-pull': ['aws', 'azure', 'gcp', 'lambda'],
   'local-held': ['local-smolvm'],
   'local-completed': ['local-smolvm'],
@@ -618,6 +626,28 @@ export function jobMemberProfile(
       expectedTerminalState: WorkloadState.Completed,
     });
   }
+  if (member.kind === 'arm64') {
+    const capability = registration.arm64;
+    if (!capability) throw new Error('Job target lacks arm64 coverage');
+    return freezeProfile({
+      member,
+      computeProvider: registration.provider,
+      vmTypes: [capability.vmType],
+      computeRegion: capability.region,
+      diskSizeGb: undefined,
+      spot: true,
+      image: ARM64_IMAGE,
+      credentialMode: 'bootstrap',
+      reservationInventory: registration.compute.reservationInventory,
+      storageProvider: registration.storage.provider,
+      storageRegion,
+      storageFollowsCompute: true,
+      crossCloudStorageCredential: undefined,
+      recursiveTransfers: false,
+      requiredExtensions: ['arm64'],
+      expectedTerminalState: WorkloadState.Completed,
+    });
+  }
   if (member.kind === 'restricted-credential') {
     const capability = registration.restrictedCredential;
     if (!capability)
@@ -823,6 +853,7 @@ export function jobStageBudget(
     member.kind === 'runtime-secrets' ||
     member.kind === 'restricted-credential' ||
     member.kind === 'host-docker' ||
+    member.kind === 'arm64' ||
     member.kind === 'host-recovery'
   )
     return {

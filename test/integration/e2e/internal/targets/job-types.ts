@@ -49,6 +49,7 @@ export type JobMember =
   | { readonly kind: 'disk-tier'; readonly target: 'gcp' }
   | { readonly kind: 'host-docker'; readonly target: JobStorageProvider }
   | { readonly kind: 'ghcr-probe'; readonly target: 'azure' }
+  | { readonly kind: 'arm64'; readonly target: 'aws' | 'gcp' }
   | {
       readonly kind: 'mace-full-pull';
       readonly target: 'aws' | 'azure' | 'gcp' | 'lambda';
@@ -74,6 +75,7 @@ export type JobExtension =
   | 'host-docker'
   | 'mace-full-pull'
   | 'ghcr-probe'
+  | 'arm64'
   | 'concurrent-output'
   | 'local-storage'
   | 'local-configuration'

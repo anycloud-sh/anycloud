@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "member": "aws-arm64",
+  "candidate": "e2e.sh aws-arm64 --vitest",
+  "qualificationClass": "real-cloud",
+  "assertions": [
+    {
+      "id": "arm64-job",
+      "requirement": "A spot Job of alpine:3.20's multi-arch index on AWS Graviton `m8g.large` completes with exit 0, and its container prints arch=aarch64 from uname -m.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #arm64Member; test/integration/e2e/internal/targets/public-cloud-job.ts: the arm64 argv."
+    },
+    {
+      "id": "arm64-digest",
+      "requirement": "The Job pins the index's linux/arm64 manifest digest, a constant read from the registry, not the index or another platform's manifest.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/job-policy.ts: ARM64_IMAGE and ARM64_MANIFEST_DIGEST; dedicated-job.ts: #arm64Member."
+    },
+    {
+      "id": "independent-cleanup",
+      "requirement": "Persisted terminal cleanup, complete attempt history and independent native absence, including the spot Job's automatic checkpoint bucket, are required before release.",
+      "candidateEvidence": "test/integration/e2e/internal/contracts/dedicated-job.ts: #finalize; test/integration/e2e/internal/job-native-cleanup.ts."
+    }
+  ]
+}
