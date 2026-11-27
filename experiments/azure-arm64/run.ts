@@ -277,6 +277,8 @@ async function preflight() {
     ),
   );
   const summary = {
+    // Any earlier run's resources, whose Jobs are `aa-<run>-...`.
+    leftovers: await tagged((tag) => tag.startsWith('aa-')),
     rows,
     capabilities,
     ubuntu2404Skus: images.map((i) => i.name).sort(),
@@ -644,17 +646,30 @@ async function verifyClean(inventory: Inventory) {
     );
     return left?.n === 0 ? true : undefined;
   });
-  const left: string[] = [];
+  // Azure's resource list lags its deletes by a few minutes.
+  const left = await until(
+    'Azure to list none of them',
+    5 * 60_000,
+    async () => {
+      const ids = await tagged((tag) => inventory.jobs.includes(tag));
+      return ids.length ? undefined : ids;
+    },
+  ).catch(() => tagged((tag) => inventory.jobs.includes(tag)));
+  evidence('cleanup.json', { jobs: inventory.jobs.length, left });
+  if (left.length)
+    throw new Error(`Azure resources remain: ${JSON.stringify(left)}`);
+}
+
+/** The IDs of the subscription's resources whose Job tag passes `keep`. */
+async function tagged(keep: (tag: string) => boolean) {
+  const ids: string[] = [];
   const resources = new ResourceManagementClient(
     new DefaultAzureCredential(),
     required('AZURE_SUBSCRIPTION_ID'),
   ).resources.list({ filter: "tagName eq 'anycloud_deployment'" });
   for await (const r of resources)
-    if (inventory.jobs.includes(r.tags?.anycloud_deployment ?? ''))
-      left.push(r.id!);
-  evidence('cleanup.json', { jobs: inventory.jobs.length, left });
-  if (left.length)
-    throw new Error(`Azure resources remain: ${JSON.stringify(left)}`);
+    if (keep(r.tags?.anycloud_deployment ?? '')) ids.push(r.id!);
+  return ids;
 }
 
 const quantile = (xs: number[], q: number) => {
