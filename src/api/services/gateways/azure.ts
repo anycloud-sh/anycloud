@@ -80,6 +80,7 @@ import {
   getVCPUsForVMType,
   gpuAcceleratorName,
   diskTierRequiresPremiumStorage,
+  vmArchitecture,
 } from '../../../shared/cloud-config.js';
 import { getAzureQuotaResourceKeyForVMType } from '../../../shared/quota-resolvers/azure.js';
 import {
@@ -1280,10 +1281,14 @@ export class Azure {
         // service-terminology-ok: Azure owns this marketplace SKU spelling
         // Ubuntu 24.04 LTS (noble). The `server` SKU of the newer
         // `ubuntu-24_04-lts` offer resolves as Hyper-V Gen2 (`server-gen1` is
-        // the Gen1 variant).
+        // the Gen1 variant; `-arm64` the Arm build, for Cobalt and Ampere).
         offer: 'ubuntu-24_04-lts',
         // A Job host's user data prepares Ubuntu minimal.
-        sku: params.jobHost ? 'minimal' : 'server',
+        sku: `${params.jobHost ? 'minimal' : 'server'}${
+          vmArchitecture(CloudType.Azure, this.vmType) === 'arm64'
+            ? '-arm64'
+            : ''
+        }`,
       };
     }
 

@@ -103,6 +103,8 @@ interface SKUData {
   // (which provision a Premium OS disk) before provisioning. `undefined` when
   // Azure didn't report the capability (unknown → consumers degrade to allow).
   premiumStorageCapable: boolean | undefined;
+  /** The `CpuArchitectureType` SKU capability: `Arm64` or `x64`. */
+  arch: 'arm64' | 'x86_64' | null;
 }
 
 interface LocationMetadata {
@@ -244,6 +246,7 @@ export class AzureCatalogFetcher implements CloudCatalogFetcher {
         quotaGroup: sku.quotaGroup,
         premiumStorageCapable: sku.premiumStorageCapable,
         nestedVirtualizationSupported: azureNestedVirtualization(instanceType),
+        arch: sku.arch,
       });
     }
     if (droppedByRegion > 0) {
@@ -462,6 +465,12 @@ export class AzureCatalogFetcher implements CloudCatalogFetcher {
             caps['PremiumIO'] === undefined
               ? undefined
               : caps['PremiumIO'].toLowerCase() === 'true',
+          arch:
+            caps['CpuArchitectureType'] === 'Arm64'
+              ? 'arm64'
+              : caps['CpuArchitectureType'] === 'x64'
+                ? 'x86_64'
+                : null,
         });
       }
 

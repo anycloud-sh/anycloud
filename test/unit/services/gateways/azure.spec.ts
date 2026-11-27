@@ -132,6 +132,16 @@ function filterCandidateRegions(
   return compute.filterCandidateRegions(candidates, spot, workloadId);
 }
 
+const { vmArchitecture } = vi.hoisted(() => ({ vmArchitecture: vi.fn() }));
+vi.mock('../../../../src/shared/cloud-config.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../../src/shared/cloud-config.js')
+    >();
+  vmArchitecture.mockImplementation(actual.vmArchitecture);
+  return { ...actual, vmArchitecture };
+});
+
 // Mock the logger
 vi.mock('../../../../src/api/services/logger', () => ({
   log: {
@@ -2937,6 +2947,42 @@ describe('Azure.newVM', () => {
     expect(vmParams.identity).toBeUndefined();
     expect(untouched).toEqual([]);
   });
+
+  it.each([
+    [true, 'minimal-arm64'],
+    [false, 'server-arm64'],
+  ])(
+    "boots an Arm type's VM, Job host %s, on Ubuntu 24.04's %s SKU",
+    async (jobHost, sku) => {
+      // The published catalog marks Cobalt and Ampere arm64 once this fetcher
+      // publishes it.
+      vmArchitecture.mockReturnValueOnce('arm64');
+      const vmType = 'Standard_D4ps_v6';
+      const azure = new Azure(completeCloudConfig({ ...mockConfig, vmType }));
+      const beginCreateOrUpdate = vi.fn().mockResolvedValue({});
+      stubNewVMClients(azure, beginCreateOrUpdate);
+
+      await azure.compute().newVM(
+        makeNewVMProps({
+          vmId: 'test-vm',
+          workloadId: 'test-workload',
+          ipWhitelist: ['0.0.0.0/0'],
+          startupScript: '#!/bin/bash\necho hi',
+          gpuRuntime: null,
+          jobHost,
+        }),
+      );
+
+      expect(vmArchitecture).toHaveBeenCalledWith(CloudType.Azure, vmType);
+      expect(
+        beginCreateOrUpdate.mock.calls[0][2].storageProfile.imageReference,
+      ).toMatchObject({
+        publisher: 'canonical',
+        offer: 'ubuntu-24_04-lts',
+        sku,
+      });
+    },
+  );
 
   // Drive a real GPU deploy through newVM and return the community-gallery image
   // id that landed in the create request. The accelerator name is resolved from

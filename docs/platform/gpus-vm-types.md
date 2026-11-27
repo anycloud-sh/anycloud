@@ -77,16 +77,19 @@ matters more than a particular SKU.
 
 <span id="arm64"></span>
 
-### Arm64: AWS Graviton and GCP Axion
+### Arm64: AWS Graviton, GCP Axion and Azure Cobalt
 
-AWS Graviton types, such as `m8g.xlarge` or `c8g.2xlarge`, and GCP Arm types,
-such as Axion's `c4a-standard-16` or `c4a-highmem-16`, run on arm64. The image
+AWS Graviton types, such as `m8g.xlarge` or `c8g.2xlarge`, GCP Arm types,
+such as Axion's `c4a-standard-16` or `c4a-highmem-16`, and Azure Arm types,
+such as Cobalt 100's `Standard_D4ps_v6` or Ampere's `Standard_D4ps_v5`, run
+on arm64. The image
 needs a `linux/arm64` build: a multi-platform image runs on Arm and x86-64
 types alike. See [Container Images](/platform/container-images#architecture).
 
 ```bash
 anycloud job alpine:3 --credentials my-aws --vm-type m8g.xlarge --spot -- uname -m
 anycloud job alpine:3 --credentials my-gcp --vm-type c4a-standard-4 --spot -- uname -m
+anycloud job alpine:3 --credentials my-azure --vm-type Standard_D4ps_v6 -- uname -m
 ```
 
 A fallback pool can't mix Arm and x86-64 types. Arm GPU types, such as AWS

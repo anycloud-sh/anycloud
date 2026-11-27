@@ -220,7 +220,7 @@ Bring your own image:
       -t ghcr.io/<owner>/<repo>:latest --push .
 
   VMs run linux/amd64, or linux/arm64 on Arm types (AWS m8g, c8g; GCP
-  c4a); build both, even on a Mac. In GitHub Actions, use the built-in
+  c4a; Azure Dpsv6, Dpsv5); build both, even on a Mac. In GitHub Actions, use the built-in
   GITHUB_TOKEN with 'packages: write'.
   Guide: https://anycloud.sh/platform/container-images
 

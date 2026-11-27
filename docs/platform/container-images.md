@@ -48,7 +48,8 @@ CMD ["python", "main.py"]
 <span id="architecture"></span>
 
 Cloud workload VMs run Linux on x86-64 (`linux/amd64`), except Arm types,
-such as AWS Graviton's `m8g` or GCP Axion's `c4a`, which run `linux/arm64`. Build for the VM types you
+such as AWS Graviton's `m8g`, GCP Axion's `c4a` or Azure Cobalt's
+`Standard_D4ps_v6`, which run `linux/arm64`. Build for the VM types you
 request, especially on Apple Silicon. A multi-platform image runs on either:
 
 ```bash
