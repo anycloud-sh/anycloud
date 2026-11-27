@@ -191,8 +191,9 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
     }),
   },
   azure: {
-    region: 'eastus',
-    // CI's subscription has 3 spot vCPUs a region.
+    // Our subscription (the Spike workflow's `azure_subscription=own`) has
+    // no DADSv5 quota in eastus.
+    region: 'centralus',
     spot: false,
     arms: ['Standard_D4ads_v5', `Standard_D4ads_v5@${VARIANT}`],
     env: () => ({

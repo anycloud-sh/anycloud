@@ -10,10 +10,11 @@
   cloud's builds get significantly faster without costing more.
 - Run: `experiments/local-nvme/run.ts` through the
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments`
-  `["run", "--parallel=5"]` and `cleanup_arguments` `["cleanup"]`. One
+  `["run", "--parallel=5"]` and `cleanup_arguments` `["cleanup"]`, and `azure_subscription` `own`. One
   dispatch runs all three clouds at once, each with its own APIs;
   `--cloud=<aws,gcp,azure>` picks some. AWS and GCP Jobs run on spot VMs,
-  Azure's on demand, since CI's subscription has 3 spot vCPUs a region.
+  Azure's on demand in centralus, where our subscription has `DADSv5`
+  quota.
   `--rounds=<n>` (default 10), `--parallel=<n>` (rounds at a time per
   cloud, default 3) and `--arms=<arm,...>` change the run, and `--on-demand`
   runs every arm on demand. GCP's 24 `C4` vCPUs in us-east4 take 3 rounds
@@ -89,11 +90,11 @@ comparison isolates the disk from the CPU. Today's runner types, `m8a.xlarge`
 and `c4d-standard-4`, were in the first run (see [Result](#result)) and
 aren't in this one, to save money; the first run had already compared them.
 
-| Cloud           | Type on the runners' disk                                        | `@nvme` variant                                   |
-| --------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
-| AWS (us-east-2) | `m8id.xlarge` (237 GB NVMe), 100 GB gp3 at 4,000 IOPS, 500 MiB/s | `m8id.xlarge`, 30 GB gp3 at baseline              |
-| GCP (us-east4)  | `c4-standard-4-lssd` (375 GiB), 100 GB Hyperdisk, 3,000 / 750    | `c4-standard-4-lssd`, 30 GB Hyperdisk at baseline |
-| Azure (eastus)  | `Standard_D4ads_v5`, stores on its 150 GiB resource disk         | the same, with `/workspace` there too             |
+| Cloud             | Type on the runners' disk                                        | `@nvme` variant                                   |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| AWS (us-east-2)   | `m8id.xlarge` (237 GB NVMe), 100 GB gp3 at 4,000 IOPS, 500 MiB/s | `m8id.xlarge`, 30 GB gp3 at baseline              |
+| GCP (us-east4)    | `c4-standard-4-lssd` (375 GiB), 100 GB Hyperdisk, 3,000 / 750    | `c4-standard-4-lssd`, 30 GB Hyperdisk at baseline |
+| Azure (centralus) | `Standard_D4ads_v5`, stores on its 150 GiB resource disk         | the same, with `/workspace` there too             |
 
 - **AWS.** There is no `m8ad`; `m8id` is `m8i`'s Xeon 6 with an instance
   store. us-east-2 on-demand list prices: `m8a.xlarge` $0.2434/h,
