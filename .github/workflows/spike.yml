@@ -19,6 +19,11 @@ on:
         description: JSON argument array for an always-run cleanup invocation; empty for read-only experiments
         type: string
         default: ''
+      azure_subscription:
+        description: Azure credentials to pass; own is our subscription's AZURE_OWN_* secrets
+        type: choice
+        options: [default, own]
+        default: default
 
 run-name: 'Spike: ${{ inputs.experiment }} @ ${{ inputs.source_sha }}'
 
@@ -40,6 +45,15 @@ jobs:
         env:
           SPIKE_SOURCE_SHA: ${{ inputs.source_sha }}
         run: '[[ "$SPIKE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      # Without it, own would fall back to the default secrets below.
+      - name: Require our Azure subscription's secrets
+        if: inputs.azure_subscription == 'own'
+        env:
+          AZURE_OWN_SUBSCRIPTION_ID: ${{ secrets.AZURE_OWN_SUBSCRIPTION_ID }}
+          AZURE_OWN_TENANT_ID: ${{ secrets.AZURE_OWN_TENANT_ID }}
+          AZURE_OWN_CLIENT_ID: ${{ secrets.AZURE_OWN_CLIENT_ID }}
+          AZURE_OWN_CLIENT_SECRET: ${{ secrets.AZURE_OWN_CLIENT_SECRET }}
+        run: '[[ -n "$AZURE_OWN_SUBSCRIPTION_ID" && -n "$AZURE_OWN_TENANT_ID" && -n "$AZURE_OWN_CLIENT_ID" && -n "$AZURE_OWN_CLIENT_SECRET" ]]'
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.source_sha }}
@@ -73,10 +87,10 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription == 'own' && secrets.AZURE_OWN_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_TENANT_ID: ${{ inputs.azure_subscription == 'own' && secrets.AZURE_OWN_TENANT_ID || secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ inputs.azure_subscription == 'own' && secrets.AZURE_OWN_CLIENT_ID || secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ inputs.azure_subscription == 'own' && secrets.AZURE_OWN_CLIENT_SECRET || secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
           GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
