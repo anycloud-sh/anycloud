@@ -10,27 +10,30 @@
   cloud's builds get significantly faster without costing more.
 - Run: `experiments/local-nvme/run.ts` through the
   [Spike workflow](../../.github/workflows/spike.yml), with `arguments`
-  `["run", "--parallel=5"]` and `cleanup_arguments` `["cleanup"]`. One dispatch runs all
-  three clouds at once, each with its own APIs; `--cloud=<aws,gcp,azure>`
-  picks some. AWS and GCP Jobs run on spot VMs, Azure's on demand, since
-  CI's subscription has 3 spot vCPUs a region. `--rounds=<n>` (default 10),
-  `--parallel=<n>` (rounds at a time per cloud, default 3) and
-  `--arms=<arm,...>` change the run, and `--on-demand` runs every arm on
-  demand. `report <results.json...>` rewrites the report from saved results
-  without a cloud.
+  `["run", "--parallel=5"]` and `cleanup_arguments` `["cleanup"]`. One
+  dispatch runs all three clouds at once, each with its own APIs;
+  `--cloud=<aws,gcp,azure>` picks some. AWS and GCP Jobs run on spot VMs,
+  Azure's on demand, since CI's subscription has 3 spot vCPUs a region.
+  `--rounds=<n>` (default 10), `--parallel=<n>` (rounds at a time per
+  cloud, default 3) and `--arms=<arm,...>` change the run, and `--on-demand`
+  runs every arm on demand. GCP's 24 `C4` vCPUs in us-east4 take 3 rounds
+  at once, so 5 exceeds them; see [Result](#result). `report
+<results.json...>` rewrites the report from saved results without a cloud.
 
 ## Promotion criteria
 
-None. A design for a cloud that gains would move the stores and
-`/workspace` onto the local disk in anycloud's Job host preparation
-(`src/api/services/job-host.ts`), and have backmesh pick the NVMe types and
-a smaller OS disk. A go on GCP's on-demand runner disk would have extended
-backmesh's spot override to on-demand runners.
+A design on GCP and Azure, per the [Result](#result). On GCP it would move
+the stores and `/workspace` onto the local SSD in anycloud's Job host
+preparation (`src/api/services/job-host.ts`), formatted eagerly, and have
+backmesh pick the `-lssd` type and a smaller OS disk. On Azure it would add
+`/workspace` to the resource disk's binds. None on AWS. A go on GCP's
+on-demand runner disk would have extended backmesh's spot override to
+on-demand runners.
 
 ## Deletion criteria
 
-Once C25's decision is recorded, or when the Job host preparation changes
-enough that `variant-nvme.patch` no longer applies.
+Delete this directory once C25's decision is recorded, or when the Job host
+preparation changes enough that `variant-nvme.patch` no longer applies.
 
 ## What it measures
 
