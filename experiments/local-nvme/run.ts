@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
  * Local NVMe against the network disk for CI builds, at 4 vCPUs on AWS, GCP
- * and Azure: three of backmesh's benchmark builds in anycloud VM Jobs; see
- * README.md.
+ * and Azure: three of backmesh's benchmark builds and two disk-heavy steps
+ * in anycloud VM Jobs; see README.md.
  *
  * `run [--cloud=aws,gcp,azure] [--rounds=10] [--parallel=3]
  * [--arms=<arm,...>] [--on-demand]` starts each cloud's API from the branch, and one built
@@ -42,12 +42,13 @@ const output = process.env.SPIKE_OUTPUT_DIR ?? 'spike-evidence';
 const base = join(process.env.RUNNER_TEMP ?? tmpdir(), 'local-nvme');
 const inventoryPath = (cloud: Cloud) => join(base, cloud, 'inventory.json');
 const PORT = 18_442;
-const JOB_TIMEOUT_MS = 25 * 60_000;
+const JOB_TIMEOUT_MS = 45 * 60_000;
 // No round starts after this, so the last ones end, and the run cleans up,
 // inside the Spike workflow's 85-minute step.
 const ROUNDS_WINDOW_MS = 50 * 60_000;
-// Stops starting rounds once the VMs' and disks' list-price cost reaches this.
-const COST_CAP_USD = 8;
+// Stops starting rounds once the VMs' and disks' list-price cost reaches this,
+// so the three clouds stay under the owner's $10.
+const COST_CAP_USD = 3;
 
 type Cloud = 'aws' | 'gcp' | 'azure';
 /**
@@ -156,21 +157,22 @@ const diskOf = (cloud: Cloud, arm: Arm) =>
 interface CloudSpec {
   region: string;
   spot: boolean;
-  /** Today's runner type first; every other arm is compared with it. */
+  /** The baseline first; every other arm is compared with it. */
   arms: Arm[];
   env: () => object;
 }
 
-// Each cloud's 4-vCPU runner type, then, on AWS and GCP, the nearest type
-// with a local NVMe disk, on the runners' disk and with the variant: the
-// pair isolates the disk from the CPU. On Azure the runners' Dadsv5 already
-// has its image stores on the resource disk; the variant adds /workspace.
+// On AWS and GCP the 4-vCPU type with a local NVMe disk nearest the runners',
+// on the runners' disk and with the variant: the pair isolates the disk from
+// the CPU. Today's runner types (m8a, c4d) aren't run; the first run had
+// them. On Azure the runners' Dadsv5 already has its image stores on the
+// resource disk; the variant adds /workspace.
 const CLOUDS: Record<Cloud, CloudSpec> = {
   aws: {
     // m8id is m8i's Xeon 6 with a 237 GB instance store; there's no m8ad.
     region: 'us-east-2',
     spot: true,
-    arms: ['m8a.xlarge', 'm8id.xlarge', `m8id.xlarge@${VARIANT}`],
+    arms: ['m8id.xlarge', `m8id.xlarge@${VARIANT}`],
     env: () => ({
       AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID'),
       AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY'),
@@ -181,12 +183,7 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
     // 375 GiB local SSD. us-east4 is backmesh's GCP anchor region.
     region: 'us-east4',
     spot: true,
-    arms: [
-      'c4d-standard-4',
-      'c4-standard-4-lssd',
-      `c4-standard-4-lssd@${VARIANT}`,
-      'c4d-standard-4#high',
-    ],
+    arms: ['c4-standard-4-lssd', `c4-standard-4-lssd@${VARIANT}`],
     env: () => ({
       GCP_PROJECT_ID: required('GCP_PROJECT_ID'),
       GCP_CLIENT_EMAIL: required('GCP_CLIENT_EMAIL'),
@@ -210,22 +207,15 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
 const cloudOf = (arm: Arm): Cloud =>
   arm.startsWith('Standard_') ? 'azure' : arm.includes('-') ? 'gcp' : 'aws';
 /**
- * Each arm against today's, the variant also against its own type on the
- * runners' disk, and the type on the runners' disk against `#high`.
+ * Each arm against its cloud's baseline, and a `#high` arm against its type
+ * on the runners' disk (`--arms=c4d-standard-4,c4d-standard-4#high`).
  */
 const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
   arms.flatMap((arm): [Arm, Arm][] => {
-    const today = CLOUDS[cloudOf(arm)].arms[0]!;
     if (arm.includes('#'))
       return arms.includes(vmOf(arm)) ? [[vmOf(arm), arm]] : [];
-    return [
-      ...(arm !== today && arms.includes(today)
-        ? [[arm, today] as [Arm, Arm]]
-        : []),
-      ...(arm.includes('@') && vmOf(arm) !== today && arms.includes(vmOf(arm))
-        ? [[arm, vmOf(arm)] as [Arm, Arm]]
-        : []),
-    ];
+    const baseline = CLOUDS[cloudOf(arm)].arms[0]!;
+    return arm !== baseline && arms.includes(baseline) ? [[arm, baseline]] : [];
   });
 /** A Job ID's arm part, for IDs of at most 28 characters: m8id-xl-nvme, c4-4-lssd, c4d-4-high, d4ads-v5. */
 const shortArm = (arm: Arm) =>
@@ -805,7 +795,7 @@ function normalCdf(z: number): number {
   return z >= 0 ? 1 - p : p;
 }
 
-/** The timed build commands, which sum to a Job's build time. */
+/** The timed commands: the first run's builds, then the disk-heavy steps. */
 const BUILDS = [
   'pull toolchain-images',
   'docker build',
@@ -813,6 +803,18 @@ const BUILDS = [
   'typescript install',
   'typescript build',
 ];
+const DISK_HEAVY = [
+  'ml pull',
+  'ml build',
+  'ml save',
+  'ml load',
+  'cache restore',
+  'cache save',
+];
+const sumOf = (steps: string[]) => (r: JobResult) =>
+  steps.every((b) => r.timings[b] !== undefined)
+    ? steps.reduce((sum, b) => sum + r.timings[b]!, 0)
+    : undefined;
 
 function report(results: JobResult[]): string {
   const ok = results.filter((r) => r.ok);
@@ -827,13 +829,8 @@ function report(results: JobResult[]): string {
         m,
         (r) => r.timings[m],
       ]),
-    [
-      'all builds',
-      (r) =>
-        BUILDS.every((b) => r.timings[b] !== undefined)
-          ? BUILDS.reduce((sum, b) => sum + r.timings[b]!, 0)
-          : undefined,
-    ],
+    ['all builds', sumOf(BUILDS)],
+    ['all disk-heavy', sumOf(DISK_HEAVY)],
     ['VM time per Job', (r) => r.vmSeconds ?? undefined],
     ['cost per Job ($)', (r) => (r.vmSeconds === null ? undefined : costOf(r))],
   ];
