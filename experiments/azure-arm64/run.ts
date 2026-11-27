@@ -63,6 +63,11 @@ const REGION = 'centralus';
 const ARMS = ['Standard_D4s_v5', 'Standard_D4ps_v6', 'Standard_D4ps_v5'];
 /** The spot probe's regions and types: 2 vCPUs, under CI's 3 spot vCPUs a region. */
 const SPOT_REGIONS = ['eastus2', 'centralus', 'westeurope'];
+const SPOT_REGION_CODES: Record<string, string> = {
+  eastus2: 'e2',
+  centralus: 'cu',
+  westeurope: 'we',
+};
 const SPOT_TYPES = ['Standard_D2ps_v6', 'Standard_D2ps_v5'];
 /** Every type the preflight reports on: the arms, the probe's and the high-memory Cobalt. */
 const PREFLIGHT_TYPES = [
@@ -594,7 +599,8 @@ async function spot(inventory: Inventory) {
   const outcomes: Record<string, unknown>[] = [];
   for (const region of SPOT_REGIONS) {
     for (const type of SPOT_TYPES) {
-      const id = `aa-${inventory.runId}-spot-${region}-${type.replace('Standard_', '').replace('_', '-').toLowerCase()}`;
+      // anycloud's IDs are at most 28 characters: `aa-<run>-s-we-d2ps-v6`.
+      const id = `aa-${inventory.runId}-s-${SPOT_REGION_CODES[region]}-${type.replace('Standard_', '').replace('_', '-').toLowerCase()}`;
       const { log, vms, events, running, marks } = await job(
         inventory,
         id,
