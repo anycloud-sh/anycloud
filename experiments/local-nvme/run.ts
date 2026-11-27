@@ -5,7 +5,7 @@
  * README.md.
  *
  * `run [--cloud=aws,gcp,azure] [--rounds=10] [--parallel=3]
- * [--arms=<arm,...>]` starts each cloud's API from the branch, and one built
+ * [--arms=<arm,...>] [--on-demand]` starts each cloud's API from the branch, and one built
  * from `variant-nvme.patch`, then runs each cloud's rounds at once: one Job
  * per arm a round, `--parallel` rounds at a time. `cleanup [--cloud=...]`
  * restarts the APIs from the run's state directory, terminates the
@@ -53,10 +53,11 @@ type Cloud = 'aws' | 'gcp' | 'azure';
 /**
  * A VM type, run by the branch's API, or `<type>@nvme`, run by an API built
  * from this checkout with `variant-nvme.patch` applied: its image stores and
- * /workspace on the type's local disk.
+ * /workspace on the type's local disk. `<type>#high`, on GCP, is the type
+ * on the branch's API with `high`'s Hyperdisk, an on-demand runner's.
  */
 type Arm = string;
-const vmOf = (arm: Arm) => arm.split('@')[0]!;
+const vmOf = (arm: Arm) => arm.split(/[@#]/)[0]!;
 const variantOf = (arm: Arm) => arm.split('@')[1] ?? 'head';
 const VARIANT = 'nvme';
 
@@ -98,7 +99,8 @@ interface Disk {
 }
 // backmesh's runner disks (`src/listener/runner-jobs.ts`): 100 GB gp3 at
 // 4,000 IOPS and 500 MiB/s on AWS; on GCP a spot c4d's Hyperdisk Balanced at
-// 3,000 IOPS and 750 MiB/s; Azure's `high` tier, Premium SSD.
+// 3,000 IOPS and 750 MiB/s (`#high` is an on-demand one's); Azure's `high`
+// tier, Premium SSD.
 const RUNNER_DISK: Record<Cloud, Disk> = {
   aws: {
     args: [
@@ -139,8 +141,17 @@ const OS_ONLY_DISK: Record<Cloud, Disk> = {
   },
   azure: RUNNER_DISK.azure,
 };
+// An on-demand c4d runner's: GCP's `high` tier, 8,000 IOPS and 1,000 MiB/s.
+const HIGH_DISK: Disk = {
+  args: ['--disk-size', '100', '--disk-tier', 'high'],
+  perHour: hyperdisk(100, 8_000, 1_000),
+};
 const diskOf = (cloud: Cloud, arm: Arm) =>
-  variantOf(arm) === VARIANT ? OS_ONLY_DISK[cloud] : RUNNER_DISK[cloud];
+  arm.endsWith('#high')
+    ? HIGH_DISK
+    : variantOf(arm) === VARIANT
+      ? OS_ONLY_DISK[cloud]
+      : RUNNER_DISK[cloud];
 
 interface CloudSpec {
   region: string;
@@ -174,6 +185,7 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
       'c4d-standard-4',
       'c4-standard-4-lssd',
       `c4-standard-4-lssd@${VARIANT}`,
+      'c4d-standard-4#high',
     ],
     env: () => ({
       GCP_PROJECT_ID: required('GCP_PROJECT_ID'),
@@ -198,12 +210,14 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
 const cloudOf = (arm: Arm): Cloud =>
   arm.startsWith('Standard_') ? 'azure' : arm.includes('-') ? 'gcp' : 'aws';
 /**
- * Each arm against today's, and the variant also against its own type on
- * the runners' disk.
+ * Each arm against today's, the variant also against its own type on the
+ * runners' disk, and the type on the runners' disk against `#high`.
  */
 const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
   arms.flatMap((arm): [Arm, Arm][] => {
     const today = CLOUDS[cloudOf(arm)].arms[0]!;
+    if (arm.includes('#'))
+      return arms.includes(vmOf(arm)) ? [[vmOf(arm), arm]] : [];
     return [
       ...(arm !== today && arms.includes(today)
         ? [[arm, today] as [Arm, Arm]]
@@ -213,13 +227,13 @@ const pairsOf = (arms: Arm[]): [Arm, Arm][] =>
         : []),
     ];
   });
-/** A Job ID's arm part, for IDs of at most 28 characters: m8id-xl-nvme, c4-4-lssd, d4ads-v5. */
+/** A Job ID's arm part, for IDs of at most 28 characters: m8id-xl-nvme, c4-4-lssd, c4d-4-high, d4ads-v5. */
 const shortArm = (arm: Arm) =>
   arm
     .replace('Standard_', '')
     .replace('xlarge', 'xl')
     .replace('-standard-', '-')
-    .replace(/[._@]/g, '-')
+    .replace(/[._@#]/g, '-')
     .toLowerCase();
 
 interface Inventory {
@@ -409,7 +423,7 @@ async function runJob(
   const id = `ln-${inventory.runId}-r${round}-${shortArm(arm)}`;
   const variant = variantOf(arm);
   const api = apiOf(inventory.cloud, variant);
-  const { spot } = CLOUDS[inventory.cloud];
+  const spot = CLOUDS[inventory.cloud].spot && !onDemand;
   inventory.jobs.push({ id, variant });
   writeFileSync(inventoryPath(inventory.cloud), JSON.stringify(inventory));
   const guest = readFileSync(join(import.meta.dirname, 'guest.sh'));
@@ -870,6 +884,7 @@ function report(results: JobResult[]): string {
 const [command = 'run', ...rest] = process.argv.slice(2);
 const flag = (name: string, fallback: string) =>
   rest.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
+const onDemand = rest.includes('--on-demand');
 const clouds = flag('cloud', 'aws,gcp,azure').split(',') as Cloud[];
 for (const c of clouds)
   if (!(c in CLOUDS)) throw new Error(`Unknown cloud ${c}`);
