@@ -11,12 +11,13 @@ See [directory ownership](../CONTRIBUTING.md#directory-ownership).
 The shared [Spike workflow](../.github/workflows/spike.yml) is a manually
 dispatched runner. Select the workflow on `main`, then provide:
 
-| Input               | Meaning                                                                                                                                       |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `experiment`        | One directory name under `experiments/`.                                                                                                      |
-| `source_sha`        | Full immutable commit SHA containing the experiment and `ci/run-spike.ts`.                                                                    |
-| `arguments`         | JSON array of literal command arguments; no shell expansion.                                                                                  |
-| `cleanup_arguments` | JSON argument array for a separate cleanup invocation, including after failure. Leave empty only for an experiment that creates no resources. |
+| Input                | Meaning                                                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `experiment`         | One directory name under `experiments/`.                                                                                                      |
+| `source_sha`         | Full immutable commit SHA containing the experiment and `ci/run-spike.ts`.                                                                    |
+| `arguments`          | JSON array of literal command arguments; no shell expansion.                                                                                  |
+| `cleanup_arguments`  | JSON argument array for a separate cleanup invocation, including after failure. Leave empty only for an experiment that creates no resources. |
+| `azure_subscription` | `default` passes CI's Azure secrets; `own` passes our subscription's (`AZURE_OWN_*`) under the same variable names.                           |
 
 The workflow definition is published on `main` once. Later experiments can run
 from a pushed feature-branch commit containing the shared runner. The workflow
