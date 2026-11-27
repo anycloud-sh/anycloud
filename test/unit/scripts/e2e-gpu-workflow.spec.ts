@@ -435,14 +435,10 @@ describe('Azure GHCR probe-only routing', () => {
       expect(job.env.AZURE_SUBSCRIPTION_ID).toBe(
         '${{ secrets.AZURE_SUBSCRIPTION_ID }}',
       );
-      expect(job.env.AZURE_TENANT_ID).toBe(
-        '${{ secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID }}',
-      );
-      expect(job.env.AZURE_CLIENT_ID).toBe(
-        '${{ secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID }}',
-      );
+      expect(job.env.AZURE_TENANT_ID).toBe('${{ secrets.AZURE_TENANT_ID }}');
+      expect(job.env.AZURE_CLIENT_ID).toBe('${{ secrets.AZURE_CLIENT_ID }}');
       expect(job.env.AZURE_CLIENT_SECRET).toBe(
-        '${{ secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET }}',
+        '${{ secrets.AZURE_CLIENT_SECRET }}',
       );
       const capability = job.steps.findIndex(
         (candidate) =>
