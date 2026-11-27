@@ -1,6 +1,8 @@
 # Local NVMe for CI builds
 
 - Status: Complete. [Result](#result): no design on any cloud.
+  [GCP's on-demand runner disk](#gcps-on-demand-runner-disk): keep the
+  `high` tier.
 - Decision record: backmesh CI speed tracker row C25 asks whether running a
   job's workspace and Docker data on a VM's local NVMe disk builds faster
   than today's network disk, at about the same cost per build, on each
@@ -193,3 +195,53 @@ AMD Zen 5 (`lscpu`: EPYC 9R45 and 9B45; Xeon 6975P-C and 6985P-C).
 The run's evidence has each cloud's `report-<cloud>.md`, with each NVMe
 type against today's too. The run failed before writing the combined
 `report.md`; `report` rebuilds it from the three `results-<cloud>.json`.
+
+## GCP's on-demand runner disk
+
+[anycloud#43](https://github.com/anycloud-sh/anycloud/pull/43) measured a
+`c4d-standard-4` Job host on Hyperdisk Balanced at 3,000 IOPS and 750 MiB/s
+at 0.84 of the `high` tier's (8,000 and 1,000) cost per Job, VM time 1.02
+(p = 0.51), and kept the tier because the toolchain pulls (1.04, p = 0.014),
+`docker build` (1.03, p = 0.026) and boot (1.06, p = 0.050) were slower.
+backmesh's spot `c4d` runners already take 3,000 and 750
+(`GCP_SPOT_RUNNER_DISK_IOPS` in backmesh's `src/listener/runner-jobs.ts`,
+owner, 2026-11-24; backmesh v0.7.2), so the task's premise that today's
+runners all use the tier was wrong: only on-demand runners do. This
+confirmatory A/B runs on demand, with the owner's rule: ship 3,000 and 750
+for on-demand runners if no step is significantly slower by more than 5% and
+whole-Job VM time isn't significantly longer.
+
+`c4d-standard-4#high` is the type on the branch's API with `--disk-tier
+high`; `--on-demand` runs every arm on demand. Arguments
+`["run","--cloud=gcp","--arms=c4d-standard-4,c4d-standard-4#high","--on-demand","--rounds=20","--parallel=3"]`,
+cleanup `["cleanup","--cloud=gcp"]`.
+
+[Spike run 45952579645](https://github.com/anycloud-sh/anycloud/actions/runs/45952579645)
+(`e68aea9bb`, 2026-11-26, about 22:30–23:15 PST): 20 rounds, 40 Jobs, all
+in us-east4-a, all succeeded, cleanup found nothing left. The VMs and disks
+cost $0.58. The API log shows every `#high` launch at 8,000 and 1,000 and
+every other at 3,000 and 750. Ratios are 3,000 / 750's median over the
+tier's.
+
+| Measure                 | 3,000 / 750   | `high`        | Ratio (p)     |
+| ----------------------- | ------------- | ------------- | ------------- |
+| boot to container start | 12.9 (14.1)   | 12.8 (13.9)   | 1.01 (0.43)   |
+| pull toolchains         | 15.8 (17.5)   | 16.1 (17.6)   | 0.98 (0.80)   |
+| docker build            | 67.8 (70.0)   | 59.8 (61.5)   | 1.13 (6.8e-8) |
+| rust build              | 19.7 (20.6)   | 19.6 (21.1)   | 1.00 (0.95)   |
+| npm ci                  | 1.9 (2.0)     | 1.9 (2.1)     | 1.01 (0.96)   |
+| typescript build        | 13.7 (14.1)   | 13.6 (14.3)   | 1.00 (1.0)    |
+| **all builds**          | **119.3**     | **111.3**     | 1.07 (3.0e-7) |
+| VM time per Job         | 200.9 (209.3) | 201.7 (213.0) | 1.00 (0.92)   |
+| cost per Job, on demand | $0.0127       | $0.0154       | 0.82 (9.1e-7) |
+
+**No-go: on-demand runners keep the `high` tier.** `docker build` of k6 is
+13% slower at 3,000 and 750, and the two arms' times don't overlap (63.7–70.8
+s against 59.0–63.3 s), so the rule fails though VM time is unchanged and a
+Job costs 0.82 of the tier's. The other builds and the pulls didn't move. The
+gap is larger than #43's 1.03, where k6's sources were in the Job's
+container rather than the host's `/workspace`; the run doesn't establish
+why. The same 3,000 and 750 are what
+spot `c4d` runners use today, so this also measures their `docker build`
+cost, which the owner took on 2026-11-24 for 0.6 of `n2`'s VM time at about
+1.05 of its cost.
