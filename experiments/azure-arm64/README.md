@@ -1,6 +1,6 @@
 # Azure arm64 runners
 
-- Status: Ready, not yet dispatched.
+- Status: Done, a go: ship Cobalt (`Dpsv6`) first, then Ampere (`Dpsv5`).
 - Decision record: backmesh tracker row N1 asks whether backmesh's arm labels
   can run on Azure, as they do on AWS Graviton and GCP Axion, and which class
   to ship first. It measures Cobalt 100 (`Standard_D4ps_v6`) and Ampere
@@ -58,6 +58,60 @@ disk.
 `Standard_D2ps_v5` in each of eastus2, centralus and westeurope, one at a
 time, as CI's subscription has 3 spot vCPUs a region. `spot.json` records
 whether each launched, its times, and the refusal's events and log if not.
+
+## Result
+
+[Spike run 46069074060](https://github.com/anycloud-sh/anycloud/actions/runs/46069074060)
+(`41d27148c`, 2026-11-27, about 13:15–13:55 PST) in our subscription
+("backmesh e2e", `azure_subscription` `own`): 8 rounds of the three arms in
+centralus, 24 Jobs, all passed with the `uname -m` their type should have. The
+VMs and disks cost $0.50. The run failed on its own cleanup check: Azure still
+listed one Job's VNet seconds after anycloud deleted it, and a preflight
+about 10 minutes later
+([run 46073738886](https://github.com/anycloud-sh/anycloud/actions/runs/46073738886))
+found nothing left, so `verifyClean` now waits up to 5 minutes
+for the list to catch up.
+
+**Go. Cobalt 100 is faster and cheaper than the x86-64 runner; Ampere is
+cheaper and a little slower.** Cobalt took 0.83 of `D4s_v5`'s time for the
+builds together (p = 0.00094) at 0.68 of its cost a Job (p = 0.010). Ampere
+took 1.05 of its time (p = 0.0019) at 0.83 of its cost (p = 0.00094). Cobalt
+was faster at `docker build` (0.70) and boot (kernel to container 0.82),
+slightly slower at the Rust and TypeScript compiles (1.03 and 1.09).
+Ampere's compiles were 1.43 and 1.56. So backmesh's Azure arm labels launch
+Cobalt's `Dpsv6` first and Ampere's `Dpsv5` where Cobalt has no capacity or
+quota. Seconds are medians, with p90 in parentheses; ratios are the Arm type's
+median over `D4s_v5`'s, with a two-sided Mann-Whitney p.
+
+| Measure                  | `D4ps_v6` (Cobalt) | `D4ps_v5` (Ampere) | `D4s_v5`        | Cobalt ratio | Ampere ratio |
+| ------------------------ | ------------------ | ------------------ | --------------- | ------------ | ------------ |
+| boot launch-to-container | 32.7 (36.1)        | 34.6 (38.2)        | 35.3 (38.3)     | 0.93         | 0.98         |
+| boot kernel-to-container | 18.4 (22.1)        | 21.0 (23.5)        | 22.3 (24.3)     | 0.82         | 0.94         |
+| pull toolchain-images    | 32.1 (38.3)        | 37.1 (45.4)        | 36.9 (40.0)     | 0.87         | 1.01         |
+| docker build             | 86.9 (93.3)        | 107.6 (109.7)      | 123.9 (125.5)   | 0.70         | 0.87         |
+| rust build               | 32.0 (32.8)        | 44.3 (46.7)        | 31.1 (31.5)     | 1.03         | 1.43         |
+| typescript install       | 4.2 (4.4)          | 5.5 (5.7)          | 4.2 (4.3)       | 1.00         | 1.31         |
+| typescript build         | 22.7 (23.2)        | 32.2 (33.8)        | 20.7 (21.2)     | 1.09         | 1.56         |
+| all builds               | 180.1 (189.1)      | 227.3 (235.9)      | 217.1 (221.0)   | 0.83         | 1.05         |
+| VM time per Job          | 321.4 (392.9)      | 358.7 (368.6)      | 357.0 (381.3)   | 0.90         | 1.00         |
+| cost per Job ($)         | 0.0165 (0.0202)    | 0.0200 (0.0206)    | 0.0242 (0.0258) | 0.68         | 0.83         |
+
+The VMs' list prices in centralus were $0.158, $0.174 and $0.217 an hour, and
+the disk's $0.027. The CPUs were Neoverse-N2 (Cobalt), Neoverse-N1 (Ampere)
+and Intel Xeon Platinum 8573C. `D4s_v5` is backmesh's third Azure choice:
+`D4ads_v5`, its first, has no quota in our subscription.
+
+### Spot
+
+[Spike run 46073800412](https://github.com/anycloud-sh/anycloud/actions/runs/46073800412)
+(`b0860e658`): one spot Job of each type a region. In eastus2 and centralus
+all four launched at the first try, in 32 to 38 s from launch to container.
+In westeurope Azure refused every launch of both types with
+`RequestDisallowedByAzure`, "The selected region is currently not accepting
+new customers": a restriction on our new subscription in that region, not
+on Arm or spot. Cleanup found nothing left. An earlier
+[run 46069090606](https://github.com/anycloud-sh/anycloud/actions/runs/46069090606)
+submitted nothing: its Job IDs were over anycloud's 28 characters.
 
 ## Cost
 
