@@ -15,7 +15,8 @@
   rows, the SKUs' capabilities, Canonical's Ubuntu 24.04 SKUs and the
   quotas, and creates nothing. `["run"]` runs the builds: `--rounds=<n>`
   (default 8), `--parallel=<n>` (rounds at a time, default 2) and
-  `--arms=<type,...>`. `["spot"]` runs the spot probe.
+  `--arms=<type,...>`. `["spot"]` runs the spot probe, and `["vm"]` a
+  persistent VM of each 2-vCPU Arm type.
   `report <results.json...>` rewrites the report without a cloud.
 
 ## What it measures
@@ -95,6 +96,10 @@ median over `D4s_v5`'s, with a two-sided Mann-Whitney p.
 | all builds               | 180.1 (189.1)      | 227.3 (235.9)      | 217.1 (221.0)   | 0.83         | 1.05         |
 | VM time per Job          | 321.4 (392.9)      | 358.7 (368.6)      | 357.0 (381.3)   | 0.90         | 1.00         |
 | cost per Job ($)         | 0.0165 (0.0202)    | 0.0200 (0.0206)    | 0.0242 (0.0258) | 0.68         | 0.83         |
+
+Only `D4ps_v6` and `D4ps_v5` were measured. The other sizes and the
+high-memory `Epsv6` and `Epsv5` are the same CPUs, so the order carries over
+to them, but none was timed.
 
 The VMs' list prices in centralus were $0.158, $0.174 and $0.217 an hour, and
 the disk's $0.027. The CPUs were Neoverse-N2 (Cobalt), Neoverse-N1 (Ampere)

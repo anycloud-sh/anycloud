@@ -799,6 +799,55 @@ function report(results: JobResult[]): string {
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * One persistent VM of each 2-vCPU Arm type in the builds' region: its host
+ * boots Canonical's `server-arm64` SKU (a VM isn't a Job host) and its
+ * container runs `aarch64`.
+ */
+async function vms(inventory: Inventory) {
+  const outcomes: Record<string, unknown>[] = [];
+  for (const type of SPOT_TYPES) {
+    const id = `aa-${inventory.runId}-vm-${type.replace('Standard_', '').replace('_', '-').toLowerCase()}`;
+    inventory.jobs.push(id);
+    writeFileSync(inventoryPath, JSON.stringify(inventory));
+    await cli(
+      [
+        'vm',
+        'alpine:3.22',
+        '--id',
+        id,
+        '--credentials',
+        'azure-spike',
+        '--region',
+        REGION,
+        '--vm-type',
+        type,
+        '--disk-size',
+        '30',
+        '--wait',
+      ],
+      {},
+      JOB_TIMEOUT_MS,
+    );
+    const arch = (await cli(['exec', id, 'uname -m'])).trim();
+    const vm = await arm<{
+      properties: { storageProfile: { imageReference: { sku: string } } };
+    }>(
+      `/subscriptions/${creds().subscriptionId}/resourceGroups/anycloud-${REGION}/providers/Microsoft.Compute/virtualMachines/${id}-0?api-version=2024-07-01`,
+    );
+    const sku = vm.properties.storageProfile.imageReference.sku;
+    await cli(['terminate', id]);
+    outcomes.push({ type, arch, sku });
+    evidence('vm.json', outcomes);
+    console.log(JSON.stringify(outcomes.at(-1)));
+  }
+  await verifyClean(inventory);
+  const wrong = outcomes.filter(
+    (o) => o.arch !== 'aarch64' || o.sku !== 'server-arm64',
+  );
+  if (wrong.length) throw new Error(`Wrong VMs: ${JSON.stringify(wrong)}`);
+}
+
 const [command = 'run', ...rest] = process.argv.slice(2);
 const flag = (name: string, fallback: string) =>
   rest.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
@@ -814,6 +863,8 @@ if (command === 'preflight') {
   );
 } else if (command === 'spot') {
   await spot(await setUp());
+} else if (command === 'vm') {
+  await vms(await setUp());
 } else if (command === 'cleanup') {
   if (existsSync(inventoryPath)) {
     await startApi();
