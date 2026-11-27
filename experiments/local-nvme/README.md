@@ -15,14 +15,22 @@
   picks some. AWS and GCP Jobs run on spot VMs, Azure's on demand, since
   CI's subscription has 3 spot vCPUs a region. `--rounds=<n>` (default 10),
   `--parallel=<n>` (rounds at a time per cloud, default 3) and
-  `--arms=<arm,...>` change the run. `report <results.json...>` rewrites the
-  report from saved results without a cloud.
-- Promotion: none. A design for a cloud that gains would move the stores and
-  `/workspace` onto the local disk in anycloud's Job host preparation
-  (`src/api/services/job-host.ts`), and have backmesh pick the NVMe types
-  and a smaller OS disk.
-- Deletion: once C25's decision is recorded, or when the Job host
-  preparation changes enough that `variant-nvme.patch` no longer applies.
+  `--arms=<arm,...>` change the run, and `--on-demand` runs every arm on
+  demand. `report <results.json...>` rewrites the report from saved results
+  without a cloud.
+
+## Promotion criteria
+
+None. A design for a cloud that gains would move the stores and
+`/workspace` onto the local disk in anycloud's Job host preparation
+(`src/api/services/job-host.ts`), and have backmesh pick the NVMe types and
+a smaller OS disk. A go on GCP's on-demand runner disk would have extended
+backmesh's spot override to on-demand runners.
+
+## Deletion criteria
+
+Once C25's decision is recorded, or when the Job host preparation changes
+enough that `variant-nvme.patch` no longer applies.
 
 ## What it measures
 
