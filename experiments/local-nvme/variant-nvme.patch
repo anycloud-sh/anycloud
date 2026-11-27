@@ -23,7 +23,7 @@ index e91159e58..82bce33a7 100644
 +  lsblk -o NAME,MODEL,SIZE,MOUNTPOINT
 +  [ -n "$dev" ] || { echo "no local NVMe disk"; return 0; }
 +  ${bootMark('local-disk-start')}
-+  blkid "$dev" >/dev/null || mkfs.ext4 -q -E nodiscard,lazy_itable_init=1,lazy_journal_init=1 "$dev" || return 1
++  blkid "$dev" >/dev/null || mkfs.ext4 -q -E nodiscard,lazy_itable_init=0,lazy_journal_init=0 "$dev" || return 1
 +  mkdir -p ${LOCAL_DISK_MOUNT} && { mountpoint -q ${LOCAL_DISK_MOUNT} || mount -o noatime "$dev" ${LOCAL_DISK_MOUNT}; } || return 1
 +  (
 +${resourceDiskStoreInstallCommand(LOCAL_DISK_MOUNT)}
