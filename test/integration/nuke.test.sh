@@ -31,6 +31,8 @@
 #   NUKE_PROVIDER     local | aws | azure | gcp | lambda  (default azure)
 #   NUKE_COUNT        number of overlay jobs      (default 300; minimum 300)
 #   NUKE_VMTYPE       VM type                     (default per provider)
+#   NUKE_REGION       region every job runs in    (default eastus on Azure, so its
+#                     spot quota can be planned; elsewhere the scheduler's pick)
 #   NUKE_IMAGE        workload image              (default alpine; local uses pinned BusyBox 1.36)
 #   NUKE_CREDENTIAL   credential name to register (default per provider <cloud>-test)
 #   NUKE_DB_MANIFEST  seed nuke-db manifest path  (set by e2e.sh)
@@ -247,6 +249,7 @@ NUKE_IS_LOCAL=false
 NUKE_USES_BUCKET_SYNC=true
 NUKE_USES_SPOT=true
 DEFAULT_IMAGE="alpine"
+DEFAULT_REGION=""
 case "$NUKE_PROVIDER" in
     local)
         NUKE_IS_LOCAL=true
@@ -262,7 +265,7 @@ case "$NUKE_PROVIDER" in
         source "$SCRIPT_DIR/helpers/azure-blob.sh"
         require_azure_credentials
         RAW_CREDS_JSON="$AZURE_CREDENTIALS_JSON"
-        DEFAULT_VMTYPE="Standard_D2as_v5"; DEFAULT_CRED="azure-test"
+        DEFAULT_VMTYPE="Standard_D2as_v5"; DEFAULT_CRED="azure-test"; DEFAULT_REGION="eastus"
         DELETE_BUCKET_FN="delete_azure_container"; PER_HR="0.0268"
         ;;
     aws)
@@ -294,6 +297,7 @@ case "$NUKE_PROVIDER" in
         ;;
 esac
 NUKE_VMTYPE="${NUKE_VMTYPE:-$DEFAULT_VMTYPE}"
+NUKE_REGION="${NUKE_REGION:-$DEFAULT_REGION}"
 NUKE_CREDENTIAL="${NUKE_CREDENTIAL:-$DEFAULT_CRED}"
 NUKE_IMAGE="${NUKE_IMAGE:-$DEFAULT_IMAGE}"
 if [ "$NUKE_IS_LOCAL" = true ]; then
@@ -320,7 +324,7 @@ if [ "$NUKE_IS_LOCAL" = true ]; then
     print_info "provider=local  count=$NUKE_COUNT  image=$NUKE_IMAGE  runtime=${NUKE_RUNTIME_SEC}s"
     print_info "COST PREVIEW: 0 USD cloud cost; local nuke creates disposable microVMs only on the CI runner."
 else
-    print_info "provider=$NUKE_PROVIDER  count=$NUKE_COUNT  vm=$NUKE_VMTYPE  cred=$NUKE_CREDENTIAL  image=$NUKE_IMAGE  runtime=${NUKE_RUNTIME_SEC}s"
+    print_info "provider=$NUKE_PROVIDER  count=$NUKE_COUNT  vm=$NUKE_VMTYPE  region=${NUKE_REGION:-any}  cred=$NUKE_CREDENTIAL  image=$NUKE_IMAGE  runtime=${NUKE_RUNTIME_SEC}s"
     print_info "COST PREVIEW: ~\$${EST} face value ($NUKE_COUNT x \$${PER_HR}/VM-hr x ~$((NUKE_RUNTIME_SEC+210))s) — cloud quota caps real N; retries can multiply churn."
 fi
 print_info "submit timeout: ${NUKE_SUBMIT_TIMEOUT_SEC}s per job; logs: $NUKE_SUBMIT_LOG_DIR"
@@ -593,6 +597,9 @@ submit_one() {
             if [ "$NUKE_USES_SPOT" = true ]; then
                 cloud_flags+=(--spot)
             fi
+            if [ -n "$NUKE_REGION" ]; then
+                cloud_flags+=(--region "$NUKE_REGION")
+            fi
             if [ "$NUKE_USES_BUCKET_SYNC" = true ]; then
                 cloud_flags+=(--output-bucket "$OUTPUT_BUCKET")
                 workload="echo nuke-${index} > /mnt/output/${index}.txt; sleep ${NUKE_RUNTIME_SEC}"
@@ -656,6 +663,7 @@ submit_witness_one() {
                     --id "$id" \
                     --credentials "$NUKE_CREDENTIAL" \
                     --vm-type "$NUKE_VMTYPE" \
+                    ${NUKE_REGION:+--region "$NUKE_REGION"} \
                     "$NUKE_IMAGE" \
                     -- sh -c "echo nuke-witness-${index}; sleep ${NUKE_RUNTIME_SEC}" \
                     </dev/null

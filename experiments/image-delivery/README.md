@@ -65,9 +65,9 @@ layers). VMs are `backmesh-4`-shaped and on demand, 100 GB root disk:
 ECR's pull-through cache is not measured: a GHCR rule needs a Secrets
 Manager credential, and its warm pulls are the `regional` arm. Azure's
 `regional` and `lazy` arms wait on its registry: the Azure CI subscription
-(Angstrom's) has no `Microsoft.ContainerRegistry` provider, and the owner
-deferred them to the move to our own subscription. The run skips an arm
-whose registry it can't make and records why.
+had no `Microsoft.ContainerRegistry` provider until it moved to our own
+(ee1e6fe6, 2026-11-27), and they haven't been run since. The run skips an
+arm whose registry it can't make and records why.
 
 Arms are interleaved. Each cloud bakes its image first; then each round
 starts one VM of every arm, at most five at once. `summary.json` records the

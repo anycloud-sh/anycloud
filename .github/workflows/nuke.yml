@@ -144,9 +144,9 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ (inputs.provider || 'azure') == 'aws' && secrets.AWS_ACCESS_KEY_ID || '' }}
       AWS_SECRET_ACCESS_KEY: ${{ (inputs.provider || 'azure') == 'aws' && secrets.AWS_SECRET_ACCESS_KEY || '' }}
       AZURE_SUBSCRIPTION_ID: ${{ (inputs.provider || 'azure') == 'azure' && secrets.AZURE_SUBSCRIPTION_ID || '' }}
-      AZURE_TENANT_ID: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_DIRECTORY_ID || secrets.AZURE_TENANT_ID) || '' }}
-      AZURE_CLIENT_ID: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_APPLICATION_ID || secrets.AZURE_CLIENT_ID) || '' }}
-      AZURE_CLIENT_SECRET: ${{ (inputs.provider || 'azure') == 'azure' && (secrets.AZURE_SECRET || secrets.AZURE_CLIENT_SECRET) || '' }}
+      AZURE_TENANT_ID: ${{ (inputs.provider || 'azure') == 'azure' && secrets.AZURE_TENANT_ID || '' }}
+      AZURE_CLIENT_ID: ${{ (inputs.provider || 'azure') == 'azure' && secrets.AZURE_CLIENT_ID || '' }}
+      AZURE_CLIENT_SECRET: ${{ (inputs.provider || 'azure') == 'azure' && secrets.AZURE_CLIENT_SECRET || '' }}
       GCP_PROJECT_ID: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_PROJECT_ID || '' }}
       GCP_PRIVATE_KEY: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_PRIVATE_KEY || '' }}
       GCP_CLIENT_EMAIL: ${{ (inputs.provider || 'azure') == 'gcp' && secrets.GCP_CLIENT_EMAIL || '' }}
