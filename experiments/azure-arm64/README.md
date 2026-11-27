@@ -4,8 +4,8 @@
 - Decision record: backmesh tracker row N1 asks whether backmesh's arm labels
   can run on Azure, as they do on AWS Graviton and GCP Axion, and which class
   to ship first. It measures Cobalt 100 (`Standard_D4ps_v6`) and Ampere
-  Altra (`Standard_D4ps_v5`) against today's x86-64 runner,
-  `Standard_D4ads_v5`, as anycloud VM Jobs: launch to the container, and
+  Altra (`Standard_D4ps_v5`) against an x86-64 runner backmesh runs,
+  `Standard_D4s_v5`, as anycloud VM Jobs: launch to the container, and
   three of backmesh's builds. It also samples Arm spot capacity in eastus2,
   centralus and westeurope, and is the live check of the pull request that
   marks Azure's Arm types arm64.
@@ -31,7 +31,7 @@ API's refresh fails and keeps it (the published catalog has no Azure `Arch`
 until the fetcher runs on main). Then they start the branch's API with the
 spike's Azure credentials and use its CLI, the way a user does.
 
-Each `run` round starts one on-demand Job per arm in eastus2 at once, in a
+Each `run` round starts one on-demand Job per arm in centralus at once, in a
 random order, on backmesh's Azure runner disk (100 GB, Premium SSD). Each
 runs `uname -m` and then [`local-nvme`'s `guest.sh`](../local-nvme/guest.sh)
 in `docker:27-cli` with `--host-docker`, as backmesh's runners do: pulls of
@@ -40,16 +40,19 @@ v0.54.0, `cargo build --release --locked` of ripgrep 14.1.1, and `npm ci`
 and `npx hereby local` of TypeScript v5.6.3. A Job passes when every build
 ran and `uname -m` matches its type's architecture.
 
-`report.md` gives, for each Arm arm against `Standard_D4ads_v5`, the median
+`report.md` gives, for each Arm arm against `Standard_D4s_v5`, the median
 and p90 of each timed command, of the builds together, of the VM's launch to
 the Job's Running event (`boot launch-to-container`), of the kernel's boot to
 the container's start (`boot kernel-to-container`), of the Job's VM time and
 of its cost (VM time at the price the API recorded, plus the disk's list
 price), with the ratio of medians and a two-sided Mann-Whitney p.
 
-`Standard_D4ads_v5` has a 150 GiB resource disk, where anycloud puts Docker's
-and containerd's stores; `D4ps_v6` and `D4ps_v5` have none, so theirs stay
-on the OS disk. That is what backmesh would run, so the comparison keeps it.
+The spike runs in our subscription ("backmesh e2e"), whose only quota for
+an x86-64 type backmesh runs is DSv5's 10 vCPUs in centralus; its first
+4-vCPU type, `Standard_D4ads_v5`, has none. `D4s_v5` is backmesh's third
+choice, Intel Ice Lake rather than AMD Milan, and like the Arm types has no
+resource disk, so all three keep Docker's and containerd's stores on the OS
+disk.
 
 `spot` submits one spot Job (`uname -m`) of `Standard_D2ps_v6` and
 `Standard_D2ps_v5` in each of eastus2, centralus and westeurope, one at a

@@ -51,10 +51,16 @@ const ROUNDS_WINDOW_MS = 50 * 60_000;
 const COST_CAP_USD = 8;
 const CATALOG_HOSTS = ['raw.githubusercontent.com', 'api.github.com'];
 
-/** The builds' region: Cobalt's and Ampere's quota is there. */
-const REGION = 'eastus2';
-/** Today's runner type first; every other arm is compared with it. */
-const ARMS = ['Standard_D4ads_v5', 'Standard_D4ps_v6', 'Standard_D4ps_v5'];
+/**
+ * The builds' region: our subscription's only quota for an x86-64 type
+ * backmesh runs (DSv5, 10 vCPUs) is here, with Cobalt's and Ampere's.
+ */
+const REGION = 'centralus';
+/**
+ * An x86-64 type backmesh runs first; every other arm is compared with it.
+ * `D4ads_v5`, its first, has no quota in our subscription.
+ */
+const ARMS = ['Standard_D4s_v5', 'Standard_D4ps_v6', 'Standard_D4ps_v5'];
 /** The spot probe's regions and types: 2 vCPUs, under CI's 3 spot vCPUs a region. */
 const SPOT_REGIONS = ['eastus2', 'centralus', 'westeurope'];
 const SPOT_TYPES = ['Standard_D2ps_v6', 'Standard_D2ps_v5'];
@@ -190,7 +196,8 @@ async function arm<T>(path: string): Promise<T> {
 /**
  * Builds the branch's Azure catalog and records, for the preflight's types,
  * their rows in the spot regions, the SKUs' raw `CpuArchitectureType`,
- * Canonical's Ubuntu 24.04 SKUs, the quotas of the types' families, and every other granted quota.
+ * Canonical's Ubuntu 24.04 SKUs, the quotas of the types' families, and
+ * every other granted quota.
  */
 async function preflight() {
   const entries = await new AzureCatalogFetcher(creds()).fetchAll();
@@ -261,7 +268,7 @@ async function preflight() {
             .filter(
               (u) =>
                 families.has(u.name.value.toLowerCase()) ||
-                // Every other granted family, for a baseline's alternatives.
+                // Every other granted one, for a baseline's alternatives.
                 u.limit > 0,
             )
             .map((u) => `${u.name.value} ${u.currentValue}/${u.limit}`),
