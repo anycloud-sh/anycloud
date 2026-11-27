@@ -192,7 +192,8 @@ const CLOUDS: Record<Cloud, CloudSpec> = {
   },
   azure: {
     // Our subscription (the Spike workflow's `azure_subscription=own`) has
-    // no DADSv5 quota in eastus or centralus; the API picks a region that has.
+    // no DADSv5 quota in these regions yet (README.md, Run); the API picks
+    // the first that gets it.
     region: 'eastus2,westus2,westus3,southcentralus,northcentralus,westus',
     spot: false,
     arms: ['Standard_D4ads_v5', `Standard_D4ads_v5@${VARIANT}`],
