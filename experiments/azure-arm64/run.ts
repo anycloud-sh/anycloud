@@ -190,7 +190,7 @@ async function arm<T>(path: string): Promise<T> {
 /**
  * Builds the branch's Azure catalog and records, for the preflight's types,
  * their rows in the spot regions, the SKUs' raw `CpuArchitectureType`,
- * Canonical's Ubuntu 24.04 SKUs, and the quotas of the types' families.
+ * Canonical's Ubuntu 24.04 SKUs, the quotas of the types' families, and every other granted quota.
  */
 async function preflight() {
   const entries = await new AzureCatalogFetcher(creds()).fetchAll();
@@ -261,7 +261,8 @@ async function preflight() {
             .filter(
               (u) =>
                 families.has(u.name.value.toLowerCase()) ||
-                ['cores', 'lowPriorityCores'].includes(u.name.value),
+                // Every other granted family, for a baseline's alternatives.
+                u.limit > 0,
             )
             .map((u) => `${u.name.value} ${u.currentValue}/${u.limit}`),
         ];
