@@ -5,6 +5,16 @@ description: 'Release notes for anycloud: deployments, credential-scoped command
 
 # Changelog
 
+## 0.1.85
+
+### Jobs and VMs run on Azure Arm
+
+Jobs and VMs can now run on Azure's Arm types, Cobalt 100's `Dpsv6` and `Epsv6` and Ampere's `Dpsv5` and `Epsv5`, such as `Standard_D4ps_v6`, on Ubuntu 24.04's arm64 image. The image needs a `linux/arm64` build.
+
+### Cheaper management VM disks
+
+`anycloud api create` now creates the AWS management VM's disk at gp3's free 3,000 IOPS instead of 8,000, about $25 a month less. On GCP, the boot disk shrinks from 100 GB to 20 GB, about $2 a month less.
+
 ## 0.1.84
 
 ### Jobs run on GCP Axion
