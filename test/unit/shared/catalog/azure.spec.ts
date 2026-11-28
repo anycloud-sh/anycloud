@@ -229,6 +229,39 @@ describe('AzureCatalogFetcher', () => {
     expect(a2?.premiumStorageCapable).toBeUndefined();
   });
 
+  it('reads Arch from the CpuArchitectureType capability', async () => {
+    const sku = (name: string, arch?: string) =>
+      makeSKU({
+        name,
+        capabilities: [
+          { name: 'vCPUs', value: '4' },
+          { name: 'MemoryGB', value: '16' },
+          ...(arch ? [{ name: 'CpuArchitectureType', value: arch }] : []),
+        ],
+      });
+    mockFetchResponses({
+      pricing: makePricingResponse(
+        ['Standard_D4ps_v6', 'Standard_D4ads_v5', 'Standard_A2'].map(
+          (armSkuName) => makePricingItem({ armSkuName }),
+        ),
+      ),
+      skus: makeSKUResponse([
+        sku('Standard_D4ps_v6', 'Arm64'),
+        sku('Standard_D4ads_v5', 'x64'),
+        sku('Standard_A2'),
+      ]),
+    });
+
+    const entries = await new AzureCatalogFetcher(CREDS).fetchAll();
+    expect(
+      Object.fromEntries(entries.map((e) => [e.instanceType, e.arch])),
+    ).toEqual({
+      Standard_D4ps_v6: 'arm64',
+      Standard_D4ads_v5: 'x86_64',
+      Standard_A2: null,
+    });
+  });
+
   describe('pricing-API retries', () => {
     const throttled = (headers?: Record<string, string>) =>
       new Response(null, { status: 429, headers });

@@ -80,8 +80,8 @@ injected into the VM container.
 Anycloud does not provide a default VM image. The image must:
 
 - Target Linux on `amd64`, or `arm64` on an
-  [Arm type](/platform/gpus-vm-types#arm64), such as AWS Graviton or GCP
-  Axion.
+  [Arm type](/platform/gpus-vm-types#arm64), such as AWS Graviton, GCP
+  Axion or Azure Cobalt.
 - Provide `/bin/sh` and POSIX `sleep`.
 - Allow its entrypoint and command to be replaced.
 - Tolerate `/workspace` as its working directory.
