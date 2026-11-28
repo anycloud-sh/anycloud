@@ -118,6 +118,14 @@ on Arm or spot. Cleanup found nothing left. An earlier
 [run 46069090606](https://github.com/anycloud-sh/anycloud/actions/runs/46069090606)
 submitted nothing: its Job IDs were over anycloud's 28 characters.
 
+### Persistent VMs
+
+[Spike run 46083738148](https://github.com/anycloud-sh/anycloud/actions/runs/46083738148)
+(`927a2bac4`): a persistent VM (`anycloud vm alpine:3.22`) of
+`Standard_D2ps_v6` and of `Standard_D2ps_v5` in centralus. Each host booted
+Canonical's `server-arm64` SKU, as a VM isn't a Job host, and `anycloud exec`
+in its container printed `aarch64`. Cleanup found nothing left.
+
 ## Cost
 
 Within the $10 the owner approved. A build Job takes about 6–10 minutes; 8
